@@ -151,14 +151,19 @@ def at_getresponse(atCmd, atTimeout=10):
       Parses the response, line by line, until a result code is received or atTimeout is exceeded
       Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem
       Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response
-      Returns a dictionary containing:
-          echo       - the AT command sent (including CRC if applied) or empty string if Echo disabled
-          response   - a list of strings representing multi-line response
+    :param  atCmd       the AT command to send
+            atTimeout   the time in seconds to wait for a response
+    :return a dictionary containing:
+            echo        - the AT command sent (including CRC if applied) or empty string if Echo disabled
+            response    - a list of strings representing multi-line response
                         if _debug is enabled, applies <cr> and <lf> printable tags in place of \r and \n
                         calling function may subsequently call at_clean to remove printable tags
-          resultCode - a string returned after the response when Quiet mode is disabled
+            resultCode  - a string returned after the response when Quiet mode is disabled
                         'OK' or 'ERROR' if Verbose is enabled on the modem, 
-                        or a numeric error code that can be looked up in modem.atErrorResultCodes or at_handleresultcode
+                        or a numeric error code that can be looked up in modem.atErrorResultCodes
+            checksum    - the CRC (if enabled) or None
+            error       - Boolean if CRC is correct
+            timeout     - Boolean if AT response timed out
     """
     global _debug
     global log
@@ -169,7 +174,7 @@ def at_getresponse(atCmd, atTimeout=10):
     atResponse = []     # container for multi-line response
     atResultCode = ''
     atResCrc = ''
-    atTimeout = False
+    timed_out = False
 
     # Rejection cases.  TODO: improve error handling
     if ";" in atCmd:
@@ -272,7 +277,7 @@ def at_getresponse(atCmd, atTimeout=10):
             break
         elif int(time.time()) - atSendTime > atTimeout:
             log('warning', toSend + ' command response timed out')
-            atTimeout = True
+            timed_out = True
             break
         # TODO: develop reliable handler for Quiet mode use cases. Likely based on ATS61?
         '''
@@ -329,7 +334,7 @@ def at_getresponse(atCmd, atTimeout=10):
             'resultCode': atResultCode,
             'checksum': atResCrc,
             'error': bChecksumOk,
-            'timeout': atTimeout}
+            'timeout': timed_out}
 
 
 def at_handleresultcode(resultCode):
@@ -1047,9 +1052,6 @@ def main():
     if args.forceCRC:
         AT_USE_CRC = True
 
-    if _debug:
-        print("\n\n\n**** PROGRAM STARTING ****\n\n\n")
-
     # Pre-initialization of platform
     try:
         # GPIO bindings (headless Raspberry Pi using FishDish I/O board)
@@ -1093,6 +1095,9 @@ def main():
     log.setLevel(logging.DEBUG)
     log.addHandler(log_handler)
 
+    if _debug:
+        print("\n\n\n**** PROGRAM STARTING ****\n\n\n")
+
     try:
         if rpiHeadless:
             GPIO.setmode(GPIO.BCM)
@@ -1113,6 +1118,7 @@ def main():
             modem = idpmodem.IDPModem()
 
             # Attempt to solicit AT response for some time before exiting
+            # TODO: move this out to a watchdog recovery function, called after serial comms is lost (timeouts)
             initVerified = False
             initTick = 0
             INIT_TIMEOUT = 300  # 5 minutes to connect/reboot modem
@@ -1248,7 +1254,7 @@ def main():
             t.start()
             threads.append(t.name)
 
-            ''' # TODO: User window interface to insert AT commands or send text messages
+            ''' # TODO: User window interface thread to insert AT commands or send text messages
             if _debug and not rpiHeadless and useGUI:
                 getuserinput()
             # '''
