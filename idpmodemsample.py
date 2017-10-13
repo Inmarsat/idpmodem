@@ -927,6 +927,68 @@ def at_wait_boot(wait=15):
     return initVerified, errStr
 
 
+def init_windows(default_log_name):
+    """TODO: Initializes for Windows testing by retrieving a COM port and log file name.
+    :param default_log_name the name that will be used if nothing is selected
+    :returns serial port name e.g. 'COM1'
+            log file name e.g. 'myLogFile.log'
+    """
+    global _debug
+
+    try:
+        import Tkinter as tk
+        import tkFileDialog
+    except ImportError:
+        sys.exit("Error importing Tkinter (Python 2.7) for COM port selection.")
+
+    try:
+        import serialportfinder
+        serialportlist = serialportfinder.listports()
+        if len(serialportlist) == 0 or serialportlist[0] == '':
+            sys.exit("No serial COM ports found.")
+    except ImportError:
+        sys.exit("Error importing serialportfinder for COM port detection.")
+
+    print("Windows test environment detected, enabling verbose debug.")
+    _debug = True
+
+    global ser_name
+    portSelector = tk.Tk()
+    portSelector.title("Select COM port")
+    portSelector.geometry("220x70+30+30")
+    selection = tk.StringVar(portSelector)
+    selection.set(serialportlist[0])
+    option = apply(tk.OptionMenu, (portSelector, selection) + tuple(serialportlist))
+    option.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+
+    def okSelect():
+        global ser_name
+        ser_name = selection.get()
+        portSelector.quit()
+
+    def on_closing():
+        sys.exit('COM port selection cancelled.')
+
+    buttonOk = tk.Button(portSelector, text='OK', command=okSelect, width=10)
+    buttonOk.grid(row=1, column=0, padx=5, sticky='EW')
+
+    buttonCancel = tk.Button(portSelector, text="Cancel", command=on_closing, width=10)
+    buttonCancel.grid(row=1, column=1, padx=5, sticky='EW')
+
+    portSelector.protocol('WM_DELETE_WINDOW', on_closing)
+    portSelector.mainloop()
+    portSelector.destroy()
+
+    myFormats = [('Log', '*.log'), ('Text', '*.txt')]
+    logfileSelector = tk.Tk()
+    logfileSelector.withdraw()
+    filename = tkFileDialog.asksaveasfilename(defaultextension='.log', initialfile=default_log_name,
+                                                 parent=logfileSelector, filetypes=myFormats,
+                                                 title="Save log file as...")
+    logfileSelector.destroy()
+    return ser_name, filename
+
+
 def main():
 
     global _debug
@@ -961,12 +1023,15 @@ def main():
     threads = []
 
     # Derive run options from command line
-    parser = argparse.ArgumentParser(description='Interface with an IDP modem.')
-    parser.add_argument('--log', dest='logfile', help='the log file name with optional extension (default extension .log)')
-    parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='enable verbose debug logging (default OFF)')
+    parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
+    parser.add_argument('--log', dest='logfile',
+                        help="the log file name with optional extension (default extension .log)")
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true',
+                        help="enable verbose debug logging (default OFF)")
     parser.add_argument('-t', '--track', dest='tracking', type=int, default=None,
-                        help='location reporting interval in minutes (0..1440, default = 15, 0 = disabled)')
-    parser.add_argument('--crc', dest='forceCRC', action='store_true', help='force use of CRC on serial port (default OFF)')
+                        help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
+    parser.add_argument('--crc', dest='forceCRC', action='store_true',
+                        help="force use of CRC on serial port (default OFF)")
     args = parser.parse_args()
     if args.logfile is not None:
         if not '.' in args.logfile:
@@ -982,7 +1047,8 @@ def main():
     if args.forceCRC:
         AT_USE_CRC = True
 
-    if _debug: print("\n\n\n**** PROGRAM STARTING ****\n\n\n")
+    if _debug:
+        print("\n\n\n**** PROGRAM STARTING ****\n\n\n")
 
     # Pre-initialization of platform
     try:
@@ -1003,86 +1069,23 @@ def main():
 
     except ImportError:     # TODO: improve robustness...assumes exception is failure to import RPi.GPIO
         if sys.platform.lower().startswith('win32'):
-            try:
-                import Tkinter as tk
-                import tkFileDialog
-                useGUI = True
-            except ImportError:
-                print("Error importing Tkinter (Python 2.7) using defaults")
-                useGUI = False
-
-            try:
-                import serialportfinder
-                serialportlist = serialportfinder.listports()
-                if serialportlist[0] == '':
-                    sys.exit("No serial COM ports found.")
-            except ImportError:
-                print("Error importing serialportfinder")
-
-            print("Windows test environment detected, enabling verbose debug.")
-            _debug = True
-
-            if useGUI:
-                portSelector = tk.Tk()
-                portSelector.title("Select COM port")
-                portSelector.geometry("220x70+30+30")
-                selection = tk.StringVar(portSelector)
-                selection.set(serialportlist[0])
-                option = apply(tk.OptionMenu, (portSelector, selection) + tuple(serialportlist))
-                option.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
-                # option.pack()
-
-                def okSelect():
-                    global SERIAL_NAME
-                    SERIAL_NAME = selection.get()
-                    portSelector.quit()
-
-                def on_closing():
-                    sys.exit('COM port selection cancelled.')
-
-                buttonOk = tk.Button(portSelector, text='OK', command=okSelect, width=10)
-                buttonOk.grid(row=1, column=0, padx=5, sticky='EW')
-                # buttonOk.pack()
-                buttonCancel = tk.Button(portSelector, text="Cancel", command=on_closing, width=10)
-                buttonCancel.grid(row=1, column=1, padx=5, sticky='EW')
-                # buttonCancel.pack()
-                portSelector.protocol('WM_DELETE_WINDOW', on_closing)
-                portSelector.mainloop()
-                portSelector.destroy()
-
-                myFormats = [ ('Log','*.log'),('Text','*.txt')]
-                logfileSelector = tk.Tk()
-                logfileSelector.withdraw()
-                logfileName = tkFileDialog.asksaveasfilename(defaultextension='.log', initialfile=logfileName,
-                                                             parent=logfileSelector, filetypes=myFormats,
-                                                             title="Save log file as...")
-                logfileSelector.destroy()
-
-            else:
-                exit('Unable to spawn GUI for port and logfile input.')
+            SERIAL_NAME, logfileName = init_windows(logfileName)
 
         elif sys.platform.lower().startswith('linux2'):
-            # TODO: improve robustness...assumes MultiTech Conduit AEP with serial mCard on AP1
-            if _debug: print('Linux environment detected.')
+            log.debug("Linux environment detected. Assuming use on MultiTech Conduit AEP with serial mCard on AP1")
             logfileName = '/home/root/' + logfileName    # TODO: validate path availability
             subprocess.call('mts-io-sysfs store mfser/serial-mode rs232', shell=True)
-            # TODO: auto-find serial port
             SERIAL_NAME = '/dev/ttyAP1'
 
         else:
             sys.exit('ERROR: Operation undefined on current platform. Please use Windows, RPi/GPIO or MultiTech AEP.')
 
-    if _debug: print('Logfile name: ' + logfileName)
-    # logfile format: YYYY-mm-dd HH:MM:SS,(ThreadName),[DebugLevel],log string
-    '''
-    logging.basicConfig(filename=logfileName, level=logging.DEBUG,
-                        format='%(asctime)s.%(msecs)03d,(%(threadName)-10s),[%(levelname)s],%(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
-    '''
+    # Set up log file
+    LOG_MAX_MB = 5
     log_formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d,(%(threadName)-10s),' \
                                           '[%(levelname)s],%(funcName)s(%(lineno)d),%(message)s',
                                       datefmt='%Y-%m-%d %H:%M:%S')
-    log_handler = RotatingFileHandler(logfileName, mode='a', maxBytes=5 * 1024 * 1024,
+    log_handler = RotatingFileHandler(logfileName, mode='a', maxBytes=LOG_MAX_MB * 1024 * 1024,
                                       backupCount=2, encoding=None, delay=0)
     log_handler.setFormatter(log_formatter)
     log_handler.setLevel(logging.DEBUG)
