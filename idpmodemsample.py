@@ -29,136 +29,253 @@ import argparse
 import subprocess
 import idpmodem
 
-# global logfileName
-global _debug
-global log
-global ser  # the serial port handle for AT communications
-global modem    # the data structure for modem operating parameters and statistics defined in 'idpModem' module
-global lockThread   # a lock to ensure that parallel threads do not mix up AT request/response operations
-global trackingInterval_s
-global SERIAL_NAME
+# GLOBALS
+global _debug   # setting used for verbose console messages
+global log      # the log object used by most functions and classes
+global ser      # the serial port handle for AT communications
+global modem    # the data structure for IDP modem operating parameters and statistics defined in 'idpmodem' module
+global thread_lock   # a lock to ensure that parallel threads do not overlap AT request/response operations
+global tracking_interval    # an interval that can be manipulated by several functions
+global _shutdown    # a flag triggered by an interrupt from a parallel GPIO service on Raspberry Pi
+global _at_timeout_count    # how many times successive AT commands have timed out
+global AT_MAX_TIMEOUTS  # the maximum value of _at_timeout_count before triggering re-initialization
 
 
-class RepeatingTimer():
-    """ A Timer class that does not stop, unless you want it to. 
-     Used to call repeating functions at defined intervals.
+class RepeatingTimer(threading.Thread):
+    """ A Thread class that repeats function calls like a Timer but allows:
+        start_timer(), stop_timer(), restart_timer(), change_interval(), terminate()
+    :param seconds (float) the interval time between callbacks
+    :param name of the thread for identification
+    :param sleep_chunk the divisor of the interval for intermediate steps/threading
+    :param callback the function that will be executed each interval
+    :param *args optional argument pointers for the callback function
     """
+    global _debug
+    global log
 
-    def __init__(self, seconds, target, args=None, name=''):
-        self._should_continue = False
-        self.is_running = False
-        self.seconds = seconds
-        self.target = target
-        self.args = args
-        self.thread = None
-        if name != '':
+    def __init__(self, seconds, name=None, sleep_chunk=0.25, callback=None, *args):
+        threading.Thread.__init__(self)
+        if name is not None:
             self.name = name
-
-    def _handle_target(self):
-        self.is_running = True
-        if self.args is not None:
-            self.target(self.args)
         else:
-            self.target()
-        self.is_running = False
-        self._start_timer()
+            self.name = str(callback) + "_timer_thread"
+        self.interval = seconds
+        if callback is None:
+            log.warning("No callback specified for RepeatingTimer " + self.name)
+        self.callback = callback
+        self.callback_args = args
+        self.sleep_chunk = sleep_chunk
+        self.terminate_event = threading.Event()
+        self.start_event = threading.Event()
+        self.reset_event = threading.Event()
+        self.count = self.interval / self.sleep_chunk
 
-    def _start_timer(self):
-        if self._should_continue:
-            self.thread = threading.Timer(self.seconds, self._handle_target)
-            if self.name != '':
-                self.thread.name = self.name
-            self.thread.start()
+    def run(self):
+        while not self.terminate_event.is_set():
+            while self.count > 0 and self.start_event.is_set() and self.interval > 0:
+                if _debug:
+                    print(self.name + " countdown: " + str(self.count) +
+                          "(" + str(self.interval) + "s @ step " + str(self.sleep_chunk) + "s)")
+                if self.reset_event.wait(self.sleep_chunk):
+                    self.reset_event.clear()
+                    self.count = self.interval / self.sleep_chunk
+                self.count -= 1
+                if self.count <= 0:
+                    self.callback(*self.callback_args)
+                    self.count = self.interval / self.sleep_chunk
 
-    def start(self):
-        if not self._should_continue and not self.is_running:
-            self._should_continue = True
-            self._start_timer()
+    def start_timer(self):
+        self.start_event.set()
+        log.debug(self.name + " timer started (" + str(self.interval) + " seconds)")
+
+    def stop_timer(self):
+        self.start_event.clear()
+        self.count = self.interval / self.sleep_chunk
+        log.debug(self.name + " timer stopped (" + str(self.interval) + " seconds)")
+
+    def restart_timer(self):
+        if self.start_event.is_set():
+            self.reset_event.set()
         else:
-            log('warning', 'Timer already started or running, process must wait')
+            self.start_event.set()
+        log.debug(self.name + " timer restarted (" + str(self.interval) + " seconds)")
 
-    def cancel(self):
-        if self.thread is not None:
-            self._should_continue = False   # Just in case thread is running and cancel failed
-            self.thread.cancel()
-        else:
-            log('warning', 'Timer never started or failed to initialize')
+    def change_interval(self, seconds):
+        self.interval = seconds
+        self.restart_timer()
+
+    def terminate(self):
+        self.terminate_event.set()
 
 
-def print_log(logLvl, logStr):
-    """ Writes a timestamped log file entry and prints it to console if _debug is enabled" 
-    :param logLvl: log level mirrors the logging library
-    :param logStr: the message to be logged
+class Location(object):
+    """ A class containing a specific set of location-based information for a given point in time
+        Uses 91/181 if lat/lon are unknown
     """
 
-    ts = '{:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now())
-    logStrVerbose = ts + ',(' + str(threading.currentThread().name) + '),'
-    if logLvl == 'critical':
-        logging.critical(logStr)
-        logStrVerbose += '[CRITICAL],' + logStr
-    elif logLvl == 'error':
-        logging.error(logStr)
-        logStrVerbose += '[ERROR],' + logStr
-    elif logLvl == 'warning':
-        logging.warning(logStr)
-        logStrVerbose += '[WARNING],' + logStr
-    elif logLvl == 'info':
-        logging.info(logStr)
-        logStrVerbose += '[INFO],' + logStr
-    else:   # logLvl == 'debug'
-        logging.debug(logStr)
-        logStrVerbose += '[DEBUG],' + logStr
-    if _debug: print(logStrVerbose)
+    def __init__(self, latitude=91*60*1000, longitude=181*60*1000, altitude=0,
+                 speed=0, heading=0, timestamp=0, satellites=0, fixtype=1,
+                 PDOP=0, HDOP=0, VDOP=0):
+        self.latitude = latitude                # 1/1000th minutes
+        self.longitude = longitude              # 1/1000th minutes
+        self.altitude = altitude                # metres
+        self.speed = speed                      # knots
+        self.heading = heading                  # degrees
+        self.timestamp = timestamp              # seconds since 1/1/1970 unix epoch
+        self.satellites = satellites
+        self.fixtype = fixtype
+        self.PDOP = PDOP
+        self.HDOP = HDOP
+        self.VDOP = VDOP
 
 
-def getcrc(atCmd):
-    """ Returns the CRC-16-CCITT (initial value 0xFFFF) checksum """
+class RpiFishDish:
+    """ Defines (BCM) pin mapping for the Fish Dish as a headless indicator on Raspberry Pi
+    :param GPIO a valid RPi.GPIO import, with mode set to BCM
+    """
+    global _shutdown
 
-    crcAtCmd = '{:04X}'.format(crcxmodem.crc(atCmd, 0xffff))
-    return crcAtCmd
+    def __init__(self, GPIO):
+        self.GPIO = GPIO
+        self.LED_ON = GPIO.HIGH
+        self.LED_OFF = GPIO.LOW
+        self.BUZZ_ON = GPIO.HIGH
+        self.BUZZ_OFF = GPIO.LOW
+        self.LED_GRN = 4
+        self.LED_YEL = 22
+        self.LED_RED = 9
+        self.BUZZ = 8
+        self.BUTTON = 7
+        self.leds = [self.LED_GRN, self.LED_YEL, self.LED_RED]
+        self.led_states = {
+            'green': False,
+            'yellow': False,
+            'red': False
+        }
+        self.GPIO.setup(self.leds, GPIO.OUT, initial=self.LED_OFF)
+        self.GPIO.setup(self.BUZZ, GPIO.OUT, initial=self.BUZZ_OFF)
+        self.GPIO.setup(self.BUTTON, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        self.GPIO.add_event_detect(self.BUTTON, GPIO.RISING, callback=self.shutdown)
+        self.led_flasher = RepeatingTimer(seconds=0.5, name='fish_dish_flasher',
+                                          callback=self.led_toggle)
+
+    def led_on(self, color='green'):
+        if color == 'green':
+            self.GPIO.output(self.LED_GRN, self.LED_ON)
+        elif color == 'yellow':
+            self.GPIO.output(self.LED_YEL, self.LED_ON)
+        elif color == 'red':
+            self.GPIO.output(self.LED_GRN, self.LED_ON)
+        self.led_states[color] = True
+
+    def led_off(self, color='green'):
+        if color == 'green':
+            self.GPIO.output(self.LED_GRN, self.LED_OFF)
+        elif color == 'yellow':
+            self.GPIO.output(self.LED_YEL, self.LED_OFF)
+        elif color == 'red':
+            self.GPIO.output(self.LED_GRN, self.LED_OFF)
+        self.led_states[color] = False
+
+    def led_toggle(self, color='green'):
+        new_state = not self.led_states[color]
+        if new_state:
+            led_assert = self.LED_ON
+        else:
+            led_assert = self.LED_OFF
+        if color == 'green':
+            self.GPIO.output(self.LED_GRN, led_assert)
+        elif color == 'yellow':
+            self.GPIO.output(self.LED_YEL, led_assert)
+        elif color == 'red':
+            self.GPIO.output(self.LED_GRN, led_assert)
+        self.led_states[color] = new_state
+
+    def shutdown(self, channel):
+        global _shutdown
+        _shutdown = True
 
 
-def at_clean(atLine, restoreCrLf=False):
+class RpiModemIO:
+    """Defines (BCM) pin mapping for modem reset and notification functions
+    :param GPIO a valid RPi.GPIO import, with mode set to BCM
+    """
+
+    def __init__(self, GPIO):
+        # TODO: Other GPIO connected to modem for advanced use cases
+        self.GPIO = GPIO
+        self.IDP_RESET_OUT = 5         # Assumed to connect to a relay (NC) hard reboot for modem power supply
+        self.IDP_RESET_ASSERT = GPIO.LOW
+        self.IDP_RESET_CLEAR = GPIO.HIGH
+        self.GPIO.setup(self.IDP_RESET_OUT, GPIO.OUT, initial=self.IDP_RESET_CLEAR)
+        self.IDP_NOTIFY_IN = 6
+        self.IDP_NOTIFICATION = GPIO.HIGH
+        self.GPIO.setup(self.IDP_NOTIFY_IN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        self.GPIO.add_event_detect(self.IDP_NOTIFY_IN, GPIO.RISING, callback=self.idp_notification)
+
+    def idp_notification(self, channel):
+        # TODO: handle modem notifications from RPi.GPIO
+        pass
+
+    def idp_reset(self):
+        # TODO: enable modem reset by asserting RPi.GPIO output
+        pass
+
+
+def get_crc(at_cmd):
+    """ Returns the CRC-16-CCITT (initial value 0xFFFF) checksum
+    :param at_cmd the AT command to calculate CRC on
+    :return the CRC for the command
+    """
+
+    return '{:04X}'.format(crcxmodem.crc(at_cmd, 0xffff))
+
+
+def clean_at(at_line, restore_cr_lf=False):
     """ Removes debug tags used for visualizing <cr> and <lf> characters
-    :param atLine: the AT command with debug characters included
-    :param restoreCrLf: an option to restore <cr> and <lf>
+    :param at_line: the AT command/response with debug characters included
+    :param restore_cr_lf: an option to restore <cr> and <lf>
     :return: the cleaned AT command without debug tags
     """
 
-    if restoreCrLf:
-        return atLine.replace('<cr>', '\r').replace('<lf>', '\n')
+    if restore_cr_lf:
+        return at_line.replace('<cr>', '\r').replace('<lf>', '\n')
     else:
-        return atLine.replace('<cr>', '').replace('<lf>', '')
+        return at_line.replace('<cr>', '').replace('<lf>', '')
 
 
-def updatestats_atresponse(refAtReqTime, atCmd):
-    """ Updates the last and average AT command response time statistics """
+def update_stats_at_response(at_send_time, at_cmd):
+    """ Updates the last and average AT command response time statistics
+    :param at_send_time the reference time the AT command was sent
+    :param at_cmd the command that was sent
+    """
     global _debug
     global modem
 
-    atResponseTime_ms = int((time.time() - refAtReqTime) * 1000)
-    modem.systemStats['lastATResponseTime_ms'] = atResponseTime_ms
+    at_response_time_ms = int((time.time() - at_send_time) * 1000)
+    modem.systemStats['lastATResponseTime_ms'] = at_response_time_ms
     if _debug:
-        log.debug("Response time for " + atCmd + ": " + str(atResponseTime_ms) + " [ms]")
+        log.debug("Response time for " + at_cmd + ": " + str(at_response_time_ms) + " [ms]")
     if modem.systemStats['avgATResponseTime_ms'] == 0:
-        modem.systemStats['avgATResponseTime_ms'] = atResponseTime_ms
+        modem.systemStats['avgATResponseTime_ms'] = at_response_time_ms
     else:
-        modem.systemStats['avgATResponseTime_ms'] = int((modem.systemStats['avgATResponseTime_ms'] + atResponseTime_ms) / 2)
+        modem.systemStats['avgATResponseTime_ms'] = \
+            int((modem.systemStats['avgATResponseTime_ms'] + at_response_time_ms) / 2)
 
 
-def at_getresponse(atCmd, atTimeout=10):
+def at_getresponse(at_cmd, at_timeout=10):
     """ Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion
-      Parses the response, line by line, until a result code is received or atTimeout is exceeded
+      Parses the response, line by line, until a result code is received or at_timeout is exceeded
       Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem
       Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response
-    :param  atCmd       the AT command to send
-            atTimeout   the time in seconds to wait for a response
+    :param  at_cmd       the AT command to send
+    :param  at_timeout   the time in seconds to wait for a response
     :return a dictionary containing:
             echo        - the AT command sent (including CRC if applied) or empty string if Echo disabled
             response    - a list of strings representing multi-line response
                         if _debug is enabled, applies <cr> and <lf> printable tags in place of \r and \n
-                        calling function may subsequently call at_clean to remove printable tags
-            resultCode  - a string returned after the response when Quiet mode is disabled
+                        calling function may subsequently call clean_at to remove printable tags
+            result      - a string returned after the response when Quiet mode is disabled
                         'OK' or 'ERROR' if Verbose is enabled on the modem, 
                         or a numeric error code that can be looked up in modem.atErrorResultCodes
             checksum    - the CRC (if enabled) or None
@@ -169,6 +286,7 @@ def at_getresponse(atCmd, atTimeout=10):
     global log
     global ser
     global modem
+    global _at_timeout_count
 
     atEcho = ''
     atResponse = []     # container for multi-line response
@@ -177,12 +295,12 @@ def at_getresponse(atCmd, atTimeout=10):
     timed_out = False
 
     # Rejection cases.  TODO: improve error handling
-    if ";" in atCmd:
-        log.warning("Multiple AT commands not supported: " + atCmd)
-        return {'echo': atEcho, 'response': atResponse, 'resultCode': atResultCode}
-    if 'ATQ1' in atCmd:
-        log.warning(atCmd + " command rejected - quiet mode unsupported")
-        return {'echo': atEcho, 'response': atResponse, 'resultCode': atResultCode}
+    if ";" in at_cmd:
+        log.warning("Multiple AT commands not supported: " + at_cmd)
+        return {'echo': atEcho, 'response': atResponse, 'result': atResultCode}
+    if 'ATQ1' in at_cmd:
+        log.warning(at_cmd + " command rejected - quiet mode unsupported")
+        return {'echo': atEcho, 'response': atResponse, 'result': atResultCode}
 
     # Garbage collection
     orphanResponse = ''
@@ -194,20 +312,23 @@ def at_getresponse(atCmd, atTimeout=10):
         orphanResponse += rChar
     if orphanResponse != '':
         log.warning("Orphaned response: " + orphanResponse)
-    ser.flushInput()    # clear pre-existing buffer
+        # TODO: consider passing back orphaned response for additional handling
+
+    ser.flushInput()
+    ser.flushOutput()
 
     if modem.atConfig['CRC']:
-        toSend = atCmd + '*' + getcrc(atCmd)
+        toSend = at_cmd + '*' + get_crc(at_cmd)
     else:
-        toSend = atCmd
-    if "AT%CRC=1" in atCmd.upper():
+        toSend = at_cmd
+    if "AT%CRC=1" in at_cmd.upper():
         modem.atConfig['CRC'] = True
         if _debug: print("CRC enabled for next command")
-    elif "AT%CRC=0" in atCmd.upper():
+    elif "AT%CRC=0" in at_cmd.upper():
         modem.atConfig['CRC'] = False
         if _debug: print("CRC disabled for next command")
 
-    log.debug("Sending " + toSend)
+    log.debug("Sending:" + toSend)
     ser.write(toSend + '\r')
     atSendTime = time.time()
 
@@ -229,15 +350,15 @@ def at_getresponse(atCmd, atTimeout=10):
                     rawResLine += '<cr>'
                 else:
                     resLine += rChar                                            # no <lf> yet
-                if atCmd in resLine:
-                    if atCmd.upper() == 'ATE0':
+                if at_cmd in resLine:
+                    if at_cmd.upper() == 'ATE0':
                         modem.atConfig['Echo'] = False
                         if _debug: print("ATE0 -> Echo off next command")
                     else:
                         modem.atConfig['Echo'] = True
                     atEcho = resLine                                            # <echo><cr> will be followed by <text><cr><lf> or <cr><lf><text><cr><lf> or <numeric code><cr> or <cr><lf><verbose code><cr><lf>
                     resLine = ''                                                # remove <echo><cr> before continuing to parse
-                elif ser.inWaiting() == 0 and at_clean(resLine) != '':          # <numeric code><cr> since all other alternatives would have <lf> pending
+                elif ser.inWaiting() == 0 and clean_at(resLine) != '':          # <numeric code><cr> since all other alternatives would have <lf> pending
                     modem.atConfig['Verbose'] = False
                     atResultCode = resLine
                     atRxComplete = True
@@ -255,14 +376,14 @@ def at_getresponse(atCmd, atTimeout=10):
                         break
                     else:
                         resLine = ''
-                elif '*' in resLine and len(at_clean(resLine)) == 5:             # <*crc><cr><lf>
+                elif '*' in resLine and len(clean_at(resLine)) == 5:             # <*crc><cr><lf>
                     modem.atConfig['CRC'] = True
-                    atResCrc = at_clean(resLine).strip('*')
+                    atResCrc = clean_at(resLine).strip('*')
                     atRxComplete = True
                     break
                 else:                                                            # <cr><lf>... or <text><cr><lf> or <cr><lf><text><cr><lf>
                     # nLines += 1
-                    if at_clean(resLine) == '':                                  # <cr><lf>... not done parsing yet
+                    if clean_at(resLine) == '':                                  # <cr><lf>... not done parsing yet
                         modem.atConfig['Verbose'] = True
                     else:
                         nLines += 1
@@ -273,279 +394,424 @@ def at_getresponse(atCmd, atTimeout=10):
                 if _debug:
                     rawResLine += rChar
         if atResultCode != '':
+            if _at_timeout_count > 0:
+                log.info("Valid AT response received - resetting AT timeout count")
+                _at_timeout_count = 0
             modem.atConfig['Quiet'] = False
             break
-        elif int(time.time()) - atSendTime > atTimeout:
-            log('warning', toSend + ' command response timed out')
+        elif int(time.time()) - atSendTime > at_timeout:
             timed_out = True
+            _at_timeout_count += 1
+            log.warning(toSend + " command response timed out after " + str(at_timeout) + " seconds - " +
+                        str(_at_timeout_count) + " timeouts counted")
             break
-        # TODO: develop reliable handler for Quiet mode use cases. Likely based on ATS61?
-        '''
-        elif modem.atConfig['Quiet']:
-            # Determine some way of knowning the command response is complete
-            break
-        '''
         if _debug and int(time.time()) > (atSendTime + atTick):
             atTick += 1
             print("Waiting AT response. Tick=" + str(atTick))
 
-    updatestats_atresponse(atSendTime, atCmd)
+    checksum_ok = False
 
-    bChecksumOk = False
-    if atResCrc == '':
-        modem.atConfig['CRC'] = False
-    else:
-        modem.atConfig['CRC'] = True
-        strToValidate = ''
-        if len(atResponse) == 0 and atResultCode != '':
-            strToValidate = atResultCode
-        elif len(atResponse) > 0:
-            for resLine in atResponse:
-                strToValidate += resLine
-            if atResultCode != '':
-                strToValidate += atResultCode
-        if getcrc(at_clean(strToValidate, restoreCrLf=True)) == atResCrc:
-            bChecksumOk = True
+    if not timed_out:
+        for resLine in atResponse:
+            log.debug("Received:" + str(clean_at(resLine)))
+        update_stats_at_response(atSendTime, at_cmd)
+
+        if atResCrc == '':
+            modem.atConfig['CRC'] = False
         else:
-            expectedChecksum = getcrc(at_clean(strToValidate, restoreCrLf=True))
-            log.error("Bad checksum received: *" + atResCrc + " expected: *" + expectedChecksum)
-    
-    # Verbose debug shows complete response on console
-    '''
-    if _debug:
-        if atEcho != '':
-            print("Echo: " + atEcho)
-        print("Raw response: " + rawResLine.replace(atEcho,''))
-        resNo = 1
-        for line in atResponse:
-            print("Response [" + str(resNo) + "]: " + line)
-            resNo += 1
-        if atResultCode != '':
-            print("Result Code: " + str(atResultCode))
-        if modem.atConfig['CRC']:
-            if bChecksumOk:
-                print('CRC OK (' + atResCrc + ')')
+            modem.atConfig['CRC'] = True
+            strToValidate = ''
+            if len(atResponse) == 0 and atResultCode != '':
+                strToValidate = atResultCode
+            elif len(atResponse) > 0:
+                for resLine in atResponse:
+                    strToValidate += resLine
+                if atResultCode != '':
+                    strToValidate += atResultCode
+            if get_crc(clean_at(strToValidate, restore_cr_lf=True)) == atResCrc:
+                checksum_ok = True
             else:
-                print('BAD CRC (expected: ' + expectedChecksum + ')')
-    ''' # '''
+                expected_checksum = get_crc(clean_at(strToValidate, restore_cr_lf=True))
+                log.error("Bad checksum received: *" + atResCrc + " expected: *" + expected_checksum)
+
+        # Comment out next line to show verbose response on console
+        '''
+        if _debug:
+            if atEcho != '':
+                print("Echo: " + atEcho)
+            print("Raw response: " + rawResLine.replace(atEcho,''))
+            resNo = 1
+            for line in atResponse:
+                print("Response [" + str(resNo) + "]: " + line)
+                resNo += 1
+            if atResultCode != '':
+                print("Result Code: " + str(atResultCode))
+            if modem.atConfig['CRC']:
+                if checksum_ok:
+                    print('CRC OK (' + atResCrc + ')')
+                else:
+                    print('BAD CRC (expected: ' + expected_checksum + ')')
+        '''  # '''
 
     return {'echo': atEcho,
             'response': atResponse,
-            'resultCode': atResultCode,
+            'result': atResultCode,
             'checksum': atResCrc,
-            'error': bChecksumOk,
+            'error': checksum_ok,
             'timeout': timed_out}
 
 
-def at_handleresultcode(resultCode):
+def at_getresultcode(result_code):
     """ Queries the details of an error response on the AT command interface
-    :param resultCode: the value returned by the AT command response
-    :return: errCode - the specific error code
-             errStr - the interpretation of the error code
+    :param result_code: the value returned by the AT command response
+    :returns: error_code - the specific error code
+             error_desc - the interpretation of the error code
     """
     global modem
-    global lockThread
+    global thread_lock
 
-    if 'OK' in resultCode or at_clean(resultCode) == '0':
-        return 0, 'OK'
-    elif 'ERROR' in resultCode or at_clean(resultCode) == '':
-        with lockThread:
+    if 'OK' in result_code or clean_at(result_code) == '0':
+        error_code = 0
+    elif 'ERROR' in result_code or clean_at(result_code) == '':
+        with thread_lock:
             response = at_getresponse('ATS80?')
-            if at_clean(response['response'][0]) != '':
-                errCode = int(at_clean(response['response'][0]))
-            else:
-                errCode = 4
-                log('error', 'No response to query of S80 (last error code)')
+            if response['timeout']:
+                error_code = -1
+                error_desc = "_TIMEOUT"
+            elif len(response['response']) > 0 and clean_at(response['response'][0]) != '':
+                error_code = int(clean_at(response['response'][0]))
     else:
-        errCode = int(at_clean(resultCode))
-    if errCode > 0:
-        errStr = modem.atErrResultCodes[str(errCode)]
-        return errCode, errStr
+        error_code = int(clean_at(result_code))
+    if error_code != -1:
+        error_desc = modem.atErrResultCodes[str(error_code)]
+    return error_code, error_desc
 
 
-def checksatstatus():
+def at_attach(max_attempts=3):
+    """Attempts to attach using basic AT command
+    :param  max_attempts to attach
+    :returns success    - Boolean result
+    """
+    global _debug
+    global log
+    global thread_lock
+
+    AT_TIMEOUT = 1  # second to wait for response
+
+    success = False
+    attempt_count = 0
+    while attempt_count < max_attempts and not success:
+        with thread_lock:
+            response = at_getresponse('AT', at_timeout=AT_TIMEOUT)
+            if response['timeout']:
+                log.debug("Failed attempt to establish AT response (" +
+                          str(attempt_count + 1) + "/" + str(max_attempts) + ")")
+            elif clean_at(response['result']) != '' and \
+                    (clean_at(response['result']) == 'OK' or clean_at(response['result']) == '0' or
+                    clean_at(response['result']) == 'ERROR' or clean_at(response['result']) > 0):
+                success = True
+                log.info("AT command mode confirmed")
+            else:
+                log.warning("Unexpected response from AT command")
+            attempt_count += 1
+        time.sleep(1)
+    return success
+
+
+def at_init_modem(use_crc=False, verbose=False):
+    """ Initializes the modem after new connection. Restores saved defaults, disables Quiet mode,
+
+    :param use_crc  - optionally enables CRC on AT commands (e.g. if using long serial cable)
+    :param verbose  - optionally use verbose mode for results (OK/ERROR)
+    """
+    global log
+    AT_WAIT = 0.1  # seconds between initialization commands
+    
+    # Restore saved defaults - modem AT config will also be inferred
+    time.sleep(AT_WAIT)
+    defaults_restored = False
+    restore_attempts = 0
+    while not defaults_restored and restore_attempts < 2:
+        restore_attempts += 1
+        response = at_getresponse('ATZ')
+        err_code, err_str = at_getresultcode(response['result'])
+        if err_code == 100 and modem.atConfig['CRC'] == False:
+            modem.atConfig['CRC'] = True
+            log.info("ATZ CRC error; retrying with CRC enabled")
+        elif err_code != 0:
+            err_msg = "Failed to restore saved defaults - exiting (" + err_str + ")"
+            log.error(err_msg)
+            sys.exit(err_msg)
+        else:
+            defaults_restored = True
+            log.info("Saved defaults restored")
+
+    # Enable CRC if desired
+    if use_crc:
+        response = at_getresponse('AT%CRC=1')
+        err_code, err_str = at_getresultcode(response['result'])
+        if err_code == 0:
+            log.info("CRC enabled")
+        elif err_code == 100 and modem.atConfig['CRC']:
+            log.info("Attempted to set CRC when already set")
+        else:
+            log.error("CRC enable failed (" + err_str + ")")
+    elif modem.atConfig['CRC']:
+        response = at_getresponse('AT%CRC=0')
+        err_code, err_str = at_getresultcode(response['result'])
+        if err_code == 0:
+            log.info("CRC disabled")
+        else:
+            log.warning("CRC disable failed (" + err_str + ")")
+
+    # Ensure Quiet mode is disabled to receive response codes
+    time.sleep(AT_WAIT)
+    response = at_getresponse('ATS61?')  # S61 = Quiet mode
+    err_code, err_str = at_getresultcode(response['result'])
+    if err_code == 0:
+        if response['response'][0] == '1':
+            response = at_getresponse('ATQ0')
+            err_code, err_str = at_getresultcode(response['result'])
+            if err_code != 0:
+                err_msg = "Failed to disable Quiet mode (" + err_str + ")"
+                log.error(err_msg)
+                sys.exit(err_msg)
+        log.info("Quiet mode disabled")
+    else:
+        err_msg = "Failed query of Quiet mode S-register ATS61? (" + err_str + ")"
+        log.error(err_msg)
+        sys.exit(err_msg)
+    modem.atConfig['Quiet'] = False
+
+    # Enable echo to validate receipt of AT commands
+    time.sleep(AT_WAIT)
+    response = at_getresponse('ATE1')
+    err_code, err_str = at_getresultcode(response['result'])
+    if err_code == 0:
+        log.info("Echo enabled")
+    else:
+        log.warning("Echo enable failed (" + err_str + ")")
+
+    # Configure verbose error code (OK / ERROR) setting to get specific result code
+    time.sleep(AT_WAIT)
+    if verbose:
+        response = at_getresponse('ATV1')
+    else:
+        response = at_getresponse('ATV0')
+    err_code, err_str = at_getresultcode(response['result'])
+    if err_code == 0:
+        log.info("Verbose " + ("enabled" if verbose else "disabled"))
+        modem.atConfig['Verbose'] = verbose
+    else:
+        log.warning("Verbose " + ("enable" if verbose else "disable") + " failed (" + err_str + ")")
+
+    # Get modem ID
+    time.sleep(AT_WAIT)
+    response = at_getresponse('AT+GSN')
+    err_code, err_str = at_getresultcode(response['result'])
+    if err_code == 0:
+        mobileID = clean_at(response["response"][0]).lstrip('+GSN:').strip()
+        if mobileID != '':
+            log.info("Mobile ID: " + str(mobileID))
+            modem.mobileId = mobileID
+        else:
+            log.warning("Mobile ID not returned")
+    else:
+        log.error("Get Mobile ID failed (" + err_str + ")")
+
+
+def at_check_sat_status():
     """ Checks satellite status using Trace Log Mode to update state and statistics """
     global _debug
     global log
     global modem
-    global lockThread
+    global thread_lock
 
     AT_SATSTATUS_QUERY = 'ATS90=3 S91=1 S92=1 S122? S116?'
 
-    with lockThread:
+    with thread_lock:
         if _debug:
-            log.debug("Thread: Checking satellite status. Previous control state: " + modem.satStatus['CtrlState'])
+            log.debug("Checking satellite status. Previous control state: " + modem.satStatus['CtrlState'])
         response = at_getresponse(AT_SATSTATUS_QUERY)
-        errCode, errStr = at_handleresultcode(response['resultCode'])
-        if errCode == 0:
-            oldSatCtrlState = modem.satStatus['CtrlState']
-            newSatCtrlState = modem.ctrlStates[int(at_clean(response['response'][0]))]
-            if newSatCtrlState != oldSatCtrlState:
-                log.info("Satellite control state change: OLD=" + oldSatCtrlState + " NEW=" + newSatCtrlState)
-                modem.satStatus['CtrlState'] = newSatCtrlState
+        if not response['timeout']:
+            err_code, err_str = at_getresultcode(response['result'])
+            if err_code == 0:
+                oldSatCtrlState = modem.satStatus['CtrlState']
+                newSatCtrlState = modem.ctrlStates[int(clean_at(response['response'][0]))]
+                if newSatCtrlState != oldSatCtrlState:
+                    log.info("Satellite control state change: OLD=" + oldSatCtrlState + " NEW=" + newSatCtrlState)
+                    modem.satStatus['CtrlState'] = newSatCtrlState
 
-                # Key events for relevant state changes and statistics tracking
-                if newSatCtrlState == 'Waiting for GNSS fix':
-                    modem.systemStats['lastGNSSStartTime'] = int(time.time())
-                    modem.systemStats['nGNSS'] += 1
-                elif newSatCtrlState == 'Registration in progress':
-                    modem.systemStats['lastRegStartTime'] = int(time.time())
-                    modem.systemStats['nRegistration'] += 1
-                elif newSatCtrlState == 'Downloading Bulletin Board':
-                    modem.satStatus['BBWait'] = True
-                    modem.systemStats['lastBBStartTime'] = time.time()
-                elif newSatCtrlState == 'Registration in progress':
-                    modem.systemStats['lastRegStartTime'] = int(time.time())
-                elif newSatCtrlState == 'Active':
-                    if modem.satStatus['Blocked'] == True:
-                        log.info("Blockage cleared")
-                        blockDuration = int(time.time() - modem.systemStats['lastBlockStartTime'])
-                        if modem.systemStats['avgBlockageDuration'] > 0:
-                            modem.systemStats['avgBlockageDuration'] = int((blockDuration + modem.systemStats['avgBlockageDuration'])/2)
+                    # Key events for relevant state changes and statistics tracking
+                    if newSatCtrlState == 'Waiting for GNSS fix':
+                        modem.systemStats['lastGNSSStartTime'] = int(time.time())
+                        modem.systemStats['nGNSS'] += 1
+                    elif newSatCtrlState == 'Registration in progress':
+                        modem.systemStats['lastRegStartTime'] = int(time.time())
+                        modem.systemStats['nRegistration'] += 1
+                    elif newSatCtrlState == 'Downloading Bulletin Board':
+                        modem.satStatus['BBWait'] = True
+                        modem.systemStats['lastBBStartTime'] = time.time()
+                    elif newSatCtrlState == 'Registration in progress':
+                        modem.systemStats['lastRegStartTime'] = int(time.time())
+                    elif newSatCtrlState == 'Active':
+                        if modem.satStatus['Blocked'] == True:
+                            log.info("Blockage cleared")
+                            blockDuration = int(time.time() - modem.systemStats['lastBlockStartTime'])
+                            if modem.systemStats['avgBlockageDuration'] > 0:
+                                modem.systemStats['avgBlockageDuration'] = int((blockDuration + modem.systemStats['avgBlockageDuration'])/2)
+                            else:
+                                modem.systemStats['avgBlockageDuration'] = blockDuration
+                        modem.satStatus['Registered'] = True
+                        modem.satStatus['Blocked'] = False
+                        modem.satStatus['BBWait'] = False
+                        if modem.systemStats['lastRegStartTime'] > 0:
+                            regDuration = int(time.time() - modem.systemStats['lastRegStartTime'])
                         else:
-                            modem.systemStats['avgBlockageDuration'] = blockDuration
-                    modem.satStatus['Registered'] = True
-                    modem.satStatus['Blocked'] = False
-                    modem.satStatus['BBWait'] = False
-                    if modem.systemStats['lastRegStartTime'] > 0:
-                        regDuration = int(time.time() - modem.systemStats['lastRegStartTime'])
-                    else:
-                        regDuration = 0
-                    if modem.systemStats['avgRegistrationDuration'] > 0:
-                        modem.systemStats['avgRegistrationDuration'] = int((regDuration + modem.systemStats['avgRegistrationDuration'])/2)
-                    else:
-                        modem.systemStats['avgRegistrationDuration'] = regDuration
-                elif newSatCtrlState == 'Blocked':
-                    modem.satStatus['Blocked'] = True
-                    modem.systemStats['lastBlockStartTime'] = time.time()
-                    log.info("Blockage started")
+                            regDuration = 0
+                        if modem.systemStats['avgRegistrationDuration'] > 0:
+                            modem.systemStats['avgRegistrationDuration'] = int((regDuration + modem.systemStats['avgRegistrationDuration'])/2)
+                        else:
+                            modem.systemStats['avgRegistrationDuration'] = regDuration
+                    elif newSatCtrlState == 'Blocked':
+                        modem.satStatus['Blocked'] = True
+                        modem.systemStats['lastBlockStartTime'] = time.time()
+                        log.info("Blockage started")
 
-                # Other transitions for statistics tracking:
-                if oldSatCtrlState == 'Waiting for GNSS fix' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
-                    gnssDuration = int(time.time() - modem.systemStats['lastGNSSStartTime'])
-                    log.info("GNSS acquired in " + str(gnssDuration) + " seconds")
-                    if modem.systemStats['avgGNSSFixDuration'] > 0:
-                        modem.systemStats['avgGNSSFixDuration'] = int((gnssDuration + modem.systemStats['avgGNSSFixDuration'])/2)
-                    else:
-                        modem.systemStats['avgGNSSFixDuration'] = gnssDuration
-                if oldSatCtrlState == 'Downloading Bulletin Board' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
-                    bbDuration = int(time.time() - modem.systemStats['lastBBStartTime'])
-                    log.info("Bulletin Board downloaded in: " + str(bbDuration) + " seconds")
-                    if modem.systemStats['avgBBReacquireDuration'] > 0:
-                        modem.systemStats['avgBBReacquireDuration'] = int((bbDuration + modem.systemStats['avgBBReacquireDuration'])/2)
-                    else:
-                        modem.systemStats['avgBBReacquireDuration'] = bbDuration
-                if oldSatCtrlState == 'Active' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
-                    modem.systemStats['lastRegStartTime'] = int(time.time())
-                    modem.systemStats['nRegistration'] += 1
+                    # Other transitions for statistics tracking:
+                    if oldSatCtrlState == 'Waiting for GNSS fix' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
+                        gnssDuration = int(time.time() - modem.systemStats['lastGNSSStartTime'])
+                        log.info("GNSS acquired in " + str(gnssDuration) + " seconds")
+                        if modem.systemStats['avgGNSSFixDuration'] > 0:
+                            modem.systemStats['avgGNSSFixDuration'] = int((gnssDuration + modem.systemStats['avgGNSSFixDuration'])/2)
+                        else:
+                            modem.systemStats['avgGNSSFixDuration'] = gnssDuration
+                    if oldSatCtrlState == 'Downloading Bulletin Board' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
+                        bbDuration = int(time.time() - modem.systemStats['lastBBStartTime'])
+                        log.info("Bulletin Board downloaded in: " + str(bbDuration) + " seconds")
+                        if modem.systemStats['avgBBReacquireDuration'] > 0:
+                            modem.systemStats['avgBBReacquireDuration'] = int((bbDuration + modem.systemStats['avgBBReacquireDuration'])/2)
+                        else:
+                            modem.systemStats['avgBBReacquireDuration'] = bbDuration
+                    if oldSatCtrlState == 'Active' and newSatCtrlState != 'Stopped' and newSatCtrlState != 'Blocked':
+                        modem.systemStats['lastRegStartTime'] = int(time.time())
+                        modem.systemStats['nRegistration'] += 1
 
-            CN0 = int(int(at_clean(response['response'][1])) / 100)
-            if modem.systemStats['avgCN0'] == 0:
-                modem.systemStats['avgCN0'] = CN0
+                CN0 = int(int(clean_at(response['response'][1])) / 100)
+                if modem.systemStats['avgCN0'] == 0:
+                    modem.systemStats['avgCN0'] = CN0
+                else:
+                    modem.systemStats['avgCN0'] = int((modem.systemStats['avgCN0'] + CN0) / 2)
             else:
-                modem.systemStats['avgCN0'] = int((modem.systemStats['avgCN0'] + CN0) / 2)
+                log.error("Bad response to satellite status query (" + err_str + ")")
         else:
-            log.error("Bad response to satellite status query (" + errStr + ")")
+            log.warning("Timeout occurred on satellite status query")
     return
 
 
-def parsetrackingcmd(msgContent, msgSIN=255, msgMIN=1):
+def handle_mt_tracking_command(msg_content, msg_sin=255, msg_min=1):
     """ Expects to get SIN 255 MIN 1 'reconfigure tracking interval, in minutes, in a range from 1-1440 
-    :param msgContent: Mobile-Terminated message payload with format <SIN><MIN><interval>, 1 byte each
-     optional parameters msgSIN, msgMIN placeholders for future features
+    :param msg_content: Mobile-Terminated message payload with format <SIN><MIN><interval>
+    :param msg_sin placeholder for future features
+    :param msg_min placeholder for future features
     """
     global log
-    global trackingInterval_s
+    global tracking_interval
 
-    if msgSIN == 255 and msgMIN == 1:
-        newTrackingInterval_min = int(msgContent[2:], 16)
-        if 0 <= newTrackingInterval_min <= 1440:
-            for t in threading.enumerate():
-                if t.name == 'GetSendLocation':
-                    # TODO: not ideal, this gets the underlying timer handle directly, not the parent RepeatingTimer
-                    t.cancel()
-            trackingInterval_s = newTrackingInterval_min * 60
-            log.info("Changing tracking interval to " + str(trackingInterval_s) + " seconds")
-            if newTrackingInterval_min > 0:
-                t = RepeatingTimer(trackingInterval_s, target=getsendlocation, name='GetSendLocation')
-                getsendlocation()
-                t.start()
+    tracking_thread = None
+    if msg_sin == 255 and msg_min == 1:
+        new_tracking_interval_min = int(msg_content[2:], 16)
+        for t in threading.enumerate():
+            if t.name == 'GetSendLocation':
+                tracking_thread = t
+        if (0 <= new_tracking_interval_min <= 1440) and ((new_tracking_interval_min * 60) != tracking_interval):
+            log.info("Changing tracking interval to " + str(tracking_interval) + " seconds")
+            tracking_interval = new_tracking_interval_min * 60
+            tracking_thread.change_interval(tracking_interval)
+            if tracking_interval == 0:
+                tracking_thread.stop_timer()
+            else:
+                at_get_location_send()
         else:
+            log.warning("Invalid tracking interval change requested (" + str(new_tracking_interval_min)
+                        + " minutes")
             # TODO: send an error response indicating 'invalid interval' over the air
-            pass
     else:
-        log.warning("Unsupported command.")
+        log.warning("Unsupported command SIN=" + str(msg_sin) + " MIN=" + str(msg_min))
 
 
-def checkmtmessages():
+def at_check_mt_messages():
     """ Checks for Mobile-Terminated messages in modem queue and retrieves if present.
      Logs a record of the receipt, and handles supported messages
     """
     global _debug
     global log
-    global lockThread
+    global thread_lock
     global modem
 
     msgretrieved = False
-    with lockThread:
+    with thread_lock:
         if _debug:
-            log.debug("Thread: Checking for MT messages")
+            log.debug("Checking for Mobile-Terminated messages")
         response = at_getresponse('AT%MGFN')
-        errCode, errStr = at_handleresultcode(response['resultCode'])
-        if errCode == 0:
-            msgSummary = at_clean(response['response'][0]).replace('%MGFN:', '').strip()
-            if msgSummary:
-                msgParms = msgSummary.split(',')
-                msgName = msgParms[0]
-                # msgNum = msgParms[1]
-                # msgPriority = msgParms[2]
-                msgSIN = int(msgParms[3])   # TODO: broken on RPi?
-                msgState = int(msgParms[4])
-                msgLen = int(msgParms[5])
-                if msgState == 2: # Complete and not read
-                    # TODO: more generic handling of dataType based on length, pass to helper functions for parsing
-                    if msgSIN == 128:
-                        dataType = '1'  # Text
-                    elif msgSIN == 255:
-                        dataType = '2'  # ASCII-Hex
-                    else:
-                        dataType = '3'  # base64
-                    response = at_getresponse('AT%MGFG=' + msgName + "," + dataType)
-                    errCode, errStr = at_handleresultcode(response['resultCode'])
-                    if errCode == 0:
-                        msgretrieved = True
-                        msgEnvelope = at_clean(response['response'][0]).replace('%MGFG:', '').strip().split(',')
-                        msgContent = msgEnvelope[7]
-                        if dataType == '1':
-                            msgContentStr = msgContent
-                        elif dataType == '2':
-                            msgMIN = int(msgContent[0:2])
-                            msgContentStr = '0x' + str(msgContent)
-                        elif dataType == '3':
-                            msgContentStr = base64.b64decode(msgContent)
-                        log.info(str(msgLen) + "-byte message received with content: SIN=" +
-                                 str(msgSIN) + " " + msgContentStr)
-                        if modem.systemStats['avgMTMsgSize'] == 0:
-                            modem.systemStats['avgMTMsgSize'] = msgLen
+        if not response['timeout']:
+            errCode, errStr = at_getresultcode(response['result'])
+            if errCode == 0:
+                msgSummary = clean_at(response['response'][0]).replace('%MGFN:', '').strip()
+                if msgSummary:
+                    msgParms = msgSummary.split(',')
+                    msgName = msgParms[0]
+                    # msgNum = msgParms[1]
+                    # msgPriority = msgParms[2]
+                    msgSIN = int(msgParms[3])   # TODO: broken on RPi?
+                    msgState = int(msgParms[4])
+                    msgLen = int(msgParms[5])
+                    if msgState == 2: # Complete and not read
+                        # TODO: more generic handling of dataType based on length, pass to helper functions for parsing
+                        if msgSIN == 128:
+                            dataType = '1'  # Text
+                        elif msgSIN == 255:
+                            dataType = '2'  # ASCII-Hex
                         else:
-                            modem.systemStats['avgMTMsgSize'] = int(
-                                (modem.systemStats['avgMTMsgSize'] + msgLen) / 2)
-                    else:
-                        log.error("Could not get MT message (" + errStr + ")")
+                            dataType = '3'  # base64
+                        response = at_getresponse('AT%MGFG=' + msgName + "," + dataType)
+                        errCode, errStr = at_getresultcode(response['result'])
+                        if errCode == 0:
+                            msgretrieved = True
+                            msgEnvelope = clean_at(response['response'][0]).replace('%MGFG:', '').strip().split(',')
+                            msgContent = msgEnvelope[7]
+                            if dataType == '1':
+                                msgContentStr = msgContent
+                            elif dataType == '2':
+                                msgMIN = int(msgContent[0:2])
+                                msgContentStr = '0x' + str(msgContent)
+                            elif dataType == '3':
+                                msgContentStr = base64.b64decode(msgContent)
+                            log.info(str(msgLen) + "-byte message received with content: SIN=" +
+                                     str(msgSIN) + " " + msgContentStr)
+                            if modem.systemStats['avgMTMsgSize'] == 0:
+                                modem.systemStats['avgMTMsgSize'] = msgLen
+                            else:
+                                modem.systemStats['avgMTMsgSize'] = int(
+                                    (modem.systemStats['avgMTMsgSize'] + msgLen) / 2)
+                        else:
+                            log.error("Could not get MT message (" + errStr + ")")
+            else:
+                log.error("Could not get new MT message info (" + errStr + ")")
         else:
-            log.error("Could not get new MT message info (" + errStr + ")")
+            log.warning("Timeout occurred on MT message query")
 
     # TODO: more elegant/generic processing with helper functions
     if msgretrieved:
         if msgSIN == 255:
-            parsetrackingcmd(msgContent, msgSIN, msgMIN)
+            handle_mt_tracking_command(msgContent, msgSIN, msgMIN)
         else:
             log.info("Message SIN=" + str(msgSIN) + " MIN=" + str(msgMIN) + "not handled.")
 
     return
 
 
-def sendmessage(dataString, dataFormat=1, SIN=128, MIN=1):
+def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
     """ Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary
     :param dataString: data to be transmitted
     :param dataFormat: 1=Text (default), 2=ASCII-Hex, 3=base64
@@ -555,137 +821,86 @@ def sendmessage(dataString, dataFormat=1, SIN=128, MIN=1):
     """
     global _debug
     global log
-    global lockThread
+    global thread_lock
     global modem
+    global _at_timeout_count
+    global AT_MAX_TIMEOUTS
 
-    moMsgName = str(int(time.time()))[:8]
-    moMsgPriority = 4
-    moMsgSin = SIN
-    moMsgMin = MIN
-    moMsgFormat = dataFormat
+    mo_msg_name = str(int(time.time()))[:8]
+    mo_msg_priority = 4
+    mo_msg_sin = SIN
+    mo_msg_min = MIN
+    mo_msg_format = dataFormat
     if dataFormat == 1:
-        moMsgContent = '"' + dataString + '"'
+        mo_msg_content = '"' + dataString + '"'
     else:
-        moMsgContent = dataString
+        mo_msg_content = dataString
         if dataFormat == 2 and len(dataString)%2 > 0:
-            moMsgContent += '0'     # insert 0 padding to byte boundary
-    with lockThread:
+            mo_msg_content += '0'     # insert 0 padding to byte boundary
+    with thread_lock:
         response = at_getresponse(
-            'AT%MGRT="' + moMsgName + '",' + str(moMsgPriority) + ',' + str(moMsgSin) + '.' + str(
-                moMsgMin) + ',' + str(moMsgFormat) + ',' + moMsgContent)
-        errCode, errStr = at_handleresultcode(response['resultCode'])
-        moSubmitTime = time.time()
-        if errCode == 0:
-            msgComplete = False
-            statusPollCount = 0
-            while not msgComplete:
-                time.sleep(1)
-                statusPollCount += 1
-                if _debug:
-                    log.debug("MGRS queries: " + str(statusPollCount))
-                response = at_getresponse('AT%MGRS="' + moMsgName + '"')
-                errCode, errStr = at_handleresultcode(response['resultCode'])
-                if errCode == 0:
-                    resParms = at_clean(response['response'][0]).split(',')
-                    # resHeader = resParms[0]
-                    # resMsgNo = resParms[1]
-                    # resPrio = int(resParms[2])
-                    # resSin = int(resParms[3])
-                    resState = int(resParms[4])
-                    resSize = int(resParms[5])
-                    # resSent = int(resParms[6])
-                    if resState > 5:
-                        msgComplete = True
-                        if resState == 6:
-                            msgLatency = int(time.time() - moSubmitTime)
-                            log.info("MO message (" + str(resSize) + " bytes) completed in " +
-                                     str(msgLatency) + ' seconds')
-                            if modem.systemStats['avgMOMsgSize'] == 0:
-                                modem.systemStats['avgMOMsgSize'] = resSize
-                            else:
-                                modem.systemStats['avgMOMsgSize'] = int(
-                                    (modem.systemStats['avgMOMsgSize'] + resSize) / 2)
-                            if modem.systemStats['avgMOMsgLatency_s'] == 0:
-                                modem.systemStats['avgMOMsgLatency_s'] = msgLatency
-                            else:
-                                modem.systemStats['avgMOMsgLatency_s'] = int(
-                                    (modem.systemStats['avgMOMsgLatency_s'] + msgLatency) / 2)
-                        else:
-                            log.info("MO message (" + str(resSize) + " bytes) failed after " +
-                                     str(int(time.time() - moSubmitTime)) + " seconds")
-                elif errCode == 109:
+            'AT%MGRT="' + mo_msg_name + '",' + str(mo_msg_priority) + ',' + str(mo_msg_sin) + '.' + str(
+                mo_msg_min) + ',' + str(mo_msg_format) + ',' + mo_msg_content)
+        if not response['timeout']:
+            err_code, err_str = at_getresultcode(response['result'])
+            mo_submit_time = time.time()
+            if err_code == 0:
+                msg_complete = False
+                status_poll_count = 0
+                while not msg_complete and _at_timeout_count < AT_MAX_TIMEOUTS:
+                    time.sleep(1)
+                    status_poll_count += 1
                     if _debug:
-                        print("Message complete, Unavailable")
-                    break
-                else:
-                    log.error("Error getting message state (" + errStr + ")")
-        else:
-            log.error("Message submit error (" + errStr + ")")
-
-
-def getuserinput():
-    """ Provides a GUI window (intended for Windows test environment) accepting AT commands or user data to send """
-    # TODO: deprecate or create more robust threaded operation
-    global log
-    global lockThread
-
-    try:
-        import Tkinter
-
-        def parseUserInput():
-            userInput = str(e.get())
-            if userInput.upper().startswith('AT'):
-                with lockThread:
-                    response = at_getresponse(userInput.upper())
-                    errCode, errStr = at_handleresultcode(response['resultCode'])
-                    if errCode == 0:
-                        for res in response['response']:
-                            log.info("Response to " + atCommand + ": " + res)
+                        log.debug("MGRS queries: " + str(status_poll_count))
+                    response = at_getresponse('AT%MGRS="' + mo_msg_name + '"')
+                    err_code, err_str = at_getresultcode(response['result'])
+                    if err_code == 0:
+                        res_param = clean_at(response['response'][0]).split(',')
+                        res_header = res_param[0]
+                        res_msg_no = res_param[1]
+                        res_priority = int(res_param[2])
+                        res_sin = int(res_param[3])
+                        res_state = int(res_param[4])
+                        res_size = int(res_param[5])
+                        res_sent = int(res_param[6])
+                        if res_state > 5:
+                            msg_complete = True
+                            if res_state == 6:
+                                msg_latency = int(time.time() - mo_submit_time)
+                                log.info("MO message (" + str(res_size) + " bytes) completed in " +
+                                         str(msg_latency) + ' seconds')
+                                if modem.systemStats['avgMOMsgSize'] == 0:
+                                    modem.systemStats['avgMOMsgSize'] = res_size
+                                else:
+                                    modem.systemStats['avgMOMsgSize'] = int(
+                                        (modem.systemStats['avgMOMsgSize'] + res_size) / 2)
+                                if modem.systemStats['avgMOMsgLatency_s'] == 0:
+                                    modem.systemStats['avgMOMsgLatency_s'] = msg_latency
+                                else:
+                                    modem.systemStats['avgMOMsgLatency_s'] = int(
+                                        (modem.systemStats['avgMOMsgLatency_s'] + msg_latency) / 2)
+                            else:
+                                log.info("MO message (" + str(res_size) + " bytes) failed after " +
+                                         str(int(time.time() - mo_submit_time)) + " seconds")
+                    elif err_code == 109:
+                        if _debug:
+                            print("Message complete, Unavailable")
+                        break
                     else:
-                        log.error("AT response error (" + errStr + ")")
-            elif userInput != '':
-                sendmessage(userInput)
+                        log.error("Error getting message state (" + err_str + ")")
             else:
-                log.warning("User entered no data or command")
-
-        root = Tkinter.Tk()
-        root.title = "AT Command Input"
-        e = Tkinter.Entry()
-        e.pack()
-        b = Tkinter.Button(text="OK", command=parseUserInput)
-        b.pack()
-        root.mainloop()
-        # root.destroy()    # TODO: removing this doesn't seem to do anything
-    except Exception, err:
-        log.error(str(err))
+                log.error("Message submit error (" + err_str + ")")
+        else:
+            log.warning("Timeout attempting to submit MO message")
 
 
-class Location(object):
-    """ A class containing a specific set of location-based information for a given point in time """
-
-    def __init__(self, latitude=91*60*1000, longitude=181*60*1000, altitude=0,
-                 speed=0, heading=0, timestamp=0, satellites=0, fixtype=1,
-                 PDOP=0, HDOP=0, VDOP=0):
-        self.latitude = latitude                # 1/1000th minutes
-        self.longitude = longitude              # 1/1000th minutes
-        self.altitude = altitude                # metres
-        self.speed = speed                      # knots
-        self.heading = heading                  # degrees
-        self.timestamp = timestamp              # seconds since 1/1/1970 unix epoch
-        self.satellites = satellites
-        self.fixtype = fixtype
-        self.PDOP = PDOP
-        self.HDOP = HDOP
-        self.VDOP = VDOP
-
-
-def sendlocation(loc):
+def build_location_msg_send(loc):
     """ Prepares a specific binary-optimized location report using SIN=255, MIN=255
     :param loc: a Location object
-    :return: nothing; calls sendmessage function
+    :return: nothing; calls at_send_message function
     """
 
-    dataFields = [
+    data_fields = [
         (loc.timestamp, '031b'),
         (loc.latitude, '024b'),
         (loc.longitude, '025b'),
@@ -697,35 +912,35 @@ def sendlocation(loc):
         (loc.PDOP, '05b')
     ]
 
-    binStr = ''
-    for field in dataFields:
+    bin_str = ''
+    for field in data_fields:
         if field[0] < 0:
-            invBinField = format(-field[0], field[1])
-            compBinField = ''
+            inv_bin_field = format(-field[0], field[1])
+            comp_bin_field = ''
             i = 0
-            while len(compBinField) < len(invBinField):
-                if invBinField[i] == '0':
-                    compBinField += '1'
+            while len(comp_bin_field) < len(inv_bin_field):
+                if inv_bin_field[i] == '0':
+                    comp_bin_field += '1'
                 else:
-                    compBinField += '0'
+                    comp_bin_field += '0'
                 i += 1
-            binField = format(int(compBinField, 2) + 1, field[1])
+            bin_field = format(int(comp_bin_field, 2) + 1, field[1])
         else:
-            binField = format(field[0], field[1])
-        binStr += binField
-    padBits = len(binStr) % 8
-    while padBits > 0:
-        binStr += '0'
-        padBits -= 1
-    hexStr = ''
-    indexByte = 0
-    while len(hexStr)/2 < len(binStr)/8:
-        hexStr += format(int(binStr[indexByte:indexByte+8], 2), '02X').upper()
-        indexByte += 8
-    sendmessage(hexStr, dataFormat=2, SIN=255, MIN=255)
+            bin_field = format(field[0], field[1])
+        bin_str += bin_field
+    pad_bits = len(bin_str) % 8
+    while pad_bits > 0:
+        bin_str += '0'
+        pad_bits -= 1
+    hex_str = ''
+    index_byte = 0
+    while len(hex_str)/2 < len(bin_str)/8:
+        hex_str += format(int(bin_str[index_byte:index_byte+8], 2), '02X').upper()
+        index_byte += 8
+    at_send_message(hex_str, dataFormat=2, SIN=255, MIN=255)
 
 
-def validateNMEAchecksum(sentence):
+def validate_NMEA_checksum(sentence):
     """ Validates NMEA checksum according to the standard
     :param sentence: NMEA sentence including checksum
     :return: boolean result (checksum correct)
@@ -739,7 +954,7 @@ def validateNMEAchecksum(sentence):
     return (cksum == xcksum), nmeadata[2:]
 
 
-def parseNMEAtoLocation(sentence, loc):
+def parse_NMEA_to_Location(sentence, loc):
     """ parses NMEA string(s) to populate a Location object
     Several sentence parameters are unused but remain as placeholders for completeness/future use
     :param sentence: NMEA sentence (including prefix and suffix)
@@ -748,12 +963,12 @@ def parseNMEAtoLocation(sentence, loc):
              error string if not successful
     """
 
-    errStr = ''
-    res, nmeadata = validateNMEAchecksum(sentence)
+    err_str = ''
+    res, NMEA_data = validate_NMEA_checksum(sentence)
     if res:
-        sentenceType = nmeadata[0:3]
+        sentenceType = NMEA_data[0:3]
         if sentenceType == 'GGA':
-            GGA = nmeadata.split(',')
+            GGA = NMEA_data.split(',')
             GGAutc_hhmmss = GGA[1]
             GGAlatitude_dms = GGA[2]
             GGAns = GGA[3]
@@ -778,7 +993,7 @@ def parseNMEAtoLocation(sentence, loc):
             loc.altitude = int(GGAaltitude) # 545.4 = meters above mean sea level
 
         elif sentenceType == 'RMC':
-            RMC = nmeadata.split(',')
+            RMC = NMEA_data.split(',')
             RMCutc_hhmmss = RMC[1]
             # RMCactive = RMC[2]
             RMClatitude_dms = RMC[3]        # 4807.038 = 48 deg 07.038'
@@ -806,7 +1021,7 @@ def parseNMEAtoLocation(sentence, loc):
             loc.heading = int(float(RMCheading_deg))
 
         elif sentenceType == 'GSA':
-            GSA = nmeadata.split(',')
+            GSA = NMEA_data.split(',')
             # GSAauto = GSA[1]
             GSAfixtype = GSA[2]
             # GSAfixtypes = {'none':1,'2D':2,'3D':3}
@@ -839,50 +1054,52 @@ def parseNMEAtoLocation(sentence, loc):
             loc.satellites = int(GSVsatellites)
 
         else:
-            errStr = "NMEA sentence type not recognized"
+            err_str = "NMEA sentence type not recognized"
     else:
-        errStr = "invalid NMEA checksum"
+        err_str = "Invalid NMEA checksum"
 
-    return errStr == '', errStr
+    return err_str == '', err_str
 
 
-def getsendlocation():
+def at_get_location_send():
     """ Queries GPS NMEA strings from the modem and submits to a send/processing routine. """
     global log
     global modem
-    global lockThread
-    global trackingInterval_s
+    global thread_lock
+    global tracking_interval
 
     # TODO: Enable or disable AT%TRK tracking mode based on update interval, to improve fix times
-    staleSecs = int(trackingInterval_s/2)
-    waitSecs = int(min(45, staleSecs - 1))
-    NMEAsentences = '"GGA","RMC","GSA","GSV"'
+    stale_secs = int(tracking_interval / 2)
+    wait_secs = int(min(45, stale_secs - 1))
+    NMEA_sentences = '"GGA","RMC","GSA","GSV"'
     loc = Location()
-    with lockThread:
-        if _debug:
-            log.debug("Thread: Requesting location")
+    with thread_lock:
+        log.debug("requesting location to send")
         modem.GNSSStats['nGNSS'] += 1
         modem.GNSSStats['lastGNSSReqTime'] = int(time.time())
-        response = at_getresponse('AT%GPS=' + str(staleSecs) + ',' + str(waitSecs) + ',' + NMEAsentences, atTimeout=waitSecs + 5)
-        errCode, errStr = at_handleresultcode(response['resultCode'])
-        if errCode == 0:
-            gnssFixDuration = int(time.time()) - modem.GNSSStats['lastGNSSReqTime']
-            if _debug:
-                print("GNSS response time [s]: " + str(gnssFixDuration))
-            if modem.GNSSStats['avgGNSSFixDuration'] > 0:
-                modem.GNSSStats['avgGNSSFixDuration'] = int((gnssFixDuration + modem.GNSSStats['avgGNSSFixDuration'])/2)
+        response = at_getresponse('AT%GPS=' + str(stale_secs) + ',' + str(wait_secs) + ',' + NMEA_sentences, at_timeout=wait_secs + 5)
+        if not response['timeout']:
+            errCode, errStr = at_getresultcode(response['result'])
+            if errCode == 0:
+                gnssFixDuration = int(time.time()) - modem.GNSSStats['lastGNSSReqTime']
+                if _debug:
+                    print("GNSS response time [s]: " + str(gnssFixDuration))
+                if modem.GNSSStats['avgGNSSFixDuration'] > 0:
+                    modem.GNSSStats['avgGNSSFixDuration'] = int((gnssFixDuration + modem.GNSSStats['avgGNSSFixDuration'])/2)
+                else:
+                    modem.GNSSStats['avgGNSSFixDuration'] = gnssFixDuration
+                for res in response['response']:
+                    if clean_at(res).startswith('$GP'):     # TODO: confirm if this works for all GNSS systems
+                        NMEAsentence = clean_at(res)
+                        success, err = parse_NMEA_to_Location(NMEAsentence, loc)
+                        if not success: log('error', err)
             else:
-                modem.GNSSStats['avgGNSSFixDuration'] = gnssFixDuration
-            for res in response['response']:
-                if at_clean(res).startswith('$GP'):     # TODO: confirm if this works for all GNSS systems
-                    NMEAsentence = at_clean(res)
-                    success, err = parseNMEAtoLocation(NMEAsentence, loc)
-                    if not success: log('error', err)
+                log.error("Unable to get GNSS (" + errStr + ")")
+            build_location_msg_send(loc)
+            if tracking_interval > 0:
+                log.debug("Next location report in ~" + str(tracking_interval) + " seconds.")
         else:
-            log.error("Unable to get GNSS (" + errStr + ")")
-        sendlocation(loc)
-    if _debug:
-        log.debug("Next location report in ~" + str(trackingInterval_s) + " seconds.")
+            log.warning("Timeout occurred on GNSS query")
     return
 
 
@@ -933,149 +1150,253 @@ def at_wait_boot(wait=15):
 
 
 def init_windows(default_log_name):
-    """TODO: Initializes for Windows testing by retrieving a COM port and log file name.
+    """ Initializes for Windows testing by presenting a dialog to assign COM port and log file name.
+      Also allows user to enable/disable verbose debug and set a tracking interval
     :param default_log_name the name that will be used if nothing is selected
     :returns serial port name e.g. 'COM1'
             log file name e.g. 'myLogFile.log'
     """
     global _debug
+    global tracking_interval
 
     try:
         import Tkinter as tk
-        import tkFileDialog
     except ImportError:
-        sys.exit("Error importing Tkinter (Python 2.7) for COM port selection.")
+        raise ImportError("Unable to import Tkinter or tkFileDialog.")
+    import tkFileDialog
 
     try:
         import serialportfinder
-        serialportlist = serialportfinder.listports()
-        if len(serialportlist) == 0 or serialportlist[0] == '':
-            sys.exit("No serial COM ports found.")
     except ImportError:
-        sys.exit("Error importing serialportfinder for COM port detection.")
-
-    print("Windows test environment detected, enabling verbose debug.")
-    _debug = True
+        raise ImportError("Unable to import serialportfinder.py - check root directory")
+    serial_port_list = serialportfinder.listports()
+    if len(serial_port_list) == 0 or serial_port_list[0] == '':
+        sys.exit("No serial COM ports found.")
 
     global ser_name
-    portSelector = tk.Tk()
-    portSelector.title("Select COM port")
-    portSelector.geometry("220x70+30+30")
-    selection = tk.StringVar(portSelector)
-    selection.set(serialportlist[0])
-    option = apply(tk.OptionMenu, (portSelector, selection) + tuple(serialportlist))
-    option.grid(row=0, column=0, columnspan=2, padx=5, pady=5)
 
-    def okSelect():
+    print("Windows environment detected. Enabling verbose debug.")
+    _debug = True
+
+    dialog = tk.Tk()
+    dialog.title("Select Options...")
+    dialog.geometry("325x150+30+30")
+    port_sel_label = tk.Label(dialog, text="Select COM port")
+    port_selection = tk.StringVar(dialog)
+    port_selection.set(serial_port_list[0])
+    option = apply(tk.OptionMenu, (dialog, port_selection) + tuple(serial_port_list))
+    option.grid(row=0, column=0, sticky='EW')
+    port_sel_label.grid(row=0, column=1, sticky='W')
+
+    dbg_flag = tk.IntVar()
+    dbg_checkbox = tk.Checkbutton(dialog, text="Enable debug", variable=dbg_flag)
+    dbg_checkbox.grid(row=1, column=0, columnspan=2, padx=5, pady=5)
+    dbg_checkbox.select()
+
+    track = tk.IntVar()
+    track.set(tracking_interval)
+    track_label = tk.Label(dialog, text="Tracking interval minutes (0..1440)")
+    track_label.grid(row=2, column=1, sticky="W")
+    track_box = tk.Entry(dialog, text="Tracking interval", textvariable=track, justify='right')
+    track_box.grid(row=2, column=0, padx=5, pady=5, sticky="E")
+
+    def ok_select():
         global ser_name
-        ser_name = selection.get()
-        portSelector.quit()
+        global _debug
+        global tracking_interval
+        ser_name = port_selection.get()
+        _debug = dbg_flag.get() == 1
+        if 0 <= track.get() <= 1440:
+            tracking_interval = track.get()
+        dialog.quit()
 
     def on_closing():
-        sys.exit('COM port selection cancelled.')
+        sys.exit('COM port port_selection cancelled.')
 
-    buttonOk = tk.Button(portSelector, text='OK', command=okSelect, width=10)
-    buttonOk.grid(row=1, column=0, padx=5, sticky='EW')
+    button_ok = tk.Button(dialog, text='OK', command=ok_select, width=10)
+    button_ok.grid(row=3, column=0, padx=5, pady=5)
 
-    buttonCancel = tk.Button(portSelector, text="Cancel", command=on_closing, width=10)
-    buttonCancel.grid(row=1, column=1, padx=5, sticky='EW')
+    button_cancel = tk.Button(dialog, text="Cancel", command=on_closing, width=10)
+    button_cancel.grid(row=3, column=1, padx=5, pady=5)
 
-    portSelector.protocol('WM_DELETE_WINDOW', on_closing)
-    portSelector.mainloop()
-    portSelector.destroy()
+    dialog.protocol('WM_DELETE_WINDOW', on_closing)
+    dialog.mainloop()
+    dialog.destroy()
 
-    myFormats = [('Log', '*.log'), ('Text', '*.txt')]
-    logfileSelector = tk.Tk()
-    logfileSelector.withdraw()
+    file_formats = [('Log', '*.log'), ('Text', '*.txt')]
+    logfile_selector = tk.Tk()
+    logfile_selector.withdraw()
     filename = tkFileDialog.asksaveasfilename(defaultextension='.log', initialfile=default_log_name,
-                                                 parent=logfileSelector, filetypes=myFormats,
-                                                 title="Save log file as...")
-    logfileSelector.destroy()
+                                              parent=logfile_selector, filetypes=file_formats,
+                                              title="Save log file as...")
+    if filename == '':
+        print("Logfile port_selection dialog cancelled. Using default filename.")
+        filename = default_log_name
+    logfile_selector.destroy()
     return ser_name, filename
 
 
-def main():
+def init_log(log_filename, log_max_mb):
+    """ Initializes logging to file and console
+    :param log_filename the name of the file
+    :param log_max_mb the max size of the file in megabytes, before wrapping occurs
+    :return log object
+    """
+    log_formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d,(%(threadName)-10s),' \
+                                          '[%(levelname)s],%(funcName)s(%(lineno)d),%(message)s',
+                                      datefmt='%Y-%m-%d %H:%M:%S')
+    log_handler = RotatingFileHandler(log_filename, mode='a', maxBytes=log_max_mb * 1024 * 1024,
+                                      backupCount=2, encoding=None, delay=0)
+    log_handler.setFormatter(log_formatter)
+    if _debug:
+        log_handler.setLevel(logging.DEBUG)
+    else:
+        log_handler.setLevel(logging.INFO)
+    log_object = logging.getLogger(log_filename)
+    log_object.setLevel(log_handler.level)
+    log_object.addHandler(log_handler)
+    console = logging.StreamHandler()
+    console.setFormatter(log_formatter)
+    console.setLevel(logging.DEBUG)
+    log_object.addHandler(console)
+    return log_object
+
+
+def init_com(max_attempts=3, fish_dish=None):
+    """ Initializes communications with the modem. If using Raspberry Pi headless, a Fish Dish is assumed
+     Calls an AT command dispatcher and flashes a LED while waiting for completion
+    :param max_attempts - the maximum number of tries sending a basic AT command
+    :param fish_dish - an optional object to provide headless notification (LED flasher)
+    :return Boolean success
+    """
+    global _at_timeout_count
+
+    log.info("Attempting to establish modem communications")
+    success = False
+    if fish_dish is not None:
+        fish_dish.led_flasher.start_timer()
+    init_verified = at_attach(max_attempts)
+    if init_verified:
+        _at_timeout_count = 0
+        success = True
+        if fish_dish is not None:
+            fish_dish.led_flasher.stop_timer()
+            fish_dish.led_on()
+    return success
+
+
+def monitor_com(timeout_count, max_timeouts, recon_count, timer_threads, fish_dish=None):
+    """ TODO: docs"""
+    global log
+
+    MAX_RECONNECT_ATTEMPTS = 3
+
+    if timeout_count >= max_timeouts:
+        if recon_count == 0:  # only log message once per disconnect
+            log.warning("AT responses timed out " + str(_at_timeout_count) +
+                        " times. Attempting to re-establish communications")
+            for t in threading.enumerate():
+                if t.name in timer_threads:
+                    t.stop_timer()
+        recon_count += 1
+        reconnected = init_com(max_attempts=3, fish_dish=fish_dish)
+        if not reconnected:
+            log.info("Reconnect attempts: " + str(recon_count) + "/" + str(MAX_RECONNECT_ATTEMPTS))
+            if recon_count == MAX_RECONNECT_ATTEMPTS:
+                err_str = "Modem communications could not be reestablished...exiting."
+                log.error(err_str)
+                sys.exit(err_str)
+        else:
+            for t in threading.enumerate():
+                if t.name in timer_threads:
+                    t.restart_timer()
+    return recon_count
+
+
+def main():     # TODO: trim out more functions
 
     global _debug
     global log
-    # global logfileName
     global ser
     global modem
-    global lockThread
-    global trackingInterval_s
-    global SERIAL_NAME
+    global thread_lock
+    global tracking_interval
+    global _shutdown
+    global _at_timeout_count
+    global AT_MAX_TIMEOUTS
 
-    SERIAL_NAME = ''
-    SERIAL_BAUD = 9600
+    _shutdown = False
+    AT_MAX_TIMEOUTS = 3
 
     ser = None
+    SERIAL_BAUD = 9600
+
     modem = None
-
-    logfileName = 'IDP_at_interface.log'
-    rpiHeadless = False
-    useGUI = False
-
-    AT_USE_CRC = False
-    AT_WAIT = 0.1  # time between initialization commands
 
     # Timer intervals (seconds)
     SAT_STATUS_INTERVAL = 5
-    MT_MESSAGECHECK_INTERVAL = 15
-    trackingInterval_s = 900
+    MT_MESSAGE_CHECK_INTERVAL = 15
+    tracking_interval = 900
 
     # Thread lock for background processes to avoid overlapping AT requests
-    lockThread = threading.RLock()
+    thread_lock = threading.RLock()
     threads = []
 
     # Derive run options from command line
     parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
-    parser.add_argument('--log', dest='logfile',
+    parser.add_argument('-l', '--log', dest='logfile', type=str, default='idpmodemsample',
                         help="the log file name with optional extension (default extension .log)")
+    parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
+                        help="the maximum log file size, in MB (default 5 MB)")
     parser.add_argument('-d', '--debug', dest='debug', action='store_true',
                         help="enable verbose debug logging (default OFF)")
-    parser.add_argument('-t', '--track', dest='tracking', type=int, default=None,
-                        help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
-    parser.add_argument('--crc', dest='forceCRC', action='store_true',
+    parser.add_argument('-c', '--crc', dest='use_crc', action='store_true',
                         help="force use of CRC on serial port (default OFF)")
-    args = parser.parse_args()
-    if args.logfile is not None:
-        if not '.' in args.logfile:
-            logfileName = args.logfile + '.log'
-        else:
-            logfileName = args.logfile
-    _debug = args.debug
-    if args.tracking is not None:
-        if 0 <= args.tracking <= 1440:
-            trackingInterval_s = int(args.tracking * 60)
+    parser.add_argument('-t', '--track', dest='tracking', type=int, default=0,
+                        help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
+    parser.add_argument('-f', '--fishdish', dest='fish_dish', action='store_true',
+                        help="use Fish Dish for headless operation indicators")
+    user_options = parser.parse_args()
+
+    if not '.' in user_options.logfile:
+        log_filename = user_options.logfile + '.log'
+    else:
+        log_filename = user_options.logfile
+    log_max_mb = user_options.log_size
+
+    _debug = user_options.debug
+
+    if user_options.tracking is not None:
+        if 0 <= user_options.tracking <= 1440:
+            tracking_interval = int(user_options.tracking * 60)
         else:
             sys.exit("Invalid tracking interval, must be in range 0..1440")
-    if args.forceCRC:
-        AT_USE_CRC = True
 
     # Pre-initialization of platform
-    try:
-        # GPIO bindings (headless Raspberry Pi using FishDish I/O board)
+    try:  # GPIO bindings (headless Raspberry Pi using FishDish I/O board)
         import RPi.GPIO as GPIO     # Successful import of this module implies running on Raspberry Pi
-        # FishDish GPIO mapping
-        GPIO_LED_GRN = 4
-        GPIO_LED_ON = GPIO.HIGH
-        GPIO_LED_OFF = GPIO.LOW
-        # Other GPIO connected to modem for advanced use cases
-        # GPIO_IDP_RESET_OUT = 21         # Assumed to connect to a relay (NC) hard reboot for modem power supply
-        # GPIO_IDP_RESET_ASSERT = GPIO.HIGH
-        # GPIO_IDP_NOTIFY_IN = TBD  # TODO: configure and optimize for use of the modem notification pin
-        # GPIO_IDP_NOTIFY_ASSERT = GPIO.LOW
-        logfileName = '/home/pi/' + logfileName
-        SERIAL_NAME = '/dev/ttyUSB0'  # for Raspberry Pi pyserial version XX TODO: clarify what version/compatibility?
-        rpiHeadless = True
+        GPIO.setmode(GPIO.BCM)
+        if user_options.fish_dish:
+            fish_dish = RpiFishDish(GPIO)
+            threads.append(fish_dish.led_flasher.name)
+            fish_dish.led_flasher.start()
+            modem_io = RpiModemIO(GPIO)
+        else:
+            fish_dish = None
+            modem_io = None
+        log_filename = '/home/pi/' + log_filename
+        SERIAL_NAME = '/dev/ttyUSB0'  # TODO: validate RPi USB/serial port assignment
 
-    except ImportError:     # TODO: improve robustness...assumes exception is failure to import RPi.GPIO
+    except ImportError:
+        fish_dish = None
+        modem_io = None
+
         if sys.platform.lower().startswith('win32'):
-            SERIAL_NAME, logfileName = init_windows(logfileName)
+            SERIAL_NAME, log_filename = init_windows(log_filename)
 
         elif sys.platform.lower().startswith('linux2'):
-            log.debug("Linux environment detected. Assuming use on MultiTech Conduit AEP with serial mCard on AP1")
-            logfileName = '/home/root/' + logfileName    # TODO: validate path availability
+            # Assumes linux2 platform is MultiTech Conduit AEP
+            log_filename = '/home/root/' + log_filename    # TODO: validate path availability
             subprocess.call('mts-io-sysfs store mfser/serial-mode rs232', shell=True)
             SERIAL_NAME = '/dev/ttyAP1'
 
@@ -1083,185 +1404,61 @@ def main():
             sys.exit('ERROR: Operation undefined on current platform. Please use Windows, RPi/GPIO or MultiTech AEP.')
 
     # Set up log file
-    LOG_MAX_MB = 5
-    log_formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d,(%(threadName)-10s),' \
-                                          '[%(levelname)s],%(funcName)s(%(lineno)d),%(message)s',
-                                      datefmt='%Y-%m-%d %H:%M:%S')
-    log_handler = RotatingFileHandler(logfileName, mode='a', maxBytes=LOG_MAX_MB * 1024 * 1024,
-                                      backupCount=2, encoding=None, delay=0)
-    log_handler.setFormatter(log_formatter)
-    log_handler.setLevel(logging.DEBUG)
-    log = logging.getLogger(logfileName)
-    log.setLevel(logging.DEBUG)
-    log.addHandler(log_handler)
+    log = init_log(log_filename, log_max_mb)
 
     if _debug:
         print("\n\n\n**** PROGRAM STARTING ****\n\n\n")
 
     try:
-        if rpiHeadless:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(GPIO_LED_GRN, GPIO.OUT)
-            GPIO.setup(GPIO_IDP_RESET, GPIO.OUT)
-            GPIO.output(GPIO_LED_GRN, GPIO_LED_ON) # turn on LED
-            rpiIndicatorOn = True
-
-        # TODO: more robust serial configuration
-        ser = serial.Serial(SERIAL_NAME, SERIAL_BAUD)
-        log.info("Connected to " + ser.name + " at " + str(ser.baudrate) + " baud")
+        # TODO: handle serial exception for writeTimeout vs. write_timeout
+        ser = serial.Serial(port=SERIAL_NAME, baudrate=SERIAL_BAUD,
+                            timeout=None, writeTimeout=0,
+                            xonxoff=False, rtscts=False, dsrdtr=False)
 
         if ser.isOpen():
+            log.info("Connected to serial port " + ser.name + " at " + str(ser.baudrate) + " baud")
             sys.stdout.flush()
-            ser.flushInput()
-            ser.flushOutput()
 
             modem = idpmodem.IDPModem()
+            _at_timeout_count = 0
 
             # Attempt to solicit AT response for some time before exiting
-            # TODO: move this out to a watchdog recovery function, called after serial comms is lost (timeouts)
-            initVerified = False
-            initTick = 0
-            INIT_TIMEOUT = 300  # 5 minutes to connect/reboot modem
-            while initTick < INIT_TIMEOUT and not initVerified:
-                response = at_getresponse('AT', atTimeout=3)
-                # errCode, errStr = at_handleresultcode(response['resultCode'])
-                if 'OK' in response['resultCode'] or at_clean(response['resultCode']) == '0' or (at_clean(response['resultCode']) == 'ERROR'):
-                    initVerified = True
-                    log.info("AT command mode confirmed")
-                else:
-                    if _debug: print("Attempting to establish AT response. Countdown: " + str(INIT_TIMEOUT - initTick))
-                    initTick += 1
-                # Flash visual indicator on RPi while waiting
-                if rpiHeadless:
-                    if rpiIndicatorOn:
-                        GPIO.output(GPIO_LED_GRN, GPIO_LED_OFF)
-                        rpiIndicatorOn = False
-                    else:
-                        GPIO.output(GPIO_LED_GRN, GPIO_LED_ON)
-                        rpiIndicatorOn = True
-                time.sleep(1)
-            if not initVerified:
-                errStr = 'Terminal AT mode could not be confirmed...exiting'
-                log.error(errStr)
-                sys.exit(errStr)
+            ever_connected = init_com(max_attempts=3, fish_dish=fish_dish)
+            if not ever_connected:
+                err_str = "Modem communications could not be established...exiting."
+                log.error(err_str)
+                sys.exit(err_str)
 
-            # solid LED while running
-            if rpiHeadless:
-                GPIO.output(GPIO_LED_GRN, GPIO_LED_ON)
-
-            # Restore saved defaults - modem AT config will also be inferred
-            time.sleep(AT_WAIT)
-            atVerified = False
-            atVerAttempts = 0
-            while not atVerified and atVerAttempts < 2:
-                atVerAttempts += 1
-                response = at_getresponse('ATZ')
-                errCode, errStr = at_handleresultcode(response['resultCode'])
-                if errCode == 100 and modem.atConfig['CRC'] == False:
-                    modem.atConfig['CRC'] = True
-                    log.info("ATZ CRC error; retrying with CRC enabled")
-                elif errCode != 0:
-                    errStr = "Failed to restore saved defaults - exiting (" + errStr + ")"
-                    log.error(errStr)
-                    sys.exit(errStr)
-                else:
-                    atVerified = True
-                    log.info("ATZ response verified")
-
-            # Enable CRC if desired
-            if AT_USE_CRC:
-                response = at_getresponse('AT%CRC=1')
-                errCode, errStr = at_handleresultcode(response['resultCode'])
-                if errCode == 0:
-                    # modem.atConfig['CRC'] = True  # TODO: remove, handed by at_getresponse inference
-                    log.info("CRC enabled")
-                elif errCode == 100 and modem.atConfig['CRC']:
-                    log.info("Attempted to set CRC when already set")
-                else:
-                    log.error("CRC enable failed (" + errStr + ")")
-            elif modem.atConfig['CRC']:
-                response = at_getresponse('AT%CRC=0')
-                errCode, errStr = at_handleresultcode(response['resultCode'])
-                if errCode == 0:
-                    log.info("CRC disabled")
-                else:
-                    log.error("CRC disable failed (" + errStr + ")")
-
-            # Ensure Quiet mode is disabled to receive response codes
-            time.sleep(AT_WAIT)
-            response = at_getresponse('ATS61?')     # S61 = Quiet mode
-            errCode, errStr = at_handleresultcode(response['resultCode'])
-            if errCode == 0:
-                if response['response'][0] == '1':
-                    response = at_getresponse('ATQ0')
-                    errCode, errStr = at_handleresultcode(response['resultCode'])
-                    if errCode != 0:
-                        log.error("Could not disable Quiet mode (" + errStr + ")")
-                        sys.exit("Failed to disable Quiet mode.")
-                    else:
-                        log.info("Quiet mode disabled")
-            else:
-                log.error("Failed query of Quiet mode S-register ATS61? (" + errStr + ")")
-                sys.exit('Query of Quiet mode S-register failed.')
-            modem.atConfig['Quiet'] = False
-
-            # Enable echo to validate receipt of AT commands
-            time.sleep(AT_WAIT)
-            response = at_getresponse('ATE1')
-            errCode, errStr = at_handleresultcode(response['resultCode'])
-            if errCode == 0:
-                log.info("Echo enabled")
-            else:
-                log.error("Echo enable failed (" + errStr + ")")
-
-            # Enable verbose error code (OK / ERROR) setting TODO: precludes advanced handling of specific error cases
-            time.sleep(AT_WAIT)
-            response = at_getresponse('ATV1')
-            errCode, errStr = at_handleresultcode(response['resultCode'])
-            if errCode == 0:
-                log.info("Verbose enabled")
-                modem.atConfig['Verbose'] = True
-            else:
-                log.error("Verbose enable failed (" + errStr + ")")
-
-            # Get modem ID
-            time.sleep(AT_WAIT)
-            response = at_getresponse('AT+GSN')
-            errCode, errStr = at_handleresultcode(response['resultCode'])
-            if errCode == 0:
-                mobileID = at_clean(response["response"][0]).lstrip('+GSN:').strip()
-                if mobileID != '':
-                    log.info("Mobile ID: " + str(mobileID))
-                    modem.mobileId = mobileID
-                else:
-                    log.warning("Mobile ID not returned")
-            else:
-                log.error("Get Mobile ID failed (" + errStr + ")")
+            at_init_modem(use_crc=user_options.use_crc, verbose=False)
 
             # (Proxy) Timer threads for background processes
 
-            t = RepeatingTimer(SAT_STATUS_INTERVAL, target=checksatstatus, name='CheckSatStatus')
-            checksatstatus()
-            t.start()
-            threads.append(t.name)
+            status_thread = RepeatingTimer(seconds=SAT_STATUS_INTERVAL, name='check_sat_status',
+                                           callback=at_check_sat_status)
+            threads.append(status_thread.name)
+            status_thread.start_timer()
+            status_thread.start()
+            at_check_sat_status()
 
-            t = RepeatingTimer(MT_MESSAGECHECK_INTERVAL, target=checkmtmessages, name='CheckMTMessages')
-            t.start()
-            threads.append(t.name)
+            mt_polling_thread = RepeatingTimer(seconds=MT_MESSAGE_CHECK_INTERVAL, name='check_mt_messages',
+                                               callback=at_check_mt_messages)
+            threads.append(mt_polling_thread.name)
+            mt_polling_thread.start_timer()
+            mt_polling_thread.start()
 
-            t = RepeatingTimer(trackingInterval_s, target=getsendlocation, name='GetSendLocation')
-            getsendlocation()
-            t.start()
-            threads.append(t.name)
+            tracking_thread = RepeatingTimer(seconds=tracking_interval, name='tracking',
+                                             callback=at_get_location_send)
+            threads.append(tracking_thread.name)
+            tracking_thread.start_timer()
+            tracking_thread.start()
+            at_get_location_send()
 
-            ''' # TODO: User window interface thread to insert AT commands or send text messages
-            if _debug and not rpiHeadless and useGUI:
-                getuserinput()
-            # '''
-
-            while True:
-                # TODO: handle loss and recovery of modem communications gracefully
-                pass    # run forever
+            reconnect_attempts = 0
+            while not _shutdown:
+                # monitor communications
+                reconnect_attempts = monitor_com(_at_timeout_count, AT_MAX_TIMEOUTS, reconnect_attempts, threads,
+                                                 fish_dish)
+                time.sleep(1)
 
     except KeyboardInterrupt:
         log.info("Execution stopped by keyboard interrupt.")
@@ -1273,20 +1470,21 @@ def main():
 
     finally:
         log.info("idpmodemsample.py exiting")
-        if modem is not None:
+        if ever_connected and modem is not None:
+            log.info("********** MODEM STATISTICS **********")
             statsList = modem.get_statistics()
             for stat in statsList:
                 log.info(stat + ":" + str(statsList[stat]))
+            log.info("**************************************")
         for t in threading.enumerate():
             if t.name in threads:
-                t.cancel()
-        if rpiHeadless:
-            GPIO.output(GPIO_LED_GRN, GPIO_LED_OFF)
+                t.terminate()
+                t.join()
+        if fish_dish is not None or modem_io is not None:
             GPIO.cleanup()
         if ser is not None and ser.isOpen():
             ser.close()
-            if _debug:
-                print("Closing serial port " + SERIAL_NAME)
+            log.info("Closing serial port " + SERIAL_NAME)
         if _debug:
             print("\n\n*** END PROGRAM ***\n\n")
 
