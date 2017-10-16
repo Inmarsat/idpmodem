@@ -24,7 +24,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import threading
 import crcxmodem
-import base64
+import binascii
 import operator
 import argparse
 import subprocess
@@ -74,7 +74,8 @@ class RepeatingTimer(threading.Thread):
     def run(self):
         while not self.terminate_event.is_set():
             while self.count > 0 and self.start_event.is_set() and self.interval > 0:
-                if _debug:
+                # debug output every second
+                if _debug and (self.count * self.sleep_chunk - int(self.count * self.sleep_chunk)) == 0.0:
                     print(self.name + " countdown: " + str(self.count) +
                           "(" + str(self.interval) + "s @ step " + str(self.sleep_chunk) + "s)")
                 if self.reset_event.wait(self.sleep_chunk):
@@ -758,64 +759,70 @@ def at_check_mt_messages():
     global thread_lock
     global modem
 
-    msgretrieved = False
+    msg_retrieved = False
     with thread_lock:
         if _debug:
             log.debug("Checking for Mobile-Terminated messages")
         response = at_get_response('AT%MGFN')
         if not response['timeout']:
-            errCode, errStr = at_get_result_code(response['result'])
-            if errCode == 0:
-                msgSummary = clean_at(response['response'][0]).replace('%MGFN:', '').strip()
-                if msgSummary:
-                    msgParms = msgSummary.split(',')
-                    msgName = msgParms[0]
-                    # msgNum = msgParms[1]
-                    # msgPriority = msgParms[2]
-                    msgSIN = int(msgParms[3])   # TODO: broken on RPi?
-                    msgState = int(msgParms[4])
-                    msgLen = int(msgParms[5])
-                    if msgState == 2: # Complete and not read
-                        # TODO: more generic handling of dataType based on length, pass to helper functions for parsing
-                        if msgSIN == 128:
-                            dataType = '1'  # Text
-                        elif msgSIN == 255:
-                            dataType = '2'  # ASCII-Hex
+            err_code, err_str = at_get_result_code(response['result'])
+            if err_code == 0:
+                msg_summary = clean_at(response['response'][0]).replace('%MGFN:', '').strip()
+                if msg_summary:
+                    msg_parms = msg_summary.split(',')
+                    msg_name = msg_parms[0]
+                    # msgNum = msg_parms[1]
+                    # msgPriority = msg_parms[2]
+                    msg_sin = int(msg_parms[3])   # TODO: broken on RPi?
+                    msg_state = int(msg_parms[4])
+                    msg_len = int(msg_parms[5])
+                    if msg_state == 2:  # Complete and not read
+                        # TODO: more elegant handling of data_type based on length, pass to helper functions for parsing
+                        if msg_sin == 128:
+                            data_type = '1'  # Text
+                        elif msg_sin == 255:
+                            data_type = '2'  # ASCII-Hex
                         else:
-                            dataType = '3'  # base64
-                        response = at_get_response('AT%MGFG=' + msgName + "," + dataType)
-                        errCode, errStr = at_get_result_code(response['result'])
-                        if errCode == 0:
-                            msgretrieved = True
-                            msgEnvelope = clean_at(response['response'][0]).replace('%MGFG:', '').strip().split(',')
-                            msgContent = msgEnvelope[7]
-                            if dataType == '1':
-                                msgContentStr = msgContent
-                            elif dataType == '2':
-                                msgMIN = int(msgContent[0:2])
-                                msgContentStr = '0x' + str(msgContent)
-                            elif dataType == '3':
-                                msgContentStr = base64.b64decode(msgContent)
-                            log.info(str(msgLen) + "-byte message received with content: SIN=" +
-                                     str(msgSIN) + " " + msgContentStr)
+                            data_type = '3'  # base64
+                        response = at_get_response('AT%MGFG=' + msg_name + "," + data_type)
+                        err_code, err_str = at_get_result_code(response['result'])
+                        if err_code == 0:
+                            msg_retrieved = True
+                            msg_envelope = clean_at(response['response'][0]).replace('%MGFG:', '').strip().split(',')
+                            msg_content = msg_envelope[7]
+                            if data_type == '1':
+                                msg_min = int(msg_content.replace('"', '')[1:3], 16)
+                                msg_content_str = msg_content.replace('"', '')[3:]
+                            elif data_type == '2':
+                                msg_min = int(msg_content[0:2])
+                                msg_content_str = '0x' + str(msg_content)
+                            elif data_type == '3':
+                                msg_content_bytes = bytearray(binascii.a2b_base64(msg_content))
+                                msg_min = int(msg_content_bytes[0])
+                                msg_content_str = str(msg_content)
+                            else:
+                                msg_min = 0
+                                msg_content_str = 'unknown'
+                            log.info("Mobile Terminated %d-byte message received (SIN=%d MIN=%d) rawpayload:%s",
+                                     msg_len, msg_sin, msg_min, msg_content_str)
                             if modem.systemStats['avgMTMsgSize'] == 0:
-                                modem.systemStats['avgMTMsgSize'] = msgLen
+                                modem.systemStats['avgMTMsgSize'] = msg_len
                             else:
                                 modem.systemStats['avgMTMsgSize'] = int(
-                                    (modem.systemStats['avgMTMsgSize'] + msgLen) / 2)
+                                    (modem.systemStats['avgMTMsgSize'] + msg_len) / 2)
                         else:
-                            log.error("Could not get MT message (" + errStr + ")")
+                            log.error("Could not get MT message (" + err_str + ")")
             else:
-                log.error("Could not get new MT message info (" + errStr + ")")
+                log.error("Could not get new MT message info (" + err_str + ")")
         else:
             log.warning("Timeout occurred on MT message query")
 
     # TODO: more elegant/generic processing with helper functions
-    if msgretrieved:
-        if msgSIN == 255:
-            handle_mt_tracking_command(msgContent, msgSIN, msgMIN)
+    if msg_retrieved:
+        if msg_sin == 255:
+            handle_mt_tracking_command(msg_content, msg_sin, msg_min)
         else:
-            log.info("Message SIN=" + str(msgSIN) + " MIN=" + str(msgMIN) + "not handled.")
+            log.info("Message SIN=%d MIN=%d not handled", msg_sin, msg_min)
 
     return
 
@@ -1081,11 +1088,15 @@ def at_get_location_send():
     global thread_lock
     global tracking_interval
 
+    MIN_STALE_SECS = 1
+    MAX_STALE_SECS = 600
+    MIN_WAIT_SECS = 1
+    MAX_WAIT_SECS = 600
+
     # TODO: Enable or disable AT%TRK tracking mode based on update interval, to improve fix times
-    stale_secs = int(tracking_interval / 2)
-    wait_secs = int(min(45, stale_secs - 1))
+    stale_secs = min(MAX_STALE_SECS, max(MIN_STALE_SECS, int(tracking_interval / 2)))
+    wait_secs = min(MAX_WAIT_SECS, max(MIN_WAIT_SECS, int(max(45, stale_secs - 1))))
     NMEA_sentences = '"GGA","RMC","GSA","GSV"'
-    # NMEA_sentences = '"GGA","RMC","GSV"'
     if modem.mobileId == '00000000SKYEE3D':
         NMEA_sentences = NMEA_sentences.replace(',"GSA"', '')
     loc = Location()
@@ -1194,7 +1205,7 @@ def init_windows(default_log_name):
 
     global ser_name
 
-    print("Windows environment detected. Enabling verbose debug.")
+    print("Windows environment detected.")
     _debug = True
 
     dialog = tk.Tk()
@@ -1241,6 +1252,8 @@ def init_windows(default_log_name):
     dialog.protocol('WM_DELETE_WINDOW', on_closing)
     dialog.mainloop()
     dialog.destroy()
+    print("Options selected - Debug: %s  Tracking: %d seconds"
+          % ("enabled" if _debug else "disabled", tracking_interval))
 
     file_formats = [('Log', '*.log'), ('Text', '*.txt')]
     logfile_selector = tk.Tk()
@@ -1249,7 +1262,7 @@ def init_windows(default_log_name):
                                               parent=logfile_selector, filetypes=file_formats,
                                               title="Save log file as...")
     if filename == '':
-        print("Logfile port_selection dialog cancelled. Using default filename.")
+        print("Logfile port_selection dialog cancelled. Using default filename " + default_log_name)
         filename = default_log_name
     logfile_selector.destroy()
     return ser_name, filename
@@ -1332,7 +1345,7 @@ def monitor_com(timeout_count, max_timeouts, recon_count, timer_threads, fish_di
     return recon_count
 
 
-def main():     # TODO: trim out more functions
+def main():     # TODO: trim more functions out of main, refactor for module import to run as thread
 
     global _debug
     global log
@@ -1491,15 +1504,17 @@ def main():     # TODO: trim out more functions
     finally:
         log.info("idpmodemsample.py exiting")
         if ever_connected and modem is not None:
-            log.info("*************** MODEM STATISTICS ***************")
+            log.info("***************** MODEM STATISTICS *****************")
             statsList = modem.get_statistics()
             for stat in statsList:
                 log.info(stat + ":" + str(statsList[stat]))
-            log.info("************************************************")
+            log.info("****************************************************")
         for t in threading.enumerate():
-            print("Assessing " + t.name)
+            if _debug:
+                print("Assessing " + t.name)
             if t.name in threads:
-                print("Found " + t.name + " in threads list")
+                if _debug:
+                    print("Found " + t.name + " in threads list")
                 t.stop_timer()
                 t.terminate()
                 t.join()
