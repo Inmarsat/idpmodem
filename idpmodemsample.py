@@ -19,6 +19,7 @@ import time
 import datetime
 import serial       # PySerial 2.7
 import sys
+import traceback
 import logging
 from logging.handlers import RotatingFileHandler
 import threading
@@ -86,19 +87,19 @@ class RepeatingTimer(threading.Thread):
 
     def start_timer(self):
         self.start_event.set()
-        log.debug(self.name + " timer started (" + str(self.interval) + " seconds)")
+        log.info(self.name + " timer started (" + str(self.interval) + " seconds)")
 
     def stop_timer(self):
         self.start_event.clear()
         self.count = self.interval / self.sleep_chunk
-        log.debug(self.name + " timer stopped (" + str(self.interval) + " seconds)")
+        log.info(self.name + " timer stopped (" + str(self.interval) + " seconds)")
 
     def restart_timer(self):
         if self.start_event.is_set():
             self.reset_event.set()
         else:
             self.start_event.set()
-        log.debug(self.name + " timer restarted (" + str(self.interval) + " seconds)")
+        log.info(self.name + " timer restarted (" + str(self.interval) + " seconds)")
 
     def change_interval(self, seconds):
         self.interval = seconds
@@ -127,6 +128,9 @@ class Location(object):
         self.PDOP = PDOP
         self.HDOP = HDOP
         self.VDOP = VDOP
+        self.lat_dec_deg = latitude / 60000
+        self.lon_dec_deg = longitude / 60000
+        self.time_readable = datetime.datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
 
 class RpiFishDish:
@@ -263,7 +267,7 @@ def update_stats_at_response(at_send_time, at_cmd):
             int((modem.systemStats['avgATResponseTime_ms'] + at_response_time_ms) / 2)
 
 
-def at_getresponse(at_cmd, at_timeout=10):
+def at_get_response(at_cmd, at_timeout=10):
     """ Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion
       Parses the response, line by line, until a result code is received or at_timeout is exceeded
       Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem
@@ -461,7 +465,7 @@ def at_getresponse(at_cmd, at_timeout=10):
             'timeout': timed_out}
 
 
-def at_getresultcode(result_code):
+def at_get_result_code(result_code):
     """ Queries the details of an error response on the AT command interface
     :param result_code: the value returned by the AT command response
     :returns: error_code - the specific error code
@@ -474,7 +478,7 @@ def at_getresultcode(result_code):
         error_code = 0
     elif 'ERROR' in result_code or clean_at(result_code) == '':
         with thread_lock:
-            response = at_getresponse('ATS80?')
+            response = at_get_response('ATS80?')
             if response['timeout']:
                 error_code = -1
                 error_desc = "_TIMEOUT"
@@ -502,7 +506,7 @@ def at_attach(max_attempts=3):
     attempt_count = 0
     while attempt_count < max_attempts and not success:
         with thread_lock:
-            response = at_getresponse('AT', at_timeout=AT_TIMEOUT)
+            response = at_get_response('AT', at_timeout=AT_TIMEOUT)
             if response['timeout']:
                 log.debug("Failed attempt to establish AT response (" +
                           str(attempt_count + 1) + "/" + str(max_attempts) + ")")
@@ -533,8 +537,8 @@ def at_init_modem(use_crc=False, verbose=False):
     restore_attempts = 0
     while not defaults_restored and restore_attempts < 2:
         restore_attempts += 1
-        response = at_getresponse('ATZ')
-        err_code, err_str = at_getresultcode(response['result'])
+        response = at_get_response('ATZ')
+        err_code, err_str = at_get_result_code(response['result'])
         if err_code == 100 and modem.atConfig['CRC'] == False:
             modem.atConfig['CRC'] = True
             log.info("ATZ CRC error; retrying with CRC enabled")
@@ -548,8 +552,8 @@ def at_init_modem(use_crc=False, verbose=False):
 
     # Enable CRC if desired
     if use_crc:
-        response = at_getresponse('AT%CRC=1')
-        err_code, err_str = at_getresultcode(response['result'])
+        response = at_get_response('AT%CRC=1')
+        err_code, err_str = at_get_result_code(response['result'])
         if err_code == 0:
             log.info("CRC enabled")
         elif err_code == 100 and modem.atConfig['CRC']:
@@ -557,8 +561,8 @@ def at_init_modem(use_crc=False, verbose=False):
         else:
             log.error("CRC enable failed (" + err_str + ")")
     elif modem.atConfig['CRC']:
-        response = at_getresponse('AT%CRC=0')
-        err_code, err_str = at_getresultcode(response['result'])
+        response = at_get_response('AT%CRC=0')
+        err_code, err_str = at_get_result_code(response['result'])
         if err_code == 0:
             log.info("CRC disabled")
         else:
@@ -566,12 +570,12 @@ def at_init_modem(use_crc=False, verbose=False):
 
     # Ensure Quiet mode is disabled to receive response codes
     time.sleep(AT_WAIT)
-    response = at_getresponse('ATS61?')  # S61 = Quiet mode
-    err_code, err_str = at_getresultcode(response['result'])
+    response = at_get_response('ATS61?')  # S61 = Quiet mode
+    err_code, err_str = at_get_result_code(response['result'])
     if err_code == 0:
         if response['response'][0] == '1':
-            response = at_getresponse('ATQ0')
-            err_code, err_str = at_getresultcode(response['result'])
+            response = at_get_response('ATQ0')
+            err_code, err_str = at_get_result_code(response['result'])
             if err_code != 0:
                 err_msg = "Failed to disable Quiet mode (" + err_str + ")"
                 log.error(err_msg)
@@ -585,8 +589,8 @@ def at_init_modem(use_crc=False, verbose=False):
 
     # Enable echo to validate receipt of AT commands
     time.sleep(AT_WAIT)
-    response = at_getresponse('ATE1')
-    err_code, err_str = at_getresultcode(response['result'])
+    response = at_get_response('ATE1')
+    err_code, err_str = at_get_result_code(response['result'])
     if err_code == 0:
         log.info("Echo enabled")
     else:
@@ -595,10 +599,10 @@ def at_init_modem(use_crc=False, verbose=False):
     # Configure verbose error code (OK / ERROR) setting to get specific result code
     time.sleep(AT_WAIT)
     if verbose:
-        response = at_getresponse('ATV1')
+        response = at_get_response('ATV1')
     else:
-        response = at_getresponse('ATV0')
-    err_code, err_str = at_getresultcode(response['result'])
+        response = at_get_response('ATV0')
+    err_code, err_str = at_get_result_code(response['result'])
     if err_code == 0:
         log.info("Verbose " + ("enabled" if verbose else "disabled"))
         modem.atConfig['Verbose'] = verbose
@@ -607,8 +611,8 @@ def at_init_modem(use_crc=False, verbose=False):
 
     # Get modem ID
     time.sleep(AT_WAIT)
-    response = at_getresponse('AT+GSN')
-    err_code, err_str = at_getresultcode(response['result'])
+    response = at_get_response('AT+GSN')
+    err_code, err_str = at_get_result_code(response['result'])
     if err_code == 0:
         mobileID = clean_at(response["response"][0]).lstrip('+GSN:').strip()
         if mobileID != '':
@@ -632,9 +636,9 @@ def at_check_sat_status():
     with thread_lock:
         if _debug:
             log.debug("Checking satellite status. Previous control state: " + modem.satStatus['CtrlState'])
-        response = at_getresponse(AT_SATSTATUS_QUERY)
+        response = at_get_response(AT_SATSTATUS_QUERY)
         if not response['timeout']:
-            err_code, err_str = at_getresultcode(response['result'])
+            err_code, err_str = at_get_result_code(response['result'])
             if err_code == 0:
                 oldSatCtrlState = modem.satStatus['CtrlState']
                 newSatCtrlState = modem.ctrlStates[int(clean_at(response['response'][0]))]
@@ -753,9 +757,9 @@ def at_check_mt_messages():
     with thread_lock:
         if _debug:
             log.debug("Checking for Mobile-Terminated messages")
-        response = at_getresponse('AT%MGFN')
+        response = at_get_response('AT%MGFN')
         if not response['timeout']:
-            errCode, errStr = at_getresultcode(response['result'])
+            errCode, errStr = at_get_result_code(response['result'])
             if errCode == 0:
                 msgSummary = clean_at(response['response'][0]).replace('%MGFN:', '').strip()
                 if msgSummary:
@@ -774,8 +778,8 @@ def at_check_mt_messages():
                             dataType = '2'  # ASCII-Hex
                         else:
                             dataType = '3'  # base64
-                        response = at_getresponse('AT%MGFG=' + msgName + "," + dataType)
-                        errCode, errStr = at_getresultcode(response['result'])
+                        response = at_get_response('AT%MGFG=' + msgName + "," + dataType)
+                        errCode, errStr = at_get_result_code(response['result'])
                         if errCode == 0:
                             msgretrieved = True
                             msgEnvelope = clean_at(response['response'][0]).replace('%MGFG:', '').strip().split(',')
@@ -838,11 +842,11 @@ def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
         if dataFormat == 2 and len(dataString)%2 > 0:
             mo_msg_content += '0'     # insert 0 padding to byte boundary
     with thread_lock:
-        response = at_getresponse(
+        response = at_get_response(
             'AT%MGRT="' + mo_msg_name + '",' + str(mo_msg_priority) + ',' + str(mo_msg_sin) + '.' + str(
                 mo_msg_min) + ',' + str(mo_msg_format) + ',' + mo_msg_content)
         if not response['timeout']:
-            err_code, err_str = at_getresultcode(response['result'])
+            err_code, err_str = at_get_result_code(response['result'])
             mo_submit_time = time.time()
             if err_code == 0:
                 msg_complete = False
@@ -852,8 +856,8 @@ def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
                     status_poll_count += 1
                     if _debug:
                         log.debug("MGRS queries: " + str(status_poll_count))
-                    response = at_getresponse('AT%MGRS="' + mo_msg_name + '"')
-                    err_code, err_str = at_getresultcode(response['result'])
+                    response = at_get_response('AT%MGRS="' + mo_msg_name + '"')
+                    err_code, err_str = at_get_result_code(response['result'])
                     if err_code == 0:
                         res_param = clean_at(response['response'][0]).split(',')
                         res_header = res_param[0]
@@ -867,8 +871,8 @@ def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
                             msg_complete = True
                             if res_state == 6:
                                 msg_latency = int(time.time() - mo_submit_time)
-                                log.info("MO message (" + str(res_size) + " bytes) completed in " +
-                                         str(msg_latency) + ' seconds')
+                                log.info("MO message SIN=%d MIN=%d (%d bytes) completed in %d seconds",
+                                         mo_msg_sin, mo_msg_min, res_size, msg_latency)
                                 if modem.systemStats['avgMOMsgSize'] == 0:
                                     modem.systemStats['avgMOMsgSize'] = res_size
                                 else:
@@ -947,7 +951,7 @@ def validate_NMEA_checksum(sentence):
              raw NMEA data string, with prefix $Gx and checksum suffix removed
     """
 
-    sentence = sentence.strip('\n')
+    sentence = sentence.strip('\n').strip('\r')
     nmeadata, cksum = sentence.split('*', 1)
     nmeadata = nmeadata.replace('$', '')
     xcksum = str("%0.2x" % (reduce(operator.xor, (ord(c) for c in nmeadata), 0))).upper()
@@ -966,8 +970,8 @@ def parse_NMEA_to_Location(sentence, loc):
     err_str = ''
     res, NMEA_data = validate_NMEA_checksum(sentence)
     if res:
-        sentenceType = NMEA_data[0:3]
-        if sentenceType == 'GGA':
+        sentence_type = NMEA_data[0:3]
+        if sentence_type == 'GGA':
             GGA = NMEA_data.split(',')
             GGAutc_hhmmss = GGA[1]
             GGAlatitude_dms = GGA[2]
@@ -992,7 +996,7 @@ def parse_NMEA_to_Location(sentence, loc):
             GGAheightWGS84 = GGA[11]
             loc.altitude = int(GGAaltitude) # 545.4 = meters above mean sea level
 
-        elif sentenceType == 'RMC':
+        elif sentence_type == 'RMC':
             RMC = NMEA_data.split(',')
             RMCutc_hhmmss = RMC[1]
             # RMCactive = RMC[2]
@@ -1019,8 +1023,12 @@ def parse_NMEA_to_Location(sentence, loc):
             if RMCew == 'W': loc.longitude *= -1
             loc.speed = int(float(RMCspeed_kn))
             loc.heading = int(float(RMCheading_deg))
+            # Update human-readable attributes
+            loc.lat_dec_deg = round(float(loc.latitude) / 60000.0, 6)
+            loc.lon_dec_deg = round(float(loc.longitude) / 60000.0, 6)
+            loc.time_readable = datetime.datetime.utcfromtimestamp(loc.timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
-        elif sentenceType == 'GSA':
+        elif sentence_type == 'GSA':
             GSA = NMEA_data.split(',')
             # GSAauto = GSA[1]
             GSAfixtype = GSA[2]
@@ -1041,7 +1049,7 @@ def parse_NMEA_to_Location(sentence, loc):
             loc.HDOP = max(int(float(GSAhdop)), 32)
             loc.VDOP = max(int(float(GSAvdop)), 32)
 
-        elif sentenceType == 'GSV':
+        elif sentence_type == 'GSV':
             GSV = sentence.split(',')
             # GSVsentences = GSV[1]
             # GSVsentence = GSV[2]
@@ -1072,29 +1080,35 @@ def at_get_location_send():
     stale_secs = int(tracking_interval / 2)
     wait_secs = int(min(45, stale_secs - 1))
     NMEA_sentences = '"GGA","RMC","GSA","GSV"'
+    # NMEA_sentences = '"GGA","RMC","GSV"'
+    if modem.mobileId == '00000000SKYEE3D':
+        NMEA_sentences = NMEA_sentences.replace(',"GSA"', '')
     loc = Location()
     with thread_lock:
         log.debug("requesting location to send")
         modem.GNSSStats['nGNSS'] += 1
         modem.GNSSStats['lastGNSSReqTime'] = int(time.time())
-        response = at_getresponse('AT%GPS=' + str(stale_secs) + ',' + str(wait_secs) + ',' + NMEA_sentences, at_timeout=wait_secs + 5)
+        response = at_get_response('AT%GPS=' + str(stale_secs) + ',' + str(wait_secs) + ',' +
+                                   NMEA_sentences, at_timeout=wait_secs + 5)
         if not response['timeout']:
-            errCode, errStr = at_getresultcode(response['result'])
-            if errCode == 0:
+            err_code, err_str = at_get_result_code(response['result'])
+            if err_code == 0:
                 gnssFixDuration = int(time.time()) - modem.GNSSStats['lastGNSSReqTime']
                 if _debug:
                     print("GNSS response time [s]: " + str(gnssFixDuration))
                 if modem.GNSSStats['avgGNSSFixDuration'] > 0:
-                    modem.GNSSStats['avgGNSSFixDuration'] = int((gnssFixDuration + modem.GNSSStats['avgGNSSFixDuration'])/2)
+                    modem.GNSSStats['avgGNSSFixDuration'] = int((gnssFixDuration +
+                                                                 modem.GNSSStats['avgGNSSFixDuration'])/2)
                 else:
                     modem.GNSSStats['avgGNSSFixDuration'] = gnssFixDuration
                 for res in response['response']:
-                    if clean_at(res).startswith('$GP'):     # TODO: confirm if this works for all GNSS systems
+                    if clean_at(res).startswith('$GP') or clean_at(res).startswith('$GL'):     # TODO: Galileo/Beidou?
                         NMEAsentence = clean_at(res)
                         success, err = parse_NMEA_to_Location(NMEAsentence, loc)
-                        if not success: log('error', err)
+                        if not success:
+                            log.error(str(err))
             else:
-                log.error("Unable to get GNSS (" + errStr + ")")
+                log.error("Unable to get GNSS (" + err_str + ")")
             build_location_msg_send(loc)
             if tracking_interval > 0:
                 log.debug("Next location report in ~" + str(tracking_interval) + " seconds.")
@@ -1207,7 +1221,7 @@ def init_windows(default_log_name):
         ser_name = port_selection.get()
         _debug = dbg_flag.get() == 1
         if 0 <= track.get() <= 1440:
-            tracking_interval = track.get()
+            tracking_interval = track.get() * 60
         dialog.quit()
 
     def on_closing():
@@ -1464,8 +1478,9 @@ def main():     # TODO: trim out more functions
         log.info("Execution stopped by keyboard interrupt.")
 
     except Exception, e:
-        errStr = "Error on line {}:".format(sys.exc_info()[-1].tb_lineno) + ',' + str(type(e)) + ',' + str(e)
-        log.error(errStr)
+        err_str = "Exception in user code:" + '-' * 40 + '\n' + traceback.format_exc()
+        # err_str = "Error on line {}:".format(sys.exc_info()[-1].tb_lineno) + ',' + str(type(e)) + ',' + str(e)
+        log.error(err_str)
         raise
 
     finally:
