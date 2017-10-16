@@ -102,11 +102,13 @@ class RepeatingTimer(threading.Thread):
         log.info(self.name + " timer restarted (" + str(self.interval) + " seconds)")
 
     def change_interval(self, seconds):
+        log.info(self.name + " timer interval changed (" + str(self.interval) + " seconds)")
         self.interval = seconds
         self.restart_timer()
 
     def terminate(self):
         self.terminate_event.set()
+        log.info(self.name + " timer terminated")
 
 
 class Location(object):
@@ -418,6 +420,9 @@ def at_get_response(at_cmd, at_timeout=10):
     if not timed_out:
         for resLine in atResponse:
             log.debug("Received:" + str(clean_at(resLine)))
+        res_code = clean_at(atResultCode.strip('\n').strip('\r'))
+        if res_code != '0' and res_code != 'OK':
+            log.debug("Error Code: " + atResultCode.strip('\n').strip('\r'))
         update_stats_at_response(atSendTime, at_cmd)
 
         if atResCrc == '':
@@ -1472,7 +1477,7 @@ def main():     # TODO: trim out more functions
                 # monitor communications
                 reconnect_attempts = monitor_com(_at_timeout_count, AT_MAX_TIMEOUTS, reconnect_attempts, threads,
                                                  fish_dish)
-                time.sleep(1)
+                time.sleep(0.5)
 
     except KeyboardInterrupt:
         log.info("Execution stopped by keyboard interrupt.")
@@ -1486,13 +1491,16 @@ def main():     # TODO: trim out more functions
     finally:
         log.info("idpmodemsample.py exiting")
         if ever_connected and modem is not None:
-            log.info("********** MODEM STATISTICS **********")
+            log.info("*************** MODEM STATISTICS ***************")
             statsList = modem.get_statistics()
             for stat in statsList:
                 log.info(stat + ":" + str(statsList[stat]))
-            log.info("**************************************")
+            log.info("************************************************")
         for t in threading.enumerate():
+            print("Assessing " + t.name)
             if t.name in threads:
+                print("Found " + t.name + " in threads list")
+                t.stop_timer()
                 t.terminate()
                 t.join()
         if fish_dish is not None or modem_io is not None:
