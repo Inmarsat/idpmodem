@@ -335,7 +335,7 @@ def at_get_response(at_cmd, at_timeout=10):
         modem.atConfig['CRC'] = False
         if _debug: print("CRC disabled for next command")
 
-    log.debug("Sending:" + toSend)
+    log.debug("Sending:%s with timeout %d seconds", toSend, at_timeout)
     ser.write(toSend + '\r')
     atSendTime = time.time()
 
