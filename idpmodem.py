@@ -136,7 +136,7 @@ class IDPModem(object):
             'avgMOMsgLatency_s': 0,
             'avgMOMsgSize': 0,
             'avgMTMsgSize': 0,
-            'avgCN0': 0
+            'avgCN0': 0.0
         }
         self.GNSSStats = {
             'nGNSS': 0,
