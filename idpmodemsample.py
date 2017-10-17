@@ -279,9 +279,7 @@ def at_get_response(at_cmd, at_timeout=10):
     :param  at_timeout   the time in seconds to wait for a response
     :return a dictionary containing:
             echo        - the AT command sent (including CRC if applied) or empty string if Echo disabled
-            response    - a list of strings representing multi-line response
-                        if _debug is enabled, applies <cr> and <lf> printable tags in place of \r and \n
-                        calling function may subsequently call clean_at to remove printable tags
+            response    - a list of (stripped) strings representing multi-line response
             result      - a string returned after the response when Quiet mode is disabled
                         'OK' or 'ERROR' if Verbose is enabled on the modem, 
                         or a numeric error code that can be looked up in modem.atErrorResultCodes
@@ -295,39 +293,43 @@ def at_get_response(at_cmd, at_timeout=10):
     global modem
     global _at_timeout_count
 
-    atEcho = ''
-    atResponse = []     # container for multi-line response
-    atResultCode = ''
-    atResCrc = ''
+    CHAR_WAIT = 0.05    # time to wait, in seconds, between serial characters
+
+    at_echo = ''
+    at_response = []     # container for multi-line response
+    at_result_code = ''
+    at_res_crc = ''
     timed_out = False
 
     # Rejection cases.  TODO: improve error handling
     if ";" in at_cmd:
         log.warning("Multiple AT commands not supported: " + at_cmd)
-        return {'echo': atEcho, 'response': atResponse, 'result': atResultCode}
+        return {'echo': at_echo, 'response': at_response, 'result': at_result_code}
     if 'ATQ1' in at_cmd:
         log.warning(at_cmd + " command rejected - quiet mode unsupported")
-        return {'echo': atEcho, 'response': atResponse, 'result': atResultCode}
+        return {'echo': at_echo, 'response': at_response, 'result': at_result_code}
 
-    # Garbage collection
-    orphanResponse = ''
+    # Serial garbage collection
+    orphan_response = ''
     while ser.inWaiting() > 0:
-        rChar = ser.read(1)
+        r_char = ser.read(1)
         if _debug:
-            if rChar == '\r': rChar = '<cr>'
-            elif rChar == '\n': rChar = '<lf>'
-        orphanResponse += rChar
-    if orphanResponse != '':
-        log.warning("Orphaned response: " + orphanResponse)
+            if r_char == '\r':
+                r_char = '<cr>'
+            elif r_char == '\n':
+                r_char = '<lf>'
+        orphan_response += r_char
+    if orphan_response != '':
+        log.warning("Orphaned response: " + orphan_response.replace('\r', '<cr>').replace('\n', '<lf>'))
         # TODO: consider passing back orphaned response for additional handling
 
     ser.flushInput()
     ser.flushOutput()
 
     if modem.atConfig['CRC']:
-        toSend = at_cmd + '*' + get_crc(at_cmd)
+        to_send = at_cmd + '*' + get_crc(at_cmd)
     else:
-        toSend = at_cmd
+        to_send = at_cmd
     if "AT%CRC=1" in at_cmd.upper():
         modem.atConfig['CRC'] = True
         if _debug: print("CRC enabled for next command")
@@ -335,138 +337,138 @@ def at_get_response(at_cmd, at_timeout=10):
         modem.atConfig['CRC'] = False
         if _debug: print("CRC disabled for next command")
 
-    log.debug("Sending:%s with timeout %d seconds", toSend, at_timeout)
-    ser.write(toSend + '\r')
-    atSendTime = time.time()
+    log.debug("Sending:%s with timeout %d seconds", to_send, at_timeout)
+    ser.write(to_send + '\r')
+    at_send_time = time.time()
 
-    nLines = 0
-    resLine = ''        # each line of response
-    rawResLine = ''     # used for verbose debug purposes only
-    atRxStart = False
-    atRxComplete = False
-    CHAR_WAIT = 0.05
-    atTick = 0
-    while not atRxComplete:
+    res_line = ''        # each line of response
+    raw_res_line = ''    # used for verbose debug purposes only
+    at_rx_start = False
+    at_rx_complete = False
+    at_tick = 0
+    while not at_rx_complete:
         time.sleep(CHAR_WAIT)
         while ser.inWaiting() > 0:
-            if not atRxStart: atRxStart = True
-            rChar = ser.read(1)
-            if rChar == '\r':
-                if _debug:
-                    resLine += '<cr>'
-                    rawResLine += '<cr>'
-                else:
-                    resLine += rChar                                            # no <lf> yet
-                if at_cmd in resLine:
+            if not at_rx_start:
+                at_rx_start = True
+            r_char = ser.read(1)
+            if r_char == '\r':
+                # cases <echo><cr>
+                # or <cr>...
+                # or <numeric code><cr> (verbose off, no crc)
+                res_line += r_char  # <cr> might be followed by <lf>
+                raw_res_line += '<cr>'
+                if at_cmd in res_line:
+                    # case <echo><cr>
                     if at_cmd.upper() == 'ATE0':
                         modem.atConfig['Echo'] = False
-                        if _debug: print("ATE0 -> Echo off next command")
+                        if _debug:
+                            print("ATE0 -> Echo off next command")
                     else:
                         modem.atConfig['Echo'] = True
-                    atEcho = resLine                                            # <echo><cr> will be followed by <text><cr><lf> or <cr><lf><text><cr><lf> or <numeric code><cr> or <cr><lf><verbose code><cr><lf>
-                    resLine = ''                                                # remove <echo><cr> before continuing to parse
-                elif ser.inWaiting() == 0 and clean_at(resLine) != '':          # <numeric code><cr> since all other alternatives would have <lf> pending
+                    at_echo = res_line.strip()  # copy the echo into a function return
+                    # <echo><cr> will be not be followed by <lf>
+                    # can be followed by <text><cr><lf>
+                    # or <cr><lf><text><cr><lf>
+                    # or <numeric code><cr>
+                    # or <cr><lf><verbose code><cr><lf>
+                    res_line = ''   # clear for next line of parsing
+                elif ser.inWaiting() == 0 and res_line != '':
+                    # case <numeric code><cr> since all other alternatives would have <lf> or other pending
                     modem.atConfig['Verbose'] = False
-                    atResultCode = resLine
-                    atRxComplete = True
+                    at_result_code = res_line   # copy the result code (numeric string) into a function return
+                    at_rx_complete = True
                     break
-            elif rChar == '\n':                                                 # <cr><lf>... or <text><cr><lf> or <cr><lf><text><cr><lf> or <cr><lf><verbose code><cr><lf> or <*crc><cr><lf>
-                if _debug:
-                    resLine += '<lf>'
-                    rawResLine += '<lf>'
-                else:
-                    resLine += rChar
-                if 'OK' in resLine or 'ERROR' in resLine:                       # <cr><lf><verbose code><cr><lf>
-                    atResultCode = resLine
-                    if ser.inWaiting() == 0:                                    # no checksum pending
-                        atRxComplete = True
+                # else keep parsing next character
+            elif r_char == '\n':
+                # case <cr><lf>
+                # or <text><cr><lf>
+                # or <cr><lf><text><cr><lf>
+                # or <cr><lf><verbose code><cr><lf>
+                # or <*crc><cr><lf>
+                res_line += r_char
+                raw_res_line += '<lf>'
+                if 'OK' in res_line or 'ERROR' in res_line:
+                    # <cr><lf><verbose code><cr><lf>
+                    at_result_code = res_line   # copy the verbose result (OK/ERROR) into a function return
+                    if ser.inWaiting() == 0:    # no checksum pending...response complete
+                        at_rx_complete = True
                         break
                     else:
-                        resLine = ''
-                elif '*' in resLine and len(clean_at(resLine)) == 5:             # <*crc><cr><lf>
+                        res_line = ''   # continue parsing next line
+                elif '*' in res_line and len(res_line.strip()) == 5:
+                    # <*crc><cr><lf>
                     modem.atConfig['CRC'] = True
-                    atResCrc = clean_at(resLine).strip('*')
-                    atRxComplete = True
+                    at_res_crc = res_line.replace('*', '').strip()
+                    at_rx_complete = True
                     break
-                else:                                                            # <cr><lf>... or <text><cr><lf> or <cr><lf><text><cr><lf>
-                    # nLines += 1
-                    if clean_at(resLine) == '':                                  # <cr><lf>... not done parsing yet
+                else:
+                    # case <cr><lf>
+                    # or <text><cr><lf>
+                    # or <cr><lf><text><cr><lf>
+                    if res_line.strip() == '':
+                        # <cr><lf> empty line...not done parsing yet
                         modem.atConfig['Verbose'] = True
                     else:
-                        nLines += 1
-                        atResponse.append(resLine)
-                        resLine = ''                                            # clear for next line parsing
-            else:                                                               # not \r or \n            
-                resLine += rChar
-                if _debug:
-                    rawResLine += rChar
-        if atResultCode != '':
+                        if res_line.strip() != '':     # don't add empty lines
+                            at_response.append(res_line)    # don't include \r\n in function return
+                        res_line = ''   # clear for next line parsing
+            else:   # a character other than \r or \n
+                res_line += r_char
+                raw_res_line += r_char
+
+        if at_result_code != '':
             if _at_timeout_count > 0:
                 log.info("Valid AT response received - resetting AT timeout count")
                 _at_timeout_count = 0
             modem.atConfig['Quiet'] = False
             break
-        elif int(time.time()) - atSendTime > at_timeout:
+
+        elif int(time.time()) - at_send_time > at_timeout:
             timed_out = True
             _at_timeout_count += 1
-            log.warning(toSend + " command response timed out after " + str(at_timeout) + " seconds - " +
-                        str(_at_timeout_count) + " timeouts counted")
+            log.warning("%s command response timed out after %d seconds - %d total AT timeouts",
+                        to_send, at_timeout, _at_timeout_count)
             break
-        if _debug and int(time.time()) > (atSendTime + atTick):
-            atTick += 1
-            print("Waiting AT response. Tick=" + str(atTick))
+
+        if _debug and int(time.time()) > (at_send_time + at_tick):
+            at_tick += 1
+            print("Waiting AT response. Tick=" + str(at_tick))
 
     checksum_ok = False
 
     if not timed_out:
-        for resLine in atResponse:
-            log.debug("Received:" + str(clean_at(resLine)))
-        res_code = clean_at(atResultCode.strip('\n').strip('\r'))
-        if res_code != '0' and res_code != 'OK':
-            log.debug("Error Code: " + atResultCode.strip('\n').strip('\r'))
-        update_stats_at_response(atSendTime, at_cmd)
 
-        if atResCrc == '':
+        if at_res_crc == '':
             modem.atConfig['CRC'] = False
         else:
             modem.atConfig['CRC'] = True
-            strToValidate = ''
-            if len(atResponse) == 0 and atResultCode != '':
-                strToValidate = atResultCode
-            elif len(atResponse) > 0:
-                for resLine in atResponse:
-                    strToValidate += resLine
-                if atResultCode != '':
-                    strToValidate += atResultCode
-            if get_crc(clean_at(strToValidate, restore_cr_lf=True)) == atResCrc:
+            if len(at_response) == 0 and at_result_code != '':
+                str_to_validate = at_result_code
+            else:
+                str_to_validate = ''
+                for res_line in at_response:
+                    str_to_validate += res_line
+                if at_result_code != '':
+                    str_to_validate += at_result_code
+            if get_crc(str_to_validate) == at_res_crc:
                 checksum_ok = True
             else:
-                expected_checksum = get_crc(clean_at(strToValidate, restore_cr_lf=True))
-                log.error("Bad checksum received: *" + atResCrc + " expected: *" + expected_checksum)
+                expected_checksum = get_crc(str_to_validate)
+                log.error("Bad checksum received: *" + at_res_crc + " expected: *" + expected_checksum)
 
-        # Comment out next line to show verbose response on console
-        '''
-        if _debug:
-            if atEcho != '':
-                print("Echo: " + atEcho)
-            print("Raw response: " + rawResLine.replace(atEcho,''))
-            resNo = 1
-            for line in atResponse:
-                print("Response [" + str(resNo) + "]: " + line)
-                resNo += 1
-            if atResultCode != '':
-                print("Result Code: " + str(atResultCode))
-            if modem.atConfig['CRC']:
-                if checksum_ok:
-                    print('CRC OK (' + atResCrc + ')')
-                else:
-                    print('BAD CRC (expected: ' + expected_checksum + ')')
-        '''  # '''
+        for i, res_line in enumerate(at_response):
+            at_response[i] = res_line.strip()
+        at_result_code = at_result_code.strip()
 
-    return {'echo': atEcho,
-            'response': atResponse,
-            'result': atResultCode,
-            'checksum': atResCrc,
+        update_stats_at_response(at_send_time, at_cmd)
+
+        log.debug("Raw response: " + raw_res_line)
+
+    return {'echo': at_echo,
+            'response': at_response,
+            'result': at_result_code,
+            'checksum': at_res_crc,
             'error': checksum_ok,
             'timeout': timed_out}
 
@@ -480,20 +482,23 @@ def at_get_result_code(result_code):
     global modem
     global thread_lock
 
-    if 'OK' in result_code or clean_at(result_code) == '0':
+    error_code = -1
+    error_desc = "UNDEFINED result code: " + result_code
+    if 'OK' in result_code or result_code == '0':
         error_code = 0
-    elif 'ERROR' in result_code or clean_at(result_code) == '':
+    elif 'ERROR' in result_code or result_code == '':
         with thread_lock:
             response = at_get_response('ATS80?')
-            if response['timeout']:
-                error_code = -1
-                error_desc = "_TIMEOUT"
-            elif len(response['response']) > 0 and clean_at(response['response'][0]) != '':
-                error_code = int(clean_at(response['response'][0]))
-    else:
-        error_code = int(clean_at(result_code))
-    if error_code != -1:
+            err_code2, err_desc2 = at_get_result_code(response['result'])
+            if err_code2 == 0:
+                error_code = int(response['response'][0])
+            else:
+                log.error("Error querying last error code from S80: " + err_desc2)
+    elif int(result_code) > 0:
+        error_code = int(result_code)
+    if str(error_code) in modem.atErrResultCodes:
         error_desc = modem.atErrResultCodes[str(error_code)]
+
     return error_code, error_desc
 
 
@@ -516,9 +521,7 @@ def at_attach(max_attempts=3):
             if response['timeout']:
                 log.debug("Failed attempt to establish AT response (" +
                           str(attempt_count + 1) + "/" + str(max_attempts) + ")")
-            elif clean_at(response['result']) != '' and \
-                    (clean_at(response['result']) == 'OK' or clean_at(response['result']) == '0' or
-                    clean_at(response['result']) == 'ERROR' or clean_at(response['result']) > 0):
+            elif response['result'] != '':
                 success = True
                 log.info("AT command mode confirmed")
             else:
@@ -528,7 +531,7 @@ def at_attach(max_attempts=3):
     return success
 
 
-def at_init_modem(use_crc=False, verbose=False):
+def at_init_modem(use_crc=False, verbose=True):
     """ Initializes the modem after new connection. Restores saved defaults, disables Quiet mode,
 
     :param use_crc  - optionally enables CRC on AT commands (e.g. if using long serial cable)
@@ -602,7 +605,7 @@ def at_init_modem(use_crc=False, verbose=False):
     else:
         log.warning("Echo enable failed (" + err_str + ")")
 
-    # Configure verbose error code (OK / ERROR) setting to get specific result code
+    # Configure verbose error code (OK / ERROR) for easier result validation
     time.sleep(AT_WAIT)
     if verbose:
         response = at_get_response('ATV1')
@@ -620,10 +623,10 @@ def at_init_modem(use_crc=False, verbose=False):
     response = at_get_response('AT+GSN')
     err_code, err_str = at_get_result_code(response['result'])
     if err_code == 0:
-        mobileID = clean_at(response["response"][0]).lstrip('+GSN:').strip()
-        if mobileID != '':
-            log.info("Mobile ID: " + str(mobileID))
-            modem.mobileId = mobileID
+        mobile_id = response["response"][0].lstrip('+GSN:').strip()
+        if mobile_id != '':
+            log.info("Mobile ID: " + str(mobile_id))
+            modem.mobileId = mobile_id
         else:
             log.warning("Mobile ID not returned")
     else:
@@ -647,7 +650,7 @@ def at_check_sat_status():
             err_code, err_str = at_get_result_code(response['result'])
             if err_code == 0:
                 oldSatCtrlState = modem.satStatus['CtrlState']
-                newSatCtrlState = modem.ctrlStates[int(clean_at(response['response'][0]))]
+                newSatCtrlState = modem.ctrlStates[int(response['response'][0])]
                 if newSatCtrlState != oldSatCtrlState:
                     log.info("Satellite control state change: OLD=" + oldSatCtrlState + " NEW=" + newSatCtrlState)
                     modem.satStatus['CtrlState'] = newSatCtrlState
@@ -707,11 +710,11 @@ def at_check_sat_status():
                         modem.systemStats['lastRegStartTime'] = int(time.time())
                         modem.systemStats['nRegistration'] += 1
 
-                CN0 = int(int(clean_at(response['response'][1])) / 100)
+                CN0 = int(response['response'][1]) / 100.0
                 if modem.systemStats['avgCN0'] == 0:
                     modem.systemStats['avgCN0'] = CN0
                 else:
-                    modem.systemStats['avgCN0'] = int((modem.systemStats['avgCN0'] + CN0) / 2)
+                    modem.systemStats['avgCN0'] = round((modem.systemStats['avgCN0'] + CN0) / 2.0, 2)
             else:
                 log.error("Bad response to satellite status query (" + err_str + ")")
         else:
@@ -767,7 +770,7 @@ def at_check_mt_messages():
         if not response['timeout']:
             err_code, err_str = at_get_result_code(response['result'])
             if err_code == 0:
-                msg_summary = clean_at(response['response'][0]).replace('%MGFN:', '').strip()
+                msg_summary = response['response'][0].replace('%MGFN:', '').strip()
                 if msg_summary:
                     msg_parms = msg_summary.split(',')
                     msg_name = msg_parms[0]
@@ -788,7 +791,7 @@ def at_check_mt_messages():
                         err_code, err_str = at_get_result_code(response['result'])
                         if err_code == 0:
                             msg_retrieved = True
-                            msg_envelope = clean_at(response['response'][0]).replace('%MGFG:', '').strip().split(',')
+                            msg_envelope = response['response'][0].replace('%MGFG:', '').strip().split(',')
                             msg_content = msg_envelope[7]
                             if data_type == '1':
                                 msg_min = int(msg_content.replace('"', '')[1:3], 16)
@@ -871,7 +874,7 @@ def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
                     response = at_get_response('AT%MGRS="' + mo_msg_name + '"')
                     err_code, err_str = at_get_result_code(response['result'])
                     if err_code == 0:
-                        res_param = clean_at(response['response'][0]).split(',')
+                        res_param = response['response'][0].split(',')
                         res_header = res_param[0]
                         res_msg_no = res_param[1]
                         res_priority = int(res_param[2])
@@ -1118,8 +1121,8 @@ def at_get_location_send():
                 else:
                     modem.GNSSStats['avgGNSSFixDuration'] = gnssFixDuration
                 for res in response['response']:
-                    if clean_at(res).startswith('$GP') or clean_at(res).startswith('$GL'):     # TODO: Galileo/Beidou?
-                        NMEAsentence = clean_at(res)
+                    if res.startswith('$GP') or res.startswith('$GL'):     # TODO: Galileo/Beidou?
+                        NMEAsentence = res
                         success, err = parse_NMEA_to_Location(NMEAsentence, loc)
                         if not success:
                             log.error(str(err))
@@ -1448,6 +1451,8 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
                             xonxoff=False, rtscts=False, dsrdtr=False)
 
         if ser.isOpen():
+            start_time = str(datetime.datetime.utcnow())
+
             log.info("Connected to serial port " + ser.name + " at " + str(ser.baudrate) + " baud")
             sys.stdout.flush()
 
@@ -1461,7 +1466,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
                 log.error(err_str)
                 sys.exit(err_str)
 
-            at_init_modem(use_crc=user_options.use_crc, verbose=False)
+            at_init_modem(use_crc=user_options.use_crc)
 
             # (Proxy) Timer threads for background processes
 
@@ -1502,13 +1507,15 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
         raise
 
     finally:
+        end_time = str(datetime.datetime.utcnow())
         log.info("idpmodemsample.py exiting")
         if ever_connected and modem is not None:
-            log.info("***************** MODEM STATISTICS *****************")
+            log.info("*" * 30 + " MODEM STATISTICS " + "*" * 30)
+            log.info("* Mobile ID: %s \n* start: %s \n* end: %s", modem.mobileId, start_time, end_time)
             statsList = modem.get_statistics()
             for stat in statsList:
-                log.info(stat + ":" + str(statsList[stat]))
-            log.info("****************************************************")
+                log.info("* " + stat + ":" + str(statsList[stat]))
+            log.info("*" * 75)
         for t in threading.enumerate():
             if _debug:
                 print("Assessing " + t.name)
