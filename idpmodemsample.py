@@ -362,8 +362,7 @@ def at_get_response(at_cmd, at_timeout=10):
                     # case <echo><cr>
                     if at_cmd.upper() == 'ATE0':
                         modem.atConfig['Echo'] = False
-                        if _debug:
-                            print("ATE0 -> Echo off next command")
+                        log.debug("ATE0 (echo disable) requested. Takes effect for next AT command.")
                     else:
                         modem.atConfig['Echo'] = True
                     at_echo = res_line.strip()  # copy the echo into a function return
@@ -373,12 +372,19 @@ def at_get_response(at_cmd, at_timeout=10):
                     # or <numeric code><cr>
                     # or <cr><lf><verbose code><cr><lf>
                     res_line = ''   # clear for next line of parsing
-                elif ser.inWaiting() == 0 and res_line != '':
-                    # case <numeric code><cr> since all other alternatives would have <lf> or other pending
-                    modem.atConfig['Verbose'] = False
-                    at_result_code = res_line   # copy the result code (numeric string) into a function return
-                    at_rx_complete = True
-                    break
+                elif ser.inWaiting() == 0 and res_line.strip() != '':
+                    # or <text><cr>...with delay for <lf> between multi-line responses e.g. GNSS?
+                    if modem.atConfig['Verbose']:
+                        # case <cr><lf><text><cr>...<lf>
+                        # or Quiet mode? --unsupported, suppresses result codes
+                        log.debug("Assuming delay between <cr> and <lf> of Verbose response...waiting")
+                    else:
+                        # case <numeric code><cr> since all other alternatives should have <lf> or other pending
+                        log.debug("Assuming receipt <numeric code><cr> with Verbose off: " + res_line.strip())
+                        # modem.atConfig['Verbose'] = False
+                        at_result_code = res_line   # copy the result code (numeric string) into a function return
+                        at_rx_complete = True
+                        break
                 # else keep parsing next character
             elif r_char == '\n':
                 # case <cr><lf>
@@ -1512,9 +1518,9 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
         if ever_connected and modem is not None:
             log.info("*" * 30 + " MODEM STATISTICS " + "*" * 30)
             log.info("* Mobile ID: %s \n* start: %s \n* end: %s", modem.mobileId, start_time, end_time)
-            statsList = modem.get_statistics()
-            for stat in statsList:
-                log.info("* " + stat + ":" + str(statsList[stat]))
+            stats_list = modem.get_statistics()
+            for stat in stats_list:
+                log.info("* " + stat + ":" + str(stats_list[stat]))
             log.info("*" * 75)
         for t in threading.enumerate():
             if _debug:
