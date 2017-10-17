@@ -166,8 +166,8 @@ class IDPModem(object):
 
     def get_statistics(self):
         statList = {
-            'GNSS control fixes': str(self.systemStats['nGNSS']),
-            'Average GNSS time to fix': str(self.systemStats['avgGNSSFixDuration']),
+            'GNSS control (network acq.) fixes': str(self.systemStats['nGNSS']),
+            'Average GNSS time to fix (network acq.)': str(self.systemStats['avgGNSSFixDuration']),
             'Registrations': str(self.systemStats['nRegistration']),
             'Average Registration time': str(self.systemStats['avgRegistrationDuration']),
             'BB acquisitions': str(self.systemStats['nBBAcquisition']),
