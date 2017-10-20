@@ -9,7 +9,7 @@ Dependencies:
   - (optional) RPi.GPIO for running headless on Raspberry Pi
   - (optional) serialportfinder.py is used when running on Windows test environment (detect COM port)
 
-Mobile-Originated location reports are 10 bytes using SIN 255 MIN 255
+Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
 Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
   When a new interval is configured, a location report is generated immediately, thereafter at the
   new interval.
@@ -136,11 +136,21 @@ class Location(object):
         self.time_readable = datetime.datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
 
+class RpiShutdownException(Exception):
+    """ GPIO input asserted on Raspberry Pi requesting shutdown """
+    def __init__(self, code):
+        self.code = code
+
+    def __str__(self):
+        return repr(self.code)
+
+
 class RpiFishDish:
     """ Defines (BCM) pin mapping for the Fish Dish as a headless indicator on Raspberry Pi
     :param GPIO a valid RPi.GPIO import, with mode set to BCM
     """
     global _shutdown
+    global log
 
     def __init__(self, GPIO):
         self.GPIO = GPIO
@@ -167,6 +177,8 @@ class RpiFishDish:
                                           callback=self.led_toggle)
 
     def led_on(self, color='green'):
+        if _debug:
+            print("Switch ON %s LED", color)
         if color == 'green':
             self.GPIO.output(self.LED_GRN, self.LED_ON)
         elif color == 'yellow':
@@ -176,6 +188,8 @@ class RpiFishDish:
         self.led_states[color] = True
 
     def led_off(self, color='green'):
+        if _debug:
+            print("Switch OFF %s LED", color)
         if color == 'green':
             self.GPIO.output(self.LED_GRN, self.LED_OFF)
         elif color == 'yellow':
@@ -186,6 +200,8 @@ class RpiFishDish:
 
     def led_toggle(self, color='green'):
         new_state = not self.led_states[color]
+        if _debug:
+            print("Toggling %s LED (%s)", color, "ON" if new_state else "OFF")
         if new_state:
             led_assert = self.LED_ON
         else:
@@ -200,7 +216,15 @@ class RpiFishDish:
 
     def shutdown(self, channel):
         global _shutdown
-        _shutdown = True
+
+        debounce = 0
+        while self.GPIO.input(self.BUTTON) == self.GPIO.HIGH and debounce < 3:
+            time.sleep(1)
+            debounce += 1
+        if debounce >= 3:
+            log.warning("Shutdown request from Raspberry Pi GPIO on input %d", self.BUTTON)
+            _shutdown = True
+            raise RpiShutdownException(self.BUTTON)
 
 
 class RpiModemIO:
@@ -239,7 +263,7 @@ def get_crc(at_cmd):
 
 
 def clean_at(at_line, restore_cr_lf=False):
-    """ Removes debug tags used for visualizing <cr> and <lf> characters
+    """ OBSOLETE Removes debug tags used for visualizing <cr> and <lf> characters
     :param at_line: the AT command/response with debug characters included
     :param restore_cr_lf: an option to restore <cr> and <lf>
     :return: the cleaned AT command without debug tags
@@ -965,7 +989,7 @@ def build_location_msg_send(loc):
     at_send_message(hex_str, dataFormat=2, SIN=255, MIN=255)
 
 
-def validate_NMEA_checksum(sentence):
+def validate_nmea_checksum(sentence):
     """ Validates NMEA checksum according to the standard
     :param sentence: NMEA sentence including checksum
     :return: boolean result (checksum correct)
@@ -979,7 +1003,7 @@ def validate_NMEA_checksum(sentence):
     return (cksum == xcksum), nmeadata[2:]
 
 
-def parse_NMEA_to_Location(sentence, loc):
+def parse_nmea_to_location(sentence, loc):
     """ parses NMEA string(s) to populate a Location object
     Several sentence parameters are unused but remain as placeholders for completeness/future use
     :param sentence: NMEA sentence (including prefix and suffix)
@@ -989,7 +1013,7 @@ def parse_NMEA_to_Location(sentence, loc):
     """
 
     err_str = ''
-    res, NMEA_data = validate_NMEA_checksum(sentence)
+    res, NMEA_data = validate_nmea_checksum(sentence)
     if res:
         sentence_type = NMEA_data[0:3]
         if sentence_type == 'GGA':
@@ -1129,7 +1153,7 @@ def at_get_location_send():
                 for res in response['response']:
                     if res.startswith('$GP') or res.startswith('$GL'):     # TODO: Galileo/Beidou?
                         NMEAsentence = res
-                        success, err = parse_NMEA_to_Location(NMEAsentence, loc)
+                        success, err = parse_nmea_to_location(NMEAsentence, loc)
                         if not success:
                             log.error(str(err))
             else:
@@ -1315,6 +1339,7 @@ def init_com(max_attempts=3, fish_dish=None):
     log.info("Attempting to establish modem communications")
     success = False
     if fish_dish is not None:
+        fish_dish.led_on('yellow')
         fish_dish.led_flasher.start_timer()
     init_verified = at_attach(max_attempts)
     if init_verified:
@@ -1322,7 +1347,8 @@ def init_com(max_attempts=3, fish_dish=None):
         success = True
         if fish_dish is not None:
             fish_dish.led_flasher.stop_timer()
-            fish_dish.led_on()
+            fish_dish.led_off('yellow')
+            fish_dish.led_on('green')
     return success
 
 
@@ -1350,7 +1376,10 @@ def monitor_com(timeout_count, max_timeouts, recon_count, timer_threads, fish_di
         else:
             for t in threading.enumerate():
                 if t.name in timer_threads:
-                    t.restart_timer()
+                    if fish_dish is not None and t.name == fish_dish.led_flasher.name:
+                        pass
+                    else:
+                        t.restart_timer()
     return recon_count
 
 
@@ -1416,6 +1445,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
     # Pre-initialization of platform
     try:  # GPIO bindings (headless Raspberry Pi using FishDish I/O board)
         import RPi.GPIO as GPIO     # Successful import of this module implies running on Raspberry Pi
+        print("\n ** Raspberry Pi / GPIO environment detected")
         GPIO.setmode(GPIO.BCM)
         if user_options.fish_dish:
             fish_dish = RpiFishDish(GPIO)
@@ -1433,10 +1463,12 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
         modem_io = None
 
         if sys.platform.lower().startswith('win32'):
+            print("\n ** Windows environment detected")
             SERIAL_NAME, log_filename = init_windows(log_filename)
 
         elif sys.platform.lower().startswith('linux2'):
-            # Assumes linux2 platform is MultiTech Conduit AEP
+            # Assumes linux2 platform is MultiTech Conduit AEP.  NOTE: also true for RPi.
+            print("\n ** Linux environment detected (assuming MultiTech Conduit AEP)")
             log_filename = '/home/root/' + log_filename    # TODO: validate path availability
             subprocess.call('mts-io-sysfs store mfser/serial-mode rs232', shell=True)
             SERIAL_NAME = '/dev/ttyAP1'
@@ -1463,10 +1495,11 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
             sys.stdout.flush()
 
             modem = idpmodem.IDPModem()
+            ever_connected = False
             _at_timeout_count = 0
 
             # Attempt to solicit AT response for some time before exiting
-            ever_connected = init_com(max_attempts=3, fish_dish=fish_dish)
+            ever_connected = init_com(max_attempts=30, fish_dish=fish_dish)
             if not ever_connected:
                 err_str = "Modem communications could not be established...exiting."
                 log.error(err_str)
@@ -1514,7 +1547,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
 
     finally:
         end_time = str(datetime.datetime.utcnow())
-        log.info("idpmodemsample.py exiting")
+        log.info("idpmodemsample exiting")
         if ever_connected and modem is not None:
             log.info("*" * 30 + " MODEM STATISTICS " + "*" * 30)
             log.info("* Mobile ID: %s \n* start: %s \n* end: %s", modem.mobileId, start_time, end_time)
