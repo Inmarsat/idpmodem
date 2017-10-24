@@ -860,7 +860,7 @@ def at_check_mt_messages():
     return
 
 
-def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
+def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1, priority=4):
     """ Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary
     :param dataString: data to be transmitted
     :param dataFormat: 1=Text (default), 2=ASCII-Hex, 3=base64
@@ -876,7 +876,7 @@ def at_send_message(dataString, dataFormat=1, SIN=128, MIN=1):
     global AT_MAX_TIMEOUTS
 
     mo_msg_name = str(int(time.time()))[:8]
-    mo_msg_priority = 4
+    mo_msg_priority = priority
     mo_msg_sin = SIN
     mo_msg_min = MIN
     mo_msg_format = dataFormat
@@ -1470,7 +1470,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
             # Assumes linux2 platform is MultiTech Conduit AEP.  NOTE: also true for RPi.
             print("\n ** Linux environment detected (assuming MultiTech Conduit AEP)")
             log_filename = '/home/root/' + log_filename    # TODO: validate path availability
-            subprocess.call('mts-io-sysfs store mfser/serial-mode rs232', shell=True)
+            subprocess.call('mts-io-sysfs store ap1/serial-mode rs232', shell=True)
             SERIAL_NAME = '/dev/ttyAP1'
 
         else:
