@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Sample program to run on Raspberry Pi (headless) or Windows (using ORBCOMM/SkyWave Modem Simulator)
 or Multitech Conduit with serial mCard (AP1 slot).
@@ -14,7 +15,7 @@ Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte paylo
   When a new interval is configured, a location report is generated immediately, thereafter at the
   new interval.
 """
-#!/usr/bin/python
+
 import time
 import datetime
 import serial       # PySerial 2.7
@@ -1469,7 +1470,8 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
         elif sys.platform.lower().startswith('linux2'):
             # Assumes linux2 platform is MultiTech Conduit AEP.  NOTE: also true for RPi.
             print("\n ** Linux environment detected (assuming MultiTech Conduit AEP)")
-            log_filename = '/home/root/' + log_filename    # TODO: validate path availability
+            # consider prefixing the below with '/home/root'
+            log_filename = '/home/root' + log_filename    # TODO: validate path availability
             subprocess.call('mts-io-sysfs store ap1/serial-mode rs232', shell=True)
             SERIAL_NAME = '/dev/ttyAP1'
 
