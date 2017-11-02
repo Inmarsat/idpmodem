@@ -779,7 +779,7 @@ def at_check_sat_status():
 
 
 def handle_mt_tracking_command(msg_content, msg_sin=255, msg_min=1):
-    """ Expects to get SIN 255 MIN 1 'reconfigure tracking interval, in minutes, in a range from 1-1440 
+    """ Handles SIN 255 custom messages
     :param msg_content: Mobile-Terminated message payload with format <SIN><MIN><interval>
     :param msg_sin placeholder for future features
     :param msg_min placeholder for future features
@@ -792,7 +792,7 @@ def handle_mt_tracking_command(msg_content, msg_sin=255, msg_min=1):
     tracking_thread = None
     if msg_sin == 255:
         if msg_min == 1:
-            # FORMAT: <SIN><MIN><interval_b16>
+            # FORMAT: <SIN><MIN><interval_b16> with interval range 1-1440 minutes
             new_tracking_interval_min = int(msg_content[2:], 16)
             for t in threading.enumerate():
                 if t.name == 'GetSendLocation':
@@ -809,9 +809,10 @@ def handle_mt_tracking_command(msg_content, msg_sin=255, msg_min=1):
                 log.warning("Invalid tracking interval change requested (" + str(new_tracking_interval_min)
                             + " minutes")
                 # TODO: send an error response indicating 'invalid interval' over the air
+
         elif msg_min == 254:
-            # FORMAT: <SIN><MIN><interval_b16><opt_b1><lora_mac_s16>
-            # TODO: optimize lora_mac as byte array
+            # FORMAT: <SIN><MIN><interval_b16>[<lora_mac_s16>]
+            # TODO: optimize lora_mac as byte array rather than hex string
             log.info("LoRa command MIN=254 msg_content: " + str(msg_content)[2:])
 
             if len(msg_content) > 6 and str(msg_content[6:]) in motes:
@@ -1466,7 +1467,12 @@ def parse_args(argv):
 
 
 def on_lora_connect(client, userdata, flags, rc):
-    """TODO: docs"""
+    """Subscribes to LoRa uplink MQTT messages from the Conduit broker. Maps to paho.mqtt on_connect caller.
+    :param: client: paho.mqtt Client()
+    :param: userdata:
+    :param: flags:
+    :param: rc: result code returned by connection attempt
+    """
     global log
 
     log.info("Connected with result code " + str(rc))
@@ -1474,7 +1480,12 @@ def on_lora_connect(client, userdata, flags, rc):
 
 
 def on_lora_message(client, userdata, msg):
-    """TODO: docs"""
+    """Parses LoRa uplink MQTT messages received from the Conduit broker and forwards LoRa MAC and payload on IDP.
+    Maps to paho.mqtt on_message caller.
+    :param: client: paho.mqtt Client()
+    :param: userdata:
+    :param: msg: the MQTT message passed by the broker
+    """
     global log
     global motes
 
@@ -1488,15 +1499,25 @@ def on_lora_message(client, userdata, msg):
     log.info("MQTT publish from: " + str(mac_str) + " | Message: " + str(msg.payload))  # TODO: change to debug
     json_data = json.loads(msg.payload.decode("utf-8"))
     # print("LoRa payload (base64): " + str(json_data['data']))
-    lora_payload = str(json_data['data'])
-    if lora_payload != "":
-        at_send_message(lora_payload, dataFormat=3, SIN=255, MIN=254)
+    if str(json_data['data']) != "":
+        lora_mac_bytes = [ord(c) for c in binascii.unhexlify(lora_mac)]
+        lora_payload_b64 = base64.b64decode(json_data['data'])
+        b64_fmt = '!' + str(len(lora_payload_b64)) + 'B'
+        lora_payload_bytes = list(struct.unpack(b64_fmt, lora_payload_b64))
+        # TODO: add timestamp
+        payload_ba = lora_mac_bytes + lora_payload_bytes
+        idp_b64_payload = base64.b64encode(bytearray(payload_ba))
+        at_send_message(idp_b64_payload, dataFormat=3, SIN=255, MIN=254)
     else:
         log.warning("Empty LoRa payload received from " + str(mac_str))
 
 
 def mqtt_down_lora(client, mac_node, lora_payload):
-    """TODO: docs"""
+    """Publishes a LoRa downlink MQTT message via the Conduit broker, converting data to base64.
+    :param: client: paho.mqtt Client()
+    :param: mac_node: the destination LoRa MAC address
+    :param: lora_payload: the payload to be sent
+    """
     global log
 
     if type(lora_payload) == int:
@@ -1595,6 +1616,9 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
 
             log.info("Connected to serial port " + ser.name + " at " + str(ser.baudrate) + " baud")
             sys.stdout.flush()
+            ser.flushInput()
+            ser.flushOutput()
+            ser.flush()
 
             modem = idpmodem.IDPModem()
             ever_connected = False
@@ -1668,6 +1692,8 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
                 t.terminate()
                 t.join()
         if ser is not None and ser.isOpen():
+            ser.flushInput()
+            ser.flushOutput()
             ser.close()
             log.info("Closing serial port " + serial_name)
         if _debug:
