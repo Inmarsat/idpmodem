@@ -113,6 +113,24 @@ class RepeatingTimer(threading.Thread):
         log.info(self.name + " timer terminated")
 
 
+class SatStatusMonitor(object):
+    """Placeholder for a background task to monitor satellite status and generate events"""
+    def __init__(self):
+        pass
+
+
+class FwdMsgCheck(object):
+    """Placeholder for a background task to monitor for incoming satellite messages"""
+    def __init__(self):
+        pass
+
+
+class Tracking(object):
+    """Placeholder for a background task to send location information"""
+    def __init__(self):
+        pass
+
+
 class Location(object):
     """ A class containing a specific set of location-based information for a given point in time
         Uses 91/181 if lat/lon are unknown
@@ -828,7 +846,7 @@ def at_check_mt_messages():
                                 msg_min = int(msg_content.replace('"', '')[1:3], 16)
                                 msg_content_str = msg_content.replace('"', '')[3:]
                             elif data_type == '2':
-                                msg_min = int(msg_content[0:2])
+                                msg_min = int(msg_content[0:2], 16)
                                 msg_content_str = '0x' + str(msg_content)
                             elif data_type == '3':
                                 msg_content_bytes = bytearray(binascii.a2b_base64(msg_content))
@@ -854,6 +872,7 @@ def at_check_mt_messages():
     # TODO: more elegant/generic processing with helper functions
     if msg_retrieved:
         if msg_sin == 255:
+            # TODO: clean up to separate MIN byte from rest of payload for processing - impacts handle_mt_...
             handle_mt_tracking_command(msg_content, msg_sin, msg_min)
         else:
             log.info("Message SIN=%d MIN=%d not handled", msg_sin, msg_min)
@@ -1384,6 +1403,34 @@ def monitor_com(timeout_count, max_timeouts, recon_count, timer_threads, fish_di
     return recon_count
 
 
+def parse_args(argv):
+    """Parse the command line arguments
+    :param argv: An array containing the command line arguments
+    :returns: A dictionary containing the command line arguments and their values
+    """
+    parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
+
+    parser.add_argument('-l', '--log', dest='logfile', type=str, default='idpmodemsample',
+                        help="the log file name with optional extension (default extension .log)")
+
+    parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
+                        help="the maximum log file size, in MB (default 5 MB)")
+
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true',
+                        help="enable verbose debug logging (default OFF)")
+
+    parser.add_argument('-c', '--crc', dest='use_crc', action='store_true',
+                        help="force use of CRC on serial port (default OFF)")
+
+    parser.add_argument('-t', '--track', dest='tracking', type=int, default=0,
+                        help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
+
+    parser.add_argument('-f', '--fishdish', dest='fish_dish', action='store_true',
+                        help="use Fish Dish for headless operation indicators")
+
+    return vars(parser.parse_args(args=argv[1:]))
+
+
 def main():     # TODO: trim more functions out of main, refactor for module import to run as thread
 
     global _debug
@@ -1400,6 +1447,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
     AT_MAX_TIMEOUTS = 3
 
     ser = None
+    serial_name = None
     SERIAL_BAUD = 9600
 
     modem = None
@@ -1414,32 +1462,19 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
     threads = []
 
     # Derive run options from command line
-    parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
-    parser.add_argument('-l', '--log', dest='logfile', type=str, default='idpmodemsample',
-                        help="the log file name with optional extension (default extension .log)")
-    parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
-                        help="the maximum log file size, in MB (default 5 MB)")
-    parser.add_argument('-d', '--debug', dest='debug', action='store_true',
-                        help="enable verbose debug logging (default OFF)")
-    parser.add_argument('-c', '--crc', dest='use_crc', action='store_true',
-                        help="force use of CRC on serial port (default OFF)")
-    parser.add_argument('-t', '--track', dest='tracking', type=int, default=0,
-                        help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
-    parser.add_argument('-f', '--fishdish', dest='fish_dish', action='store_true',
-                        help="use Fish Dish for headless operation indicators")
-    user_options = parser.parse_args()
+    user_options = parse_args(sys.argv)
 
-    if not '.' in user_options.logfile:
-        log_filename = user_options.logfile + '.log'
+    if not '.' in user_options['logfile']:
+        log_filename = user_options['logfile'] + '.log'
     else:
-        log_filename = user_options.logfile
-    log_max_mb = user_options.log_size
+        log_filename = user_options['logfile']
+    log_max_mb = user_options['log_size']
 
-    _debug = user_options.debug
+    _debug = user_options['debug']
 
-    if user_options.tracking is not None:
-        if 0 <= user_options.tracking <= 1440:
-            tracking_interval = int(user_options.tracking * 60)
+    if user_options['tracking'] is not None:
+        if 0 <= user_options['tracking'] <= 1440:
+            tracking_interval = int(user_options['tracking'] * 60)
         else:
             sys.exit("Invalid tracking interval, must be in range 0..1440")
 
@@ -1448,7 +1483,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
         import RPi.GPIO as GPIO     # Successful import of this module implies running on Raspberry Pi
         print("\n ** Raspberry Pi / GPIO environment detected")
         GPIO.setmode(GPIO.BCM)
-        if user_options.fish_dish:
+        if user_options['fish_dish']:
             fish_dish = RpiFishDish(GPIO)
             threads.append(fish_dish.led_flasher.name)
             fish_dish.led_flasher.start()
@@ -1457,7 +1492,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
             fish_dish = None
             modem_io = None
         log_filename = '/home/pi/' + log_filename
-        SERIAL_NAME = '/dev/ttyUSB0'  # TODO: validate RPi USB/serial port assignment
+        serial_name = '/dev/ttyUSB0'  # TODO: validate RPi USB/serial port assignment
 
     except ImportError:
         fish_dish = None
@@ -1465,7 +1500,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
 
         if sys.platform.lower().startswith('win32'):
             print("\n ** Windows environment detected")
-            SERIAL_NAME, log_filename = init_windows(log_filename)
+            serial_name, log_filename = init_windows(log_filename)
 
         elif sys.platform.lower().startswith('linux2'):
             # Assumes linux2 platform is MultiTech Conduit AEP.  NOTE: also true for RPi.
@@ -1473,7 +1508,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
             # consider prefixing the below with '/home/root'
             log_filename = '/home/root' + log_filename    # TODO: validate path availability
             subprocess.call('mts-io-sysfs store ap1/serial-mode rs232', shell=True)
-            SERIAL_NAME = '/dev/ttyAP1'
+            serial_name = '/dev/ttyAP1'
 
         else:
             sys.exit('ERROR: Operation undefined on current platform. Please use Windows, RPi/GPIO or MultiTech AEP.')
@@ -1486,7 +1521,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
 
     try:
         # TODO: handle serial exception for writeTimeout vs. write_timeout
-        ser = serial.Serial(port=SERIAL_NAME, baudrate=SERIAL_BAUD,
+        ser = serial.Serial(port=serial_name, baudrate=SERIAL_BAUD,
                             timeout=None, writeTimeout=0,
                             xonxoff=False, rtscts=False, dsrdtr=False)
 
@@ -1507,7 +1542,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
                 log.error(err_str)
                 sys.exit(err_str)
 
-            at_init_modem(use_crc=user_options.use_crc)
+            at_init_modem(use_crc=user_options['use_crc'])
 
             # (Proxy) Timer threads for background processes
 
@@ -1570,7 +1605,7 @@ def main():     # TODO: trim more functions out of main, refactor for module imp
             GPIO.cleanup()
         if ser is not None and ser.isOpen():
             ser.close()
-            log.info("Closing serial port " + SERIAL_NAME)
+            log.info("Closing serial port " + serial_name)
         if _debug:
             print("\n\n*** END PROGRAM ***\n\n")
 
