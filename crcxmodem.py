@@ -6,43 +6,42 @@ Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-pyth
 POLYNOMIAL = 0x1021
 PRESET = 0
 
-_debug = False
-
 
 def _initial(c):
-    crc = 0
+    _crc = 0
     c = c << 8
     for j in range(8):
-        if (crc ^ c) & 0x8000:
-            crc = (crc << 1) ^ POLYNOMIAL
+        if (_crc ^ c) & 0x8000:
+            _crc = (_crc << 1) ^ POLYNOMIAL
         else:
-            crc = crc << 1
+            _crc = _crc << 1
         c = c << 1
-    return crc
+    return _crc
+
 
 _tab = [_initial(i) for i in range(256)]
 
 
-def _update_crc(crc, c):
+def _update_crc(_crc, c):
     cc = 0xff & c
-    tmp = (crc >> 8) ^ cc
-    crc = (crc << 8) ^ _tab[tmp & 0xff]
-    crc = crc & 0xffff
-    return crc
+    tmp = (_crc >> 8) ^ cc
+    _crc = (_crc << 8) ^ _tab[tmp & 0xff]
+    _crc = _crc & 0xffff
+    return _crc
 
 
 def crc(string, initial=0xffff):
-    crc = initial
+    _crc = initial
     for c in string:
-        crc = _update_crc(crc, ord(c))
-    return crc
+        _crc = _update_crc(_crc, ord(c))
+    return _crc
 
 
 def crc_bytes(*i):
-    crc = PRESET
+    _crc = PRESET
     for b in i:
-        crc = _update_crc(crc, b)
-    return crc
+        _crc = _update_crc(_crc, b)
+    return _crc
 
 
 def main():
@@ -51,5 +50,4 @@ def main():
 
 
 if __name__ == "__main__":
-    _debug = False
     main()
