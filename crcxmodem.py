@@ -31,6 +31,11 @@ def _update_crc(_crc, c):
 
 
 def crc(string, initial=0xffff):
+    """Returns the CRC value
+    :param string to be calculated
+    :param initial value of crc
+    :returns crc value
+    """
     _crc = initial
     for c in string:
         _crc = _update_crc(_crc, ord(c))
@@ -38,6 +43,10 @@ def crc(string, initial=0xffff):
 
 
 def crc_bytes(*i):
+    """Return the CRC value of a byte stream
+    :param *i byte stream
+    :returns crc value
+    """
     _crc = PRESET
     for b in i:
         _crc = _update_crc(_crc, b)
