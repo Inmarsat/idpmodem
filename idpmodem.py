@@ -1100,14 +1100,12 @@ class Modem(object):
         """
         log = self.log
         value = None
-        reg_id = int(register.replace('S', ''))
-
         with self.thread_lock:
             response = self.at_get_response('AT' + register + '?')
             if not response['timeout']:
                 err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0 and len(response['result']) > 0:
-                    value = int(response['result'][0])
+                if err_code == 0 and len(response['response']) > 0:
+                    value = int(response['response'][0])
                 else:
                     log.error("Read %s failed (%s)" % (register, err_str))
         return value
