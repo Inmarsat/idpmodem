@@ -525,16 +525,17 @@ def monitor_com(disconnect_timeouts=3):
     return modem.is_connected
 
 
-def init_environment(default_logfile=None):
+def init_environment(default_logfile=None, debug=False):
     """Initializes the OS environment
     :param  default_logfile name to use
+    :param  debug value passed in from execution options
     :returns    Boolean success
                 Dictionary:
                 'serial_name' e.g. 'COM1'
                 'logfile' e.g. 'logfile.log'
                 'tracking' interval in seconds
+                'debug' value (may be overridden by Windows GUI)
     """
-    global _debug
     success = False
     serial_name = None
     logfile = None
@@ -560,7 +561,7 @@ def init_environment(default_logfile=None):
             print("\n ** Windows environment detected")
             res = idpwindows.initialize()
             serial_name = res['serial']
-            _debug = res['debug']
+            debug = res['debug']
             if res['logfile'] != '':
                 logfile = res['logfile']
             tracking = res['tracking']
@@ -569,7 +570,7 @@ def init_environment(default_logfile=None):
     else:
         print('\n Operation undefined on current platform. Please use RPi/GPIO, MultiTech AEP or Windows.')
 
-    return success, {'serial_name': serial_name, 'logfile': logfile, 'tracking': tracking}
+    return success, {'serial_name': serial_name, 'logfile': logfile, 'tracking': tracking, 'debug': debug}
 
 
 def parse_args(argv):
@@ -638,13 +639,14 @@ def main():
             sys.exit("Invalid tracking interval, must be in range 0..1440")
 
     # Pre-initialization of platform
-    env, res = init_environment(default_logfile=logfile)
+    env, res = init_environment(default_logfile=logfile, debug=debug)
     if not env:
         sys.exit('Unable to initialize environment.')
     else:
         serial_name = res['serial_name']
         logfile = res['logfile']
         tracking_interval = res['tracking']
+        debug = res['debug']
 
     # Set up log file
     log = init_log(logfile, log_size, debug=debug)
