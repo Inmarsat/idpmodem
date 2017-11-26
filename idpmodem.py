@@ -13,7 +13,7 @@ import base64
 class Modem(object):
     """Abstracts attributes and statistics related to an IDP modem"""
 
-    ctrlStates = [
+    ctrl_states = [
         'Stopped',
         'Waiting for GNSS fix',
         'Starting search',
@@ -31,7 +31,7 @@ class Modem(object):
         'Connect to confirmed beam'
         ]
 
-    atErrResultCodes = {
+    at_err_result_codes = {
         '0': 'OK',
         '4': 'UNRECOGNIZED',
         '100': 'INVALID CRC SEQUENCE',
@@ -49,7 +49,7 @@ class Modem(object):
         '112': 'ATTEMPT TO WRITE READ-ONLY PARAMETER'
         }
 
-    wakeupIntervals = {
+    wakeup_intervals = {
         '5 seconds': 0,
         '30 seconds': 1,
         '1 minute': 2,
@@ -61,6 +61,35 @@ class Modem(object):
         '5 minute': 8,
         '15 minute': 9,
         '20 minute': 10
+    }
+
+    power_modes = {
+        'Mobile Powered': 0,
+        'Fixed Powered': 1,
+        'Mobile Battery': 2,
+        'Fixed Battery': 3,
+        'Mobile Minimal': 4,
+        'Mobile Stationary': 5
+    }
+
+    gnss_modes = {
+        'GPS': 0,               # HW v4
+        'GLONASS': 1,           # HW v5
+        'BEIDOU': 2,            # HW v5.2
+        'GPS+GLONASS': 10,      # UBX-M80xx
+        'GPS+BEIDOU': 11,       # UBX-M80xx
+        'GLONASS+BEIDOU': 12    # UBX-M80xx
+    }
+
+    gnss_dpm_modes = {
+        'Portable': 0,
+        'Stationary': 2,
+        'Pedestrian': 3,
+        'Automotive': 4,
+        'Sea': 5,
+        'Air 1g': 6,
+        'Air 2g': 7,
+        'Air 4g': 8
     }
     
     def __init__(self, serial_port, log=None, debug=False):
@@ -97,7 +126,8 @@ class Modem(object):
             ('fixTimeout', False),
             ('eventCached', False)
         })
-        self.wakeup_interval = 0
+        self.wakeup_interval = self.wakeup_intervals['5 seconds']
+        self.power_mode = self.power_modes['Mobile Powered']
         self.asleep = False
         self.antenna_cut = False
         self.stats_start_time = 0
@@ -121,6 +151,9 @@ class Modem(object):
             'avgMTMsgSize': 0,
             'avgCN0': 0.0
         }
+        self.gnss_mode = self.gnss_modes['GPS']
+        self.gnss_continuous = 0
+        self.gnss_dpm_mode = self.gnss_dpm_modes['Portable']
         self.gnss_stats = {
             'nGNSS': 0,
             'lastGNSSReqTime': 0,
@@ -422,8 +455,8 @@ class Modem(object):
         elif int(result_code) > 0:
             error_code = int(result_code)
 
-        if str(error_code) in self.atErrResultCodes:
-            error_desc = self.atErrResultCodes[str(error_code)]
+        if str(error_code) in self.at_err_result_codes:
+            error_desc = self.at_err_result_codes[str(error_code)]
 
         return error_code, error_desc
 
@@ -560,10 +593,14 @@ class Modem(object):
         else:
             log.error("Get versions failed (%s)" % err_str)
 
-        # Get event notification bitmap
+        # Get relevant configuration (S-register) values
         time.sleep(AT_WAIT)
-        self.at_get_event_notify_bitmap()
-        self.set_event_notification('modemRegistered', True)
+        self.get_event_notifications()
+        self.get_wakeup_interval()
+        self.get_power_mode()
+        self.get_gnss_mode()
+        self.get_gnss_continuous()
+        self.get_gnss_dpm()
 
         success = self.at_save_config()
 
@@ -574,7 +611,7 @@ class Modem(object):
         :returns    Dictionary with:
                     'success' Boolean
                     'changed' Boolean
-                    'state' (string from ctrlStates)
+                    'state' (string from ctrl_states)
         """
         log = self.log
         success = False
@@ -591,7 +628,7 @@ class Modem(object):
                 if err_code == 0:
                     success = True
                     old_sat_ctrl_state = self.sat_status['CtrlState']
-                    new_sat_ctrl_state = self.ctrlStates[int(response['response'][0])]
+                    new_sat_ctrl_state = self.ctrl_states[int(response['response'][0])]
                     if new_sat_ctrl_state != old_sat_ctrl_state:
                         changed = True
                         log.info("Satellite control state change: OLD=%s NEW=%s"
@@ -961,6 +998,10 @@ class Modem(object):
                     log.error("Error querying S88")
         return value
 
+    def get_event_notifications(self):
+        """Reads the event notifications bitmap and populates an OrderedDict"""
+        self.at_get_event_notify_bitmap()
+
     def _set_event_notify_bitmap_proxy(self, value):
         """Sets the proxy bitmap values in the modem object
         :param  value the event bitmap (integer)
@@ -1030,6 +1071,171 @@ class Modem(object):
             log.error("Value not Boolean")
 
         return success
+
+    def _at_sreg_write(self, register, value, save=False):
+        """Writes a pre-validated value to an s-register
+        :param  register string value e.g. 'S50'
+        :param  value to write
+        :param  save write to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        with self.thread_lock:
+            response = self.at_get_response('AT' + register + '=' + str(value))
+            if not response['timeout']:
+                err_code, err_str = self.at_get_result_code(response['result'])
+                if err_code == 0:
+                    success = True
+                    if save:
+                        self.at_save_config()
+                else:
+                    log.error("Write %d to %s failed (%s)" % (value, register, err_str))
+        return success
+
+    def _at_sreg_read(self, register):
+        """Writes a pre-validated value to an s-register
+        :param  register string value e.g. 'S50'
+        :return integer value
+        """
+        log = self.log
+        value = None
+        reg_id = int(register.replace('S', ''))
+
+        with self.thread_lock:
+            response = self.at_get_response('AT' + register + '?')
+            if not response['timeout']:
+                err_code, err_str = self.at_get_result_code(response['result'])
+                if err_code == 0 and len(response['result']) > 0:
+                    value = int(response['result'][0])
+                else:
+                    log.error("Read %s failed (%s)" % (register, err_str))
+        return value
+
+    def set_wakeup_interval(self, value, save=False):
+        """Sets the wakeup interval (S51, default 0)
+        :param  value an enumerated type
+        :param  save if writing to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        if value in self.wakeup_intervals:
+            success = self._at_sreg_write(register='S51', value=value, save=save)
+            if success:
+                self.wakeup_interval = self.wakeup_intervals[value]
+        else:
+            log.error("Invalid value %s for S51 wakeup interval" % value)
+        return success
+
+    def get_wakeup_interval(self):
+        """Gets the wakeup interval (S51, default 0)"""
+        log = self.log
+        value = self._at_sreg_read(register='S51')
+        if value is not None:
+            self.wakeup_interval = value
+        else:
+            log.error("Error reading S51 wakeup interval")
+
+    def set_power_mode(self, value, save=False):
+        """Sets the power mode (S50, default 0)
+        :param  value an enumerated type
+        :param  save if writing to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        if value in self.power_modes:
+            success = self._at_sreg_write(register='S50', value=value, save=save)
+            if success:
+                self.power_mode = self.power_modes[value]
+        else:
+            log.error("Invalid value %s for S50 power mode" % value)
+        return success
+
+    def get_power_mode(self):
+        """Gets the power mode (S50, default 0)"""
+        log = self.log
+        value = self._at_sreg_read(register='S50')
+        if value is not None:
+            self.power_mode = value
+        else:
+            log.error("Error reading S50 power mode")
+
+    def set_gnss_continuous(self, value, save=False):
+        """Sets the GNSS continuous mode refresh interval (S55, default 0)
+        :param  value an enumerated type
+        :param  save if writing to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        if 0 <= value <= 30 and isinstance(value, int):
+            success = self._at_sreg_write(register='S55', value=value, save=save)
+            if success:
+                self.gnss_continuous = value
+        else:
+            log.error("Invalid value %s for S55 GNSS continuous mode" % value)
+        return success
+
+    def get_gnss_continuous(self):
+        """Gets the GNSS continuous interval (S55, default 0)"""
+        log = self.log
+        value = self._at_sreg_read(register='S55')
+        if value is not None:
+            self.gnss_continuous = value
+        else:
+            log.error("Error reading S55 gnss continuous")
+
+    def set_gnss_mode(self, value, save=False):
+        """Sets the GNSS mode (S39) (GPS, GLONASS, Beidou)
+        :param  value an enumerated type
+        :param  save if writing to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        if value in self.gnss_modes:
+            success = self._at_sreg_write(register='S39', value=value, save=save)
+            if success:
+                self.gnss_mode = self.gnss_modes[value]
+        else:
+            log.error("Invalid value %s for S39 GNSS mode" % value)
+        return success
+
+    def get_gnss_mode(self):
+        """Gets the GNSS mode (S39, default 0)"""
+        log = self.log
+        value = self._at_sreg_read(register='S39')
+        if value is not None:
+            self.gnss_mode = value
+        else:
+            log.error("Error reading S39 GNSS mode")
+
+    def at_set_gnss_dpm(self, value, save=False):
+        """Sets the GNSS Dynamic Platform model (S33, default 0)
+        :param  value an enumerated type
+        :param  save if writing to NVM
+        :return Boolean success
+        """
+        log = self.log
+        success = False
+        if value in self.gnss_dpm_modes:
+            success = self._at_sreg_write(register='S33', value=value, save=save)
+            if success:
+                self.gnss_dpm_mode = self.gnss_dpm_modes[value]
+        else:
+            log.error("Invalid value %s for S33 GNSS DPM" % value)
+        return success
+
+    def get_gnss_dpm(self):
+        """Gets the GNSS Dynamic Platform Model (S33, default 0)"""
+        log = self.log
+        value = self._at_sreg_read(register='S33')
+        if value is not None:
+            self.gnss_dpm_mode = value
+        else:
+            log.error("Error reading S33 GNSS DPM mode")
 
     def display_at_config(self):
         """Displays the current AT options on the console"""
