@@ -8,6 +8,9 @@ import crcxmodem
 import threading
 import binascii
 import base64
+import struct
+import sys
+import json
 
 
 class Modem(object):
@@ -165,7 +168,9 @@ class Modem(object):
             'lastResTime': 0,
             'avgResTime': 0
         }
+        self.mo_msg_count = 0
         self.mo_queue = []
+        self.mt_msg_count = 0
         self.mt_queue = []
         self.hardware_version = '0'
         self.software_version = '0'
@@ -182,6 +187,7 @@ class Modem(object):
             log_formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d,(%(threadName)-10s),'
                                                   '[%(levelname)s],%(funcName)s(%(lineno)d),%(message)s',
                                               datefmt='%Y-%m-%d %H:%M:%S')
+            log_formatter.converter = time.gmtime
             console = logging.StreamHandler()
             console.setFormatter(log_formatter)
             if debug:
@@ -823,7 +829,7 @@ class Modem(object):
         :return Boolean result
         """
         log = self.log
-
+        self.mo_msg_count += 1
         mo_msg_name = str(int(time.time()))[:8]
         mo_msg_priority = priority
         mo_msg_sin = msg_sin
@@ -1321,45 +1327,193 @@ class Message(object):
         def __init__(self):
             pass
 
-    def __init__(self, name=None, msg_sin=None, msg_min=None, priority=4, data_format=2, payload=''):
-        """TODO"""
+    data_types = ['bool', 'int_8', 'uint_8', 'int_16', 'uint_16', 'int_32', 'uint_32', 'int_64', 'uint_64',
+                  'float', 'double', 'string']
+
+    def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
+        """Initialize a message
+        :param:     name (optional)
+        :param:     msg_sin integer > 0
+        :param:     msg_min integer > 0
+        :param:     priority (1=high, 4=low)
+        :param:     payload_b64 base64 encoded payload (not including SIN, MIN)
+        """
         self.priorities = self.Priority()
         self.data_formats = self.DataFormat()
         self.name = name
         self.sin = msg_sin
         self.min = msg_min
-        self.priority = priority
-        self.data_format = data_format
-        self.payload = payload
+        self.payload_b64 = payload_b64
+        self.fields = []
+        # self.use_min_as_field = False     # TODO: future feature
         self.size = 0
-        if self.sin is not None:
-            self._get_size()
 
     def _get_size(self):
+        """Updates the message size attribute"""
         if self.sin is not None:
             self.size = 1
-        if self.payload != '':
+        if self.payload_b64 != '':
             if self.data_format == 1:
                 if self.min is None:
-                    self.min = ord(self.payload[1:1])
+                    self.min = ord(self.payload_b64[1:1])
                 else:
                     self.size += 1
-                self.size += len(self.payload)
+                self.size += len(self.payload_b64)
             elif self.data_format == 2:
                 if self.min is None:
-                    self.min = self.payload[1:2]
+                    self.min = self.payload_b64[1:2]
                 else:
                     self.size += 1
-                self.size += int(len(self.payload)/2)
+                self.size += int(len(self.payload_b64) / 2)
             elif self.data_format == 3:
                 if self.min is None:
-                    self.min = ord(base64.b64decode(self.payload)[1:1])
+                    self.min = ord(base64.b64decode(self.payload_b64)[1:1])
                 else:
                     self.size += 1
-                self.size += len(base64.b64decode(self.payload))
+                self.size += len(base64.b64decode(self.payload_b64))
+
+    def add_field(self, name, data_type, value, bit_size):
+        """Add a field to the message
+        :param:     name (string)
+        :param:     data_type (string) from supported types
+        :param:     value
+        :param:     bit_size string formatter '0nb' where n is number of bits
+        :return:    err_code, err_str
+        """
+        # TODO: make it so fields cannot be added/deleted/modified without explicit class methods
+        field = {}
+        if isinstance(name, str):
+            field['name'] = name
+            if data_type in self.data_types:
+                field['data_type'] = data_type
+                if data_type == 'bool' and isinstance(value, bool) \
+                        or 'int' in data_type and isinstance(value, int) \
+                        or data_type == 'string' and isinstance(value, str) \
+                        or (data_type == 'float' or data_type == 'double') and isinstance(value, float):
+
+                    field['value'] = value
+                    if bit_size[0] == '0' and bit_size[len(bit_size) - 1] == 'b':
+                        # TODO: some risk that value range may not fit in bit_size
+                        if bit_size[1:len(bit_size) - 1] > 0:
+                            err_code = 0
+                            err_str = 'OK'
+                            field['bit_size'] = bit_size
+                            self.fields.append(field)
+                        else:
+                            err_code = 5
+                            err_str = "Value exceeds specified number of bits"
+                    else:
+                        err_code = 4
+                        err_str = "Invalid bit_size definition"
+                else:
+                    err_code = 3
+                    err_str = "Value type does not match data type"
+            else:
+                err_code = 2
+                err_str = "Invalid data type"
+        else:
+            err_code = 1
+            err_str = "Invalid name of field (not string)"
+        return err_code, err_str
+
+    def delete_field(self, name):
+        """Remove a field from the message
+        :param:     name of field (string)
+        :returns:   err_code (0 = no error)
+                    err_str describing error (0 = "OK")
+        """
+        err_code = 1
+        err_str = "Field not found in message"
+        for i, field in enumerate(self.fields):
+            if field['name'] == name:
+                err_code = 0
+                err_str = "OK"
+                del self.fields[i]
+        return err_code, err_str
+
+    def encode_idp(self, data_format=2):
+        """Encodes the message using the specified data format (Text, Hex, base64)
+        :param:     data_format 1=Text, 2=ASCII-Hex, 3=base64
+        :returns:   encoded_payload (string) to pass into AT%MGRT
+        """
+        encoded_payload = ''
+        bin_str = ''
+        for field in self.fields:
+            name = field['name']
+            data_type = field['data_type']
+            value = field['value']
+            bit_size = field['bit_size']
+            bin_field = ''
+            if 'int' in data_type and isinstance(value, int):
+                if value < 0:
+                    inv_bin_field = format(-value, bit_size)
+                    comp_bin_field = ''
+                    i = 0
+                    while len(comp_bin_field) < len(inv_bin_field):
+                        comp_bin_field += '1' if inv_bin_field[i] == '0' else '0'
+                        i += 1
+                    bin_field = format(int(comp_bin_field, 2) + 1, bit_size)
+                else:
+                    bin_field = format(value, bit_size)
+            elif data_type == 'bool' and isinstance(value, bool):
+                bin_field = '1' if value else '0'
+            elif data_type == 'float' and isinstance(value, float):
+                f = '{0:0%db}' % bit_size
+                bin_field = f.format(int(hex(struct.unpack('!I', struct.pack('!f', value))[0]), 16))
+            elif data_type == 'double' and isinstance(value, float):
+                f = '{0:0%db}' % bit_size
+                bin_field = f.format(int(hex(struct.unpack('!Q', struct.pack('!d', value))[0]), 16))
+            elif data_type == 'string' and isinstance(value, str):
+                bin_field = bin(int(''.join(format(ord(c), '02x') for c in value), 16))[2:]
+                if len(bin_field) < bit_size:
+                    # TODO: be careful on padding strings...this should pad with NULL
+                    bin_field += ''.join('0' for pad in range(len(bin_field), bit_size))
+            else:
+                raise
+            bin_str += bin_field
+        payload_pad_bits = len(bin_str) % 8
+        while payload_pad_bits > 0:
+            bin_str += '0'
+            payload_pad_bits -= 1
+        hex_str = ''
+        index_byte = 0
+        while len(hex_str) / 2 < len(bin_str) / 8:
+            hex_str += format(int(bin_str[index_byte:index_byte + 8], 2), '02X').upper()
+            index_byte += 8
+        self.size = len(hex_str) / 2 + 2
+        self.payload_b64 = hex_str.decode('hex').encode('base64')
+        if data_format == 2:
+            encoded_payload = hex_str
+        elif data_format == 3:
+            encoded_payload = self.payload_b64
+        return encoded_payload
+
+    def decode_idp_json(self):
+        """Decodes the message received to JSON from the modem based on data format retrieved from IDP modem
+        :return:    JSON-formatted string
+        """
+        if self.size > 0:
+            json_str = '{"name":%s,"SIN":%d,"MIN":%d,"size":%d,"Fields":[' \
+                       % (str(self.name), self.sin, self.min, self.size)
+            for i, field in enumerate(self.fields):
+                json_str += '{"name":"%s","data_type":"%s","value":' \
+                            % (field['name'], field['data_type'])
+                if isinstance(field['value'], int):
+                    json_str += '%d}' % field['value']
+                elif isinstance(field['value'], float):
+                    json_str += '%f}' % field['value']
+                elif isinstance(field['value'], bool):
+                    json_str += '%s}' % str(field['value']).lower()
+                elif isinstance(field['value'], str):
+                    json_str += '"%s"}' % field['value']
+                json_str += ',' if i < len(self.fields) else ']'
+            json_str += '}'
+        else:
+            json_str = ''
+        return json_str
 
 
-class MobileOriginated(Message):
+class MobileOriginatedMessage(Message):
     """Class containing Mobile Originated (aka Forward) message properties"""
 
     class State:
@@ -1372,13 +1526,13 @@ class MobileOriginated(Message):
         def __init__(self):
             pass
 
-    def __init__(self):
-        Message.__init__(self)
+    def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
+        Message.__init__(self, name=name, msg_sin=msg_sin, msg_min=msg_min, payload_b64=payload_b64)
         self.states = self.State()
         self.state = self.states.UNAVAILABLE
             
 
-class MobileTerminated(Message):
+class MobileTerminatedMessage(Message):
     """Class containing Mobile Originated (aka Forward) message properties"""
 
     class State:
@@ -1389,8 +1543,8 @@ class MobileTerminated(Message):
         def __init__(self):
             pass
 
-    def __init__(self):
-        Message.__init__(self)
+    def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
+        Message.__init__(self, name=name, msg_sin=msg_sin, msg_min=msg_min, payload_b64=payload_b64)
         self.states = self.State()
         self.state = self.states.UNAVAILABLE
             

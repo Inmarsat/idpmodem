@@ -28,12 +28,15 @@ import operator
 import argparse
 import subprocess
 import idpmodem
+import loramts
+import globalsattracker
 
 # GLOBALS
 global log                  # the log object used by most functions and classes
 global modem                # the class instance of IDP modem object defined in 'idpmodem' module
 global tracking_interval    # an interval that can be changed remotely to drive location reporting
 global shutdown_flag        # a flag triggered by an interrupt from a parallel service (e.g. RPi GPIO input)
+global lns                  # the LoRa gateway / network server
 
 
 class RepeatingTimer(threading.Thread):
@@ -166,6 +169,31 @@ class ModemGPIO(object):
         pass
 
 
+def send_lora_uplink_idp(b64payload):
+    """Sends a LoRa payload via IDP, called back by on_message
+    :param:     b64payload to send (MAC, timestamp, LoRa payload)
+    """
+    global log
+    global modem
+    success = modem.at_send_message(data_string=b64payload, data_format=3, msg_sin=255, msg_min=254)
+    if not success:
+        log.error("Failed to send LoRa uplink via IDP")
+
+
+def send_lora_downlink_command(mote, command):
+    """Sends a command to a mote
+    :param:     mote the LoRa MAC address of the target
+    :param:     command the LoRa payload to send
+    """
+    # TODO: call from MT message handler
+    global log
+    global lns
+    if mote in lns.motes:
+        lns.send_lora_downlink(mac_node=mote, lora_payload=command, data_type='string')
+    else:
+        log.error("Mote %s not in LoRa server motes" % mote)
+
+
 def check_sat_status():
     """ Checks satellite status using Trace Log Mode to update state and statistics """
     global log
@@ -179,7 +207,7 @@ def check_sat_status():
 
 
 def handle_mt_tracking_command(message, data_type=2):
-    """ Expects to get SIN 255 MIN 1 'reconfigure tracking interval, in minutes, in a range from 1-1440 
+    """ Expects to get SIN 255 MIN 1 'reconfigure tracking interval, in minutes, in a range from 1-1440
     :param  message dictionary for Mobile-Terminated message with
                 'sin' Service Identifier Number
                 'min' Message Identifier Number
@@ -583,6 +611,7 @@ def main():
     global modem
     global tracking_interval
     global shutdown_flag
+    global lns
 
     shutdown_flag = False
 
@@ -646,6 +675,9 @@ def main():
             ser.flush()
 
             modem = idpmodem.Modem(ser, log)
+
+            lns = loramts.LoraMClient(uplink_callback=send_lora_uplink_idp, log=log, debug=debug)
+            lns.connect()
 
             # (Proxy) Timer threads for background tasks
             status_thread = RepeatingTimer(seconds=SAT_STATUS_INTERVAL, name='check_sat_status',

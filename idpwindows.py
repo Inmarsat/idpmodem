@@ -1,6 +1,19 @@
-"""TODO"""
+"""Provides a Windows GUI manager for PC-based IDP modem testing/simulation"""
+
 import sys
 
+try:
+    import Tkinter as tk
+except ImportError:
+    raise ImportError("Unable to import Tkinter or tkFileDialog.")
+import tkFileDialog
+
+try:
+    import serialportfinder
+except ImportError:
+    raise ImportError("Unable to import serialportfinder.py - check root directory.")
+
+# Globals used to enable modification from within a Tkinter custom dialog
 _ser_name = "COM0"
 _tracking_interval = 60
 _debug = False
@@ -20,16 +33,6 @@ def initialize(logfile_name=None):
     global _tracking_interval
     global _debug
 
-    try:
-        import Tkinter as tk
-    except ImportError:
-        raise ImportError("Unable to import Tkinter or tkFileDialog.")
-    import tkFileDialog
-
-    try:
-        import serialportfinder
-    except ImportError:
-        raise ImportError("Unable to import serialportfinder.py - check root directory.")
     serial_port_list = serialportfinder.listports()
     if len(serial_port_list) == 0 or serial_port_list[0] == '':
         raise ImportError("No serial COM ports found.")
