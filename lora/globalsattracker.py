@@ -99,6 +99,9 @@ class LoraTracker(object):
     -> <0C 08 00> <0F> <4E 33 28 4F 44 3D 35 2C 4F 45 3D 35 29> <0D 0A>
     '''
 
+    CMD_HDR = '0C0800'
+    CMD_TRL = '0D0A'
+
     # Command dictionary of tuples (<code>, <operation>)
     commands = {
         ('M7', 'Set Standby Mode'),

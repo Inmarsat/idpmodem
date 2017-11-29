@@ -30,6 +30,7 @@ import subprocess
 import idpmodem
 import loramts
 import globalsattracker
+import base64
 
 # GLOBALS
 global log                  # the log object used by most functions and classes
@@ -169,13 +170,26 @@ class ModemGPIO(object):
         pass
 
 
-def send_lora_uplink_idp(b64payload):
+def handle_lora_uplink_idp(b64payload):
     """Sends a LoRa payload via IDP, called back by on_message
     :param:     b64payload to send (MAC, timestamp, LoRa payload)
     """
     global log
     global modem
-    success = modem.at_send_message(data_string=b64payload, data_format=3, msg_sin=255, msg_min=254)
+    global lns
+    # TODO: parse LoRa payload to derive mote type and allow for variable MIN assignment, data optimization
+    payload_str = base64.b64decode(b64payload)
+    lora_mac_str = payload_str[0:16]
+    if lora_mac_str not in lns.motes:
+        lns.motes.append(lora_mac_str)
+    timestamp_str = payload_str[16:20]
+    lora_payload = payload_str[20:]
+    if lora_payload[0:2] == '00':
+        # assume mote is Globalsat LH-100x
+        msg_min = 254
+    else:
+        msg_min = 254
+    success = modem.at_send_message(data_string=b64payload, data_format=3, msg_sin=255, msg_min=msg_min)
     if not success:
         log.error("Failed to send LoRa uplink via IDP")
 
@@ -192,6 +206,16 @@ def send_lora_downlink_command(mote, command):
         lns.send_lora_downlink(mac_node=mote, lora_payload=command, data_type='string')
     else:
         log.error("Mote %s not in LoRa server motes" % mote)
+
+
+def process_globalsat_command(mote, command):
+    """Processes IDP commands to change settings on Tracker
+    :param:     mote to be sent to
+    :param:     command is a dictionary of operations and parameters
+    """
+    # TODO: architecture for remote reconfiguration of Globalsat
+    # TODO: iterate through available command shorthands sent OTA, map to LoRa format
+    pass
 
 
 def check_sat_status():
@@ -676,7 +700,7 @@ def main():
 
             modem = idpmodem.Modem(ser, log)
 
-            lns = loramts.LoraMClient(uplink_callback=send_lora_uplink_idp, log=log, debug=debug)
+            lns = loramts.LoraMClient(uplink_callback=handle_lora_uplink_idp, log=log, debug=debug)
             lns.connect()
 
             # (Proxy) Timer threads for background tasks

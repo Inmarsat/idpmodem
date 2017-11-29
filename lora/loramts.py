@@ -67,6 +67,7 @@ class LoraMClient(object):
     def connect(self):
         """Connects to the local LoRa network server in the MTS Conduit"""
         self.lora_client.connect(host="127.0.0.1", port=1883, keepalive=60)
+        self.lora_client.loop_forever()
 
     def _on_log(self, client, userdata, level, buf):
         """A callback that puts MQTT (Paho) logs into the logger. Maps to paho.mqtt on_log caller.
@@ -98,7 +99,7 @@ class LoraMClient(object):
         # Extract the mac address from the topic
         mac_str = msg.topic.split('/')[1]
         lora_mac = mac_str.replace('-', '')
-        if lora_mac not in motes:
+        if lora_mac not in self.motes:
             self.log.info("New LoRa mote found: %s" % mac_str)
             self.motes.append(lora_mac)
             # TODO: optimize using a byte array instead of string for MAC?
@@ -110,9 +111,9 @@ class LoraMClient(object):
             lora_payload_b64 = base64.b64decode(json_data['data'])
             b64_fmt = '!' + str(len(lora_payload_b64)) + 'B'
             lora_payload_bytes = list(struct.unpack(b64_fmt, lora_payload_b64))
-            dt = datetime.datetime.utcnow()
-            timestamp = int(time.mktime(dt.timetuple()))
-            timestamp_bytes = list(struct.pack('!I', timestamp))
+            # dt = datetime.datetime.utcnow()
+            timestamp = int(time.mktime(datetime.datetime.utcnow().timetuple()))
+            timestamp_bytes = list(struct.unpack('!4B', struct.pack('!I', timestamp)))
             envelope_bytes = lora_mac_bytes + timestamp_bytes + lora_payload_bytes
             b64_payload = base64.b64encode(bytearray(envelope_bytes))
             self.uplink_callback(b64_payload)
