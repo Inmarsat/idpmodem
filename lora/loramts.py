@@ -34,7 +34,7 @@ class LoraMClient(object):
         'string': 's'
     }
 
-    def __init__(self, uplink_callback=None, log=None, debug=False):
+    def __init__(self, uplink_callback=None, logger=None, debug=False):
         """Initialize the network server instance
         :param: uplink_callback function that will be passed uplink messages
         :param: log (optional) passed in by the creator
@@ -46,8 +46,8 @@ class LoraMClient(object):
         self.lora_client.on_connect = self._on_lora_connect
         self.lora_client.on_message = self._on_lora_uplink
         self.lora_client.on_log = self._on_log
-        if log is not None:
-            self.log = log
+        if logger is not None:
+            self.log = logger
         else:
             import logging
             self.log = logging.getLogger("loranetworkserver")
@@ -64,10 +64,14 @@ class LoraMClient(object):
             self.log.setLevel(console.level)
             self.log.addHandler(console)
 
-    def connect(self):
+    def connect(self, host="127.0.0.1"):
         """Connects to the local LoRa network server in the MTS Conduit"""
-        self.lora_client.connect(host="127.0.0.1", port=1883, keepalive=60)
-        self.lora_client.loop_forever()
+        self.lora_client.connect(host=host, port=1883, keepalive=60)
+        self.lora_client.loop_start()
+
+    def disconnect(self):
+        """Disconnects"""
+        self.lora_client.loop_stop()
 
     def _on_log(self, client, userdata, level, buf):
         """A callback that puts MQTT (Paho) logs into the logger. Maps to paho.mqtt on_log caller.
@@ -76,7 +80,7 @@ class LoraMClient(object):
         :param: level of log event
         :param: buf string buffer message
         """
-        self.log.level(buf)
+        self.log.log(level, buf)
 
     def _on_lora_connect(self, client, userdata, flags, rc):
         """Callback subscribes to LoRa uplink MQTT messages from broker (Conduit).
@@ -100,39 +104,43 @@ class LoraMClient(object):
         mac_str = msg.topic.split('/')[1]
         lora_mac = mac_str.replace('-', '')
         if lora_mac not in self.motes:
-            self.log.info("New LoRa mote found: %s" % mac_str)
+            self.log.info("New LoRa mote registered: %s" % mac_str)
             self.motes.append(lora_mac)
-            # TODO: optimize using a byte array instead of string for MAC?
         self.log.debug("MQTT publish from: %s | Message: %s" % (mac_str, msg.payload))
         json_data = json.loads(msg.payload.decode("utf-8"))
         self.log.debug("LoRa payload (base64): " + str(json_data['data']))
         if str(json_data['data']) != "":
             lora_mac_bytes = [ord(c) for c in binascii.unhexlify(lora_mac)]
+            # self.log.debug("LoRa MAC bytes: %s" % binascii.hexlify(bytearray(lora_mac_bytes)))
+            timestamp = int(time.mktime(datetime.datetime.utcnow().timetuple()))
+            timestamp_bytes = list(struct.unpack('!4B', struct.pack('!I', timestamp)))
+            # self.log.debug("Timestamp bytes: %s" % binascii.hexlify(bytearray(timestamp_bytes)))
             lora_payload_b64 = base64.b64decode(json_data['data'])
             b64_fmt = '!' + str(len(lora_payload_b64)) + 'B'
             lora_payload_bytes = list(struct.unpack(b64_fmt, lora_payload_b64))
-            # dt = datetime.datetime.utcnow()
-            timestamp = int(time.mktime(datetime.datetime.utcnow().timetuple()))
-            timestamp_bytes = list(struct.unpack('!4B', struct.pack('!I', timestamp)))
+            # self.log.debug("LoRa payload bytes: %s" % binascii.hexlify(bytearray(lora_payload_bytes)))
             envelope_bytes = lora_mac_bytes + timestamp_bytes + lora_payload_bytes
             b64_payload = base64.b64encode(bytearray(envelope_bytes))
+            # self.log.debug("Hex payload: %s" % binascii.hexlify(bytearray(envelope_bytes)))
             self.uplink_callback(b64_payload)
         else:
             self.log.warning("Empty LoRa payload received from %s" % mac_str)
 
-    def send_lora_downlink(self, mac_node, lora_payload, data_type='uint16'):
+    def send_lora_downlink(self, mac_node, lora_payload, data_type=None):
         """Publishes a LoRa downlink MQTT message via the Conduit broker, converting data to base64.
         :param: mac_node (string) the destination LoRa MAC address
         :param: lora_payload the payload to be sent
         :param: data_type of lora_payload to be used for encoding to base64
         """
-        if data_type == 'uint16':
+        if data_type == 'uint16' and isinstance(lora_payload, int):
             # TODO: add scalability beyond short int - test GlobalSat reconfig
             type_uint16_bigend = '!H'   # from struct definition
-            b64_payload = base64.b64encode(bytearray([ord(c) for c in struct.pack(type_uint16_bigend, lora_payload)]))
-        else:
-            b64_payload = base64.b64encode(str(lora_payload))
+            b64_str = base64.b64encode(bytearray([ord(c) for c in struct.pack(type_uint16_bigend, lora_payload)]))
+        elif isinstance(lora_payload, list):    # assume list of bytes
+            b64_str = base64.b64encode(bytearray(lora_payload))
+        else:   # isinstance(lora_payload, str)
+            b64_str = base64.b64encode(str(lora_payload))
         topic_down = "lora/" + mac_node + "/down"
-        data_to_mote = "{ \"data\": \"" + b64_payload + "\" }"
+        data_to_mote = "{ \"data\": \"" + b64_str + "\" }"
         self.log.debug("Sending MQTT Topic: %s Data: %s" % (topic_down, data_to_mote))
         self.lora_client.publish(topic_down, data_to_mote)
