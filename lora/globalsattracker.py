@@ -1,5 +1,8 @@
 """Object representation for GlobalSat LoRa Tracker"""
 
+CMD_HEADER = [0x0C, 0x08, 0x00]
+CMD_FOOTER = [0x0D, 0x0A]
+
 
 class Report(object):
     """Report sent by LoRa tracker"""
@@ -56,9 +59,9 @@ class Report(object):
         :return:    err_code
                     err_str
         """
-        if isintance(payload, bytearray):
+        if isinstance(payload, bytearray):
             payload = ''.join(format(x, '02x') for x in payload)
-        if isintance(payload, str):
+        if isinstance(payload, str):
             self.format_type = int(payload[0:2])
             if self.format_type in self.format_types:
                 gfr = bin(int(payload[2:4])).replace('0b', '')
@@ -98,9 +101,6 @@ class LoraTracker(object):
     Example: Vibrate and beep device 5 seconds: N3(OD=5,OE=5) 
     -> <0C 08 00> <0F> <4E 33 28 4F 44 3D 35 2C 4F 45 3D 35 29> <0D 0A>
     '''
-
-    CMD_HDR = '0C0800'
-    CMD_TRL = '0D0A'
 
     # Command dictionary of tuples (<code>, <operation>)
     commands = {
@@ -153,27 +153,28 @@ class LoraTracker(object):
         ('FallDown', 'JK', 'Angle Static to Fall', 'u8'),  # 0~70 degrees, default=60
     }
 
-    def __init__(self, model='LT100x', cmd_callback=None):
+    def __init__(self, model='LT100x', lora_mac=None, cmd_callback=None):
         """LoRa Tracker properties
         :param:     model name from a list of supported models
+        :param:     lora_mac string MAC address
         :param:     cmd_callback used by command operations (e.g. LoRa downlink function)
         """
-        self.lora_mac = ''
+        self.lora_mac = lora_mac
         if model in self.models:
             self.model = model
         else:
             self.model = 'LT100x'
         self.cmd_callback = cmd_callback
-        self.power_on_mode = 2  # Periodic(default)
-        self.reporting_mode = None
-        self.periodic_interval = None
-        self.motion_static_interval = None
-        self.motion_moving_interval = None
-        self.ack_enabled = False
-        self.ack_retransmits = 2
+        self.power_on_mode = 2              # Periodic(default)
+        self.reporting_mode = 2             # Periodic(default)
+        self.periodic_interval = 60         # default
+        self.motion_static_interval = 3600  # default
+        self.motion_moving_interval = 30    # default
+        self.ack_enabled = False            # default=0
+        self.ack_retransmits = 2            # default
         self.lora_config = {
-            'ADR': 0,
-            'JoinMode': 0
+            'ADR': 1,       # assume this has been configured non-default
+            'JoinMode': 1   # assume this has been configured for OTAA
         }
 
     def set_power_on_mode(self, mode=2):
