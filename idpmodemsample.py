@@ -485,7 +485,6 @@ def modem_attach(max_attempts=0, hmi_indicator=None):
         if hmi_indicator is not None:
             # hmi_indicator.indicate_normal_operation()
             pass
-        modem.at_initialize_modem()
     return success
 
 
