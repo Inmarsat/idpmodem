@@ -186,32 +186,33 @@ class LoraMClient(object):
                 lora_payload_b64 = base64.b64decode(json_data['data'])
                 b64_fmt = '!' + str(len(lora_payload_b64)) + 'B'
                 lora_payload_bytes = list(struct.unpack(b64_fmt, lora_payload_b64))
-                # self.log.debug("LoRa payload bytes: %s" % binascii.hexlify(bytearray(lora_payload_bytes)))
+                self.log.info("LoRa uplink received from: %s with payload: %s"
+                              % (dev_eui, binascii.hexlify(bytearray(lora_payload_bytes))))
                 envelope_bytes = lora_mac_bytes + timestamp_bytes + lora_payload_bytes
                 b64_payload = base64.b64encode(bytearray(envelope_bytes))
-                # self.log.debug("Hex payload: %s" % binascii.hexlify(bytearray(envelope_bytes)))
+                # self.log.debug("IDP hex payload: %s" % binascii.hexlify(bytearray(envelope_bytes)))
                 self.uplink_callback(b64_payload)
             else:
                 self.log.warning("Empty LoRa payload received from %s" % mac_str)
         elif event_type == 'join_rejected':
             # TODO: callback notify back-office application of failed join attempt and MAC, possible provisioning issue
             self.stats['join_rejected'] += 1
-            self.log.debug("Join rejected from: %s - %s" % (dev_eui, msg.payload.decode('utf-8')))
+            self.log.info("Join rejected from: %s - %s" % (dev_eui, msg.payload.decode('utf-8')))
         elif event_type == 'down':
             self.stats['down_publish'] += 1
-            self.log.debug("Downlink published to %s: %s" % (dev_eui, msg.payload.decode('utf-8')))
+            self.log.info("Downlink published to %s: %s" % (dev_eui, msg.payload.decode('utf-8')))
         elif event_type == 'packet_sent':
             self.stats['down'] += 1
             self.log.debug("Downlink message sent to %s: %s" % (dev_eui, msg.payload.decode('utf-8')))
             # TODO: create/store unique downlink identifier to match with ACK
         elif event_type == 'packet_ack':
             self.stats['down_ack_received'] += 1
-            self.log.debug("Downlink acknowledged from %s: %s" % (dev_eui, msg.payload.decode('utf-8')))
+            self.log.info("Downlink acknowledged from %s: %s" % (dev_eui, msg.payload.decode('utf-8')))
             # TODO: reference unique downlink identifier to handle retries
         elif event_type == 'class':
             # TODO: callback to modify the mote attributes
             self.stats['class'] += 1
-            self.log.debug("LoRa class update mote %s now Class %s" % (dev_eui, msg.payload.decode('utf-8')))
+            self.log.info("LoRa class update mote %s now Class %s" % (dev_eui, msg.payload.decode('utf-8')))
             pass
 
     def send_lora_downlink(self, dev_eui, lora_payload, data_type=None, ack=True):
@@ -261,7 +262,7 @@ class LoraMClient(object):
         for k in self.lora_mcard:
             self.log.info("*    %s: %s" % (k, self.lora_mcard[k]))
         self.log.info("* LoRa Network Server version: %s" % self.lns_version)
-        if len(motes) > 0:
+        if len(self.motes) > 0:
             self.log.info("* Motes joined:")
         for m in self.motes:
             self.log.info("*   %s", m)
