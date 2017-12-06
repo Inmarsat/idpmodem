@@ -17,8 +17,9 @@ Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte paylo
 
 import time
 import datetime
-import serial       # PySerial 2.7
+import serial       # PySerial 3.4 or higher
 import sys
+import platform
 import traceback
 import logging
 from logging.handlers import RotatingFileHandler
@@ -31,17 +32,16 @@ import idpmodem
 import loramts
 import globalsattracker
 import base64
-import paho.mqtt.client as mqtt
-import json
-import struct
 
 # GLOBALS
+NAME = "idplorademo"
+VERSION = "1.1.0"
 global log                  # the log object used by most functions and classes
 global modem                # the class instance of IDP modem object defined in 'idpmodem' module
 global tracking_interval    # an interval that can be changed remotely to drive location reporting
 global shutdown_flag        # a flag triggered by an interrupt from a parallel service (e.g. RPi GPIO input)
 global lns                  # the LoRa gateway / network server
-global gs_motes
+global gs_motes             # list of GlobalSat objects
 
 
 class RepeatingTimer(threading.Thread):
@@ -207,7 +207,7 @@ def handle_lora_uplink_idp(b64payload):
                 in_gs_motes = True
                 break
         if not in_gs_motes:
-            log.info("New GlobalSat mote %s found" % lora_mac_str)
+            log.info("New GlobalSat mote %s registered" % lora_mac_str)
             new_gs_mote = globalsattracker.LoraTracker(lora_mac=lora_mac_str)
             gs_motes.append(new_gs_mote)
     else:
@@ -232,7 +232,7 @@ def process_globalsat_command(mote, command):
     gs_cmd_bytes = [ord(c) for c in command]
     gs_bytes = globalsattracker.CMD_HEADER + cmd_len + gs_cmd_bytes + globalsattracker.CMD_FOOTER
     log.debug("Sending downlink payload: %s" % ''.join(format(byte, '02x') for byte in gs_bytes))
-    lns.send_lora_downlink(mac_node=mote, lora_payload=gs_bytes)
+    lns.send_lora_downlink(dev_eui=mote, lora_payload=gs_bytes)
 
 
 def check_sat_status():
@@ -613,12 +613,23 @@ def init_environment(default_logfile=None, debug=False):
             logfile = '/home/pi/' + default_logfile
             serial_name = '/dev/ttyUSB0'  # TODO: validate RPi USB/serial port assignment
         except ImportError:
-            print("\n ** Linux environment detected (assuming MultiTech Conduit AEP)")
-            # TODO: more robust check for MTS
-            success = True
-            subprocess.call('mts-io-sysfs store ap1/serial-mode rs232', shell=True)
-            logfile = '/home/root/' + default_logfile
-            serial_name = '/dev/ttyAP1'     # TODO: validate serial port assignment
+            if platform.node() == 'mtcdt':
+                print("\n ** Multitech Conduit MTCDT detected")
+                # TODO: more robust check for AP1
+                success = True
+                ap1 = subprocess.check_output('mts-io-sysfs show ap1/product-id', shell=True).strip()
+                ap2 = subprocess.check_output('mts-io-sysfs show ap2/product-id', shell=True).strip()
+                if 'MTAC-MFSER' in ap1:
+                    subprocess.call('mts-io-sysfs store ap1/serial-mode rs232', shell=True)
+                    serial_name = '/dev/ttyAP1'
+                elif 'MTAC-MFSER' in ap2:
+                    subprocess.call('mts-io-sysfs store ap2/serial-mode rs232', shell=True)
+                    serial_name = '/dev/ttyAP1'
+                else:
+                    print("\n Could not identify serial mCard in AP1 or AP2")
+                    success = False
+                logfile = '/home/root/' + default_logfile
+
     elif sys.platform.lower().startswith('win32'):
         try:
             import idpwindows
@@ -632,7 +643,8 @@ def init_environment(default_logfile=None, debug=False):
             tracking = res['tracking']
         except ImportError:
             print("\n Could not import idpwindows.py test utility")
-    else:
+
+    if not success:
         print('\n Operation undefined on current platform. Please use RPi/GPIO, MultiTech AEP or Windows.')
 
     # TODO: more elegant/efficient handling
@@ -646,7 +658,7 @@ def parse_args(argv):
     """
     parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
 
-    parser.add_argument('-l', '--log', dest='logfile', type=str, default='idpmodemsample',
+    parser.add_argument('-l', '--log', dest='logfile', type=str, default=NAME,
                         help="the log file name with optional extension (default extension .log)")
 
     parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
@@ -660,9 +672,6 @@ def parse_args(argv):
 
     parser.add_argument('-t', '--track', dest='tracking', type=int, default=0,
                         help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
-
-    parser.add_argument('-f', '--fishdish', dest='fish_dish', action='store_true',
-                        help="use Fish Dish for headless operation indicators")
 
     return vars(parser.parse_args(args=argv[1:]))
 
@@ -706,7 +715,7 @@ def main():
         else:
             sys.exit("Invalid tracking interval, must be in range 0..1440")
 
-    # Pre-initialization of platform
+    # Initialize platform
     env, res = init_environment(default_logfile=logfile, debug=debug)
     if not env:
         sys.exit('Unable to initialize environment.')
@@ -723,12 +732,11 @@ def main():
     log = init_log(logfile, log_size, debug=debug)
     sys.stdout.flush()
 
-    log.debug("**** PROGRAM STARTING ****")
+    log.debug("**** PROGRAM STARTING %s %s ****" % (NAME, VERSION))
+    start_time = str(datetime.datetime.utcnow())
 
     ever_connected = False
-    start_time = str(datetime.datetime.utcnow())
     try:
-        # TODO: handle serial exception for writeTimeout vs. write_timeout
         ser = serial.Serial(port=serial_name, baudrate=SERIAL_BAUD,
                             timeout=None, writeTimeout=0,
                             xonxoff=False, rtscts=False, dsrdtr=False)
@@ -736,14 +744,24 @@ def main():
         if ser.isOpen():
 
             log.info("Connected to serial port " + ser.name + " at " + str(ser.baudrate) + " baud")
-            ser.flushInput()
-            ser.flushOutput()
             ser.flush()
 
             modem = idpmodem.Modem(ser, log)
 
+            # Initialize/start LoRa Local Network Server and name its thread for logging
+            for t in threading.enumerate():
+                threads.append(t.name)
             lns = loramts.LoraMClient(uplink_callback=handle_lora_uplink_idp, logger=log, debug=debug)
             lns.connect()
+            for t in threading.enumerate():
+                if t.name not in threads:
+                    new_name = "lora_network_server"
+                    log.debug("Renaming %s to %s" % (t.name, new_name))
+                    t.name = new_name
+                    break
+            threads = []
+
+            # Store GlobalSat device(s) details
             gs_motes = []
 
             # (Proxy) Timer threads for background tasks
@@ -807,9 +825,6 @@ def main():
 
     finally:
         end_time = str(datetime.datetime.utcnow())
-        if ever_connected and modem is not None:
-            log.info("*** Statistics from %s to %s ***" % (start_time, end_time))
-            modem.log_statistics()
         for t in threading.enumerate():
             if t.name in threads:
                 t.stop_timer()
@@ -818,6 +833,11 @@ def main():
         if ser is not None and ser.isOpen():
             ser.close()
             log.info("Closing serial port %s" % serial_name)
+        if ever_connected and modem is not None:
+            log.info("***** Statistics from %s to %s *****" % (start_time, end_time))
+            modem.log_statistics()
+        if lns is not None:
+            lns.log_statistics()
         log.debug("\n\n*** END PROGRAM ***\n\n")
 
 
