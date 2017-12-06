@@ -101,7 +101,7 @@ class Modem(object):
         :param  log an optional logger
         :param  debug Boolean option for verbose trace
         """
-        self.mobile_id = ''
+        self.mobile_id = 'unknown'
         self.is_connected = False
         self.at_config = {
             'CRC': False,
@@ -172,9 +172,9 @@ class Modem(object):
         self.mo_queue = []
         self.mt_msg_count = 0
         self.mt_queue = []
-        self.hardware_version = '0'
-        self.software_version = '0'
-        self.at_version = '0'
+        self.hardware_version = 'unknown'
+        self.software_version = 'unknown'
+        self.at_version = 'unknown'
         self.serial_port = serial_port
         self.at_timeouts = 0
         self.at_timeouts_total = 0
@@ -623,7 +623,7 @@ class Modem(object):
         success = False
         changed = False
         with self.thread_lock:
-            log.debug("Checking satellite status. Previous control state: " + self.sat_status['CtrlState'])
+            log.debug("Checking satellite status. Last known state: " + self.sat_status['CtrlState'])
 
             # S122: satellite trace status
             # S116: C/N0
@@ -782,6 +782,7 @@ class Modem(object):
                     err_code, err_str = self.at_get_result_code(response['result'])
                     if err_code == 0:
                         msg_retrieved = True
+                        self.mt_msg_count += 1
                         message['sin'] = msg_sin
                         msg_envelope = response['response'][0].replace('%MGFG:', '').strip().split(',')
                         msg_content = msg_envelope[7]
@@ -1241,69 +1242,55 @@ class Modem(object):
         else:
             log.error("Error reading S33 GNSS DPM mode")
 
-    def display_at_config(self):
+    def log_at_config(self):
         """Displays the current AT options on the console"""
-        print('Modem AT Configuration: ' + self.mobile_id)
-        print(' %CRC=' + str(int(self.at_config['CRC'])))
-        print('  ATE=' + str(int(self.at_config['Echo'])))
-        print('  ATV=' + str(int(self.at_config['Verbose'])))
-        print('  ATQ=' + str(int(self.at_config['Quiet'])))
+        self.log.info("*** Modem AT Configuration ***")
+        for k in self.at_config:
+            self.log.info("*  %s=%d" % (k, 1 if self.at_config[k] else 0))
 
-    def display_sat_status(self):
+    def log_sat_status(self):
         """Displays the current satellite status on the console"""
-        print('Satellite Status: ' + self.mobile_id)
+        self.log.info("*** Satellite Status ***")
         for stat in self.sat_status:
-            print('  ' + stat + ": " + str(self.sat_status[stat]))
+            self.log.info("*  %s: %s" % (stat, str(self.sat_status[stat])))
 
     def get_statistics(self):
         """Returns a dictionary of operating statistics for the modem/network
         :return list of strings containing key statistics
         """
-        stat_list = {
-            'GNSS control (network) fixes': str(self.system_stats['nGNSS']),
-            'Average GNSS (network) time to fix [s]': str(self.system_stats['avgGNSSFixDuration']),
-            'Registrations': str(self.system_stats['nRegistration']),
-            'Average Registration time [s]': str(self.system_stats['avgRegistrationDuration']),
-            'BB acquisitions': str(self.system_stats['nBBAcquisition']),
-            'Average BB acquisition time [s]': str(self.system_stats['avgBBReacquireDuration']),
-            'Blockages': str(self.system_stats['nBlockage']),
-            'Average Blockage duration [s]': str(self.system_stats['avgBlockageDuration']),
-            'GNSS application fixes': str(self.gnss_stats['nGNSS']),
-            'Average GNSS (application) time to fix [s]': str(self.gnss_stats['avgGNSSFixDuration']),
-            'GNSS request timeouts': str(self.gnss_stats['timeouts']),
-            'Average AT response time [ms]': str(self.system_stats['avgATResponseTime_ms']),
-            'Total AT non-responses': str(self.at_timeouts_total),
-            'Average Mobile-Originated message size [bytes]': str(self.system_stats['avgMOMsgSize']),
-            'Average Mobile-Originated message latency [s]': str(self.system_stats['avgMOMsgLatency_s']),
-            'Average Mobile-Terminated message size [bytes]': str(self.system_stats['avgMTMsgSize']),
-            'Average C/N0': str(self.system_stats['avgCN0'])
-        }
+        stat_list = [
+            ('GNSS control (network) fixes', self.system_stats['nGNSS']),
+            ('Average GNSS (network) time to fix [s]', self.system_stats['avgGNSSFixDuration']),
+            ('Registrations', self.system_stats['nRegistration']),
+            ('Average Registration time [s]', self.system_stats['avgRegistrationDuration']),
+            ('BB acquisitions', self.system_stats['nBBAcquisition']),
+            ('Average BB acquisition time [s]', self.system_stats['avgBBReacquireDuration']),
+            ('Blockages', self.system_stats['nBlockage']),
+            ('Average Blockage duration [s]', self.system_stats['avgBlockageDuration']),
+            ('GNSS application fixes', self.gnss_stats['nGNSS']),
+            ('Average GNSS (application) time to fix [s]', self.gnss_stats['avgGNSSFixDuration']),
+            ('GNSS request timeouts', self.gnss_stats['timeouts']),
+            ('Average AT response time [ms]', self.system_stats['avgATResponseTime_ms']),
+            ('Total AT non-responses', self.at_timeouts_total),
+            ('Total Mobile-Originated messages', self.mo_msg_count),
+            ('Average Mobile-Originated message size [bytes]', self.system_stats['avgMOMsgSize']),
+            ('Average Mobile-Originated message latency [s]', self.system_stats['avgMOMsgLatency_s']),
+            ('Total Mobile-Terminated messages', self.mt_msg_count),
+            ('Average Mobile-Terminated message size [bytes]', self.system_stats['avgMTMsgSize']),
+            ('Average C/N0 [dB]', self.system_stats['avgCN0'])
+        ]
         return stat_list
-
-    def display_statistics(self):
-        """Prints the modem/network statistics to the console"""
-        print("*" * 30 + " MODEM STATISTICS " + "*" * 30)
-        print("* Mobile ID: %s" % self.mobile_id)
-        print("* Hardware version: %s" % self.hardware_version)
-        print("* Firmware version: %s" % self.software_version)
-        print("* AT version: %s" % self.at_version)
-        stats_list = self.get_statistics()
-        for stat in stats_list:
-            print("* " + stat + ":" + str(stats_list[stat]))
-        print("*" * 75)
 
     def log_statistics(self):
         """Logs the modem/network statistics"""
-        log = self.log
-        log.info("*" * 30 + " MODEM STATISTICS " + "*" * 30)
-        log.info("* Mobile ID: %s" % self.mobile_id)
-        log.info("* Hardware version: %s" % self.hardware_version)
-        log.info("* Firmware version: %s" % self.software_version)
-        log.info("* AT version: %s" % self.at_version)
-        stats_list = self.get_statistics()
-        for stat in stats_list:
-            log.info("* " + stat + ":" + str(stats_list[stat]))
-        log.info("*" * 75)
+        self.log.info("*" * 26 + " IDP MODEM STATISTICS " + "*" * 26)
+        self.log.info("* Mobile ID: %s" % self.mobile_id)
+        self.log.info("* Hardware version: %s" % self.hardware_version)
+        self.log.info("* Firmware version: %s" % self.software_version)
+        self.log.info("* AT version: %s" % self.at_version)
+        for stat in self.get_statistics():
+            self.log.info("* %s: %s" % (stat[0], str(stat[1])))
+        self.log.info("*" * 75)
 
 
 class Message(object):
@@ -1550,8 +1537,7 @@ class MobileTerminatedMessage(Message):
             
 
 if __name__ == "__main__":
-    modem = Modem('DUMMY')
-    modem.mobile_id = '00000000SKYEE3D'
-    modem.display_at_config()
-    modem.display_sat_status()
-    modem.display_statistics()
+    modem = Modem(serial_port=None, debug=True)
+    modem.log_at_config()
+    modem.log_sat_status()
+    modem.log_statistics()
