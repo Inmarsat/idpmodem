@@ -231,7 +231,7 @@ def process_globalsat_command(mote, command):
     cmd_len = [len(command) + 2]
     gs_cmd_bytes = [ord(c) for c in command]
     gs_bytes = globalsattracker.CMD_HEADER + cmd_len + gs_cmd_bytes + globalsattracker.CMD_FOOTER
-    log.debug("Sending downlink payload: %s" % ''.join(format(byte, '02x') for byte in gs_bytes))
+    log.info("Sending GlobalSat downlink payload: %s" % ''.join(format(byte, '02x') for byte in gs_bytes))
     lns.send_lora_downlink(dev_eui=mote, lora_payload=gs_bytes)
 
 
