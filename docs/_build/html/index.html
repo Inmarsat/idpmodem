@@ -1,0 +1,1139 @@
+
+
+<!doctype html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>Welcome to idp-modem’s documentation! &#8212; idp-modem  documentation</title>
+    <link rel="stylesheet" href="_static/bizstyle.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <script type="text/javascript" src="_static/bizstyle.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <!--[if lt IE 9]>
+    <script type="text/javascript" src="_static/css3-mediaqueries.js"></script>
+    <![endif]-->
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">idp-modem  documentation</a> &#187;</li> 
+      </ul>
+    </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Welcome to idp-modem’s documentation!</a><ul>
+<li><a class="reference internal" href="#module-idpmodem">idpmodem</a></li>
+<li><a class="reference internal" href="#module-idpmodemsample">idpmodemsample</a></li>
+<li><a class="reference internal" href="#module-crcxmodem">crcxmodem</a></li>
+<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+</ul>
+</li>
+</ul>
+
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/index.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="welcome-to-idp-modem-s-documentation">
+<h1>Welcome to idp-modem’s documentation!<a class="headerlink" href="#welcome-to-idp-modem-s-documentation" title="Permalink to this headline">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<div class="section" id="module-idpmodem">
+<span id="idpmodem"></span><h2>idpmodem<a class="headerlink" href="#module-idpmodem" title="Permalink to this headline">¶</a></h2>
+<p>Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands</p>
+<dl class="class">
+<dt id="idpmodem.Modem">
+<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">Modem</code><span class="sig-paren">(</span><em>serial_port</em>, <em>log=None</em>, <em>debug=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Abstracts attributes and statistics related to an IDP modem</p>
+<dl class="method">
+<dt id="idpmodem.Modem.at_attach">
+<code class="descname">at_attach</code><span class="sig-paren">(</span><em>at_timeout=1</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_attach" title="Permalink to this definition">¶</a></dt>
+<dd><p>Attempts to attach using basic AT command.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">Boolean success</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_check_mt_messages">
+<code class="descname">at_check_mt_messages</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_check_mt_messages" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks for Mobile-Terminated messages in modem queue and retrieves if present.
+Logs a record of the receipt, and handles supported messages.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<li>Boolean True if message(s) have been received/completed and ready for retrieval</li>
+<li><dl class="first docutils">
+<dt><code class="docutils literal notranslate"><span class="pre">list</span></code> of <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> messages consisting of</dt>
+<dd><ul class="first last">
+<li><code class="docutils literal notranslate"><span class="pre">name</span></code> used for retrieval</li>
+<li><code class="docutils literal notranslate"><span class="pre">priority</span></code> 0 for mobile-terminated messages</li>
+<li><code class="docutils literal notranslate"><span class="pre">num</span></code> number assigned by modem</li>
+<li><code class="docutils literal notranslate"><span class="pre">sin</span></code> Service Identifier Number (decimal 0..255)</li>
+<li><code class="docutils literal notranslate"><span class="pre">state</span></code> where 2 = complete and ready to retrieve</li>
+<li><code class="docutils literal notranslate"><span class="pre">size</span></code> including SIN and MIN bytes</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_check_sat_status">
+<code class="descname">at_check_sat_status</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_check_sat_status" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks satellite status and updates state and statistics.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">A <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> with:
+- <code class="docutils literal notranslate"><span class="pre">success</span></code> Boolean
+- <code class="docutils literal notranslate"><span class="pre">changed</span></code> Boolean
+- <code class="docutils literal notranslate"><span class="pre">state</span></code> (string from ctrl_states)</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_event_notify_bitmap">
+<code class="descname">at_get_event_notify_bitmap</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_event_notify_bitmap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the event notification bitmap as an integer value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">integer event notification bitmap</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_mt_message">
+<code class="descname">at_get_mt_message</code><span class="sig-paren">(</span><em>msg_name</em>, <em>msg_sin</em>, <em>msg_size</em>, <em>data_type=2</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_mt_message" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retrieves a pending completed mobile-terminated message.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>msg_name</strong> – to be retrieved</li>
+<li><strong>msg_sin</strong> – to be retrieved</li>
+<li><strong>msg_size</strong> – to be retrieved</li>
+<li><strong>data_type</strong> – 1 = Text, 2 = Hex, 3 = base64</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li>Boolean success</li>
+<li><dl class="first docutils">
+<dt><code class="docutils literal notranslate"><span class="pre">dictionary</span></code> message consisting of:</dt>
+<dd><ul class="first last">
+<li><code class="docutils literal notranslate"><span class="pre">sin</span></code> Service Identifier Number</li>
+<li><code class="docutils literal notranslate"><span class="pre">min</span></code> Message Identifier Number</li>
+<li><code class="docutils literal notranslate"><span class="pre">payload</span></code> including MIN byte, structure depends on data_type</li>
+<li><code class="docutils literal notranslate"><span class="pre">size</span></code> total in bytes including SIN, MIN</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_nmea">
+<code class="descname">at_get_nmea</code><span class="sig-paren">(</span><em>rmc=True</em>, <em>gga=True</em>, <em>gsa=True</em>, <em>gsv=True</em>, <em>refresh=0</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_nmea" title="Permalink to this definition">¶</a></dt>
+<dd><p>Queries GNSS NMEA strings from the modem and returns an array.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>gga</strong> – essential fix data</li>
+<li><strong>rmc</strong> – recommended minimum</li>
+<li><strong>gsa</strong> – dilution of precision (DOP) and satellites</li>
+<li><strong>gsv</strong> – satellites in view</li>
+<li><strong>refresh</strong> – the update rate being used, in seconds</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li>Boolean success</li>
+<li><code class="docutils literal notranslate"><span class="pre">list</span></code> of NMEA sentences requested</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_response">
+<code class="descname">at_get_response</code><span class="sig-paren">(</span><em>at_cmd</em>, <em>at_timeout=10</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion.
+Parses the response, line by line, until a result code is received or at_timeout is exceeded.
+Assumes Quiet mode is disabled, and will not pass ‘Quiet enable’ (ATQ1) to the modem.
+Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>at_cmd</strong> – the AT command to send</li>
+<li><strong>at_timeout</strong> – the time in seconds to wait for a response</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><p>a <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> containing:</p>
+<ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">echo</span></code> the AT command sent (including CRC if applied) or empty string if Echo disabled</li>
+<li><code class="docutils literal notranslate"><span class="pre">response</span></code> a list of (stripped) strings representing multi-line response</li>
+<li><dl class="first docutils">
+<dt><code class="docutils literal notranslate"><span class="pre">result</span></code> a string returned after the response when Quiet mode is disabled</dt>
+<dd>’OK’ or ‘ERROR’ if Verbose is enabled on the modem, or a numeric error code that can be looked up
+in idpmodem.atErrorResultCodes</dd>
+</dl>
+</li>
+<li><code class="docutils literal notranslate"><span class="pre">checksum</span></code> the CRC (if enabled) or None</li>
+<li><code class="docutils literal notranslate"><span class="pre">error</span></code> Boolean if CRC is correct</li>
+<li><code class="docutils literal notranslate"><span class="pre">timeout</span></code> Boolean if AT response timed out</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_result_code">
+<code class="descname">at_get_result_code</code><span class="sig-paren">(</span><em>result_code</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_result_code" title="Permalink to this definition">¶</a></dt>
+<dd><p>Queries the details of an error response on the AT command interface.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>result_code</strong> – the value returned by the AT command response</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<li>the specific error code</li>
+<li>the string description of the error code</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_initialize_modem">
+<code class="descname">at_initialize_modem</code><span class="sig-paren">(</span><em>use_crc=False</em>, <em>verbose=True</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_initialize_modem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initializes the modem after new connection. Restores saved defaults, disables Quiet mode, enables Echo.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">CRC use is recommended when using a long cable between your controller and the satellite modem.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>use_crc</strong> – optionally enables CRC on AT commands (e.g. if using long serial cable)</li>
+<li><strong>verbose</strong> – optionally use verbose mode for results (OK/ERROR)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_save_config">
+<code class="descname">at_save_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_save_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Store the current configuration including all S registers.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_send_message">
+<code class="descname">at_send_message</code><span class="sig-paren">(</span><em>data_string</em>, <em>data_format=1</em>, <em>msg_sin=128</em>, <em>msg_min=1</em>, <em>priority=4</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_send_message" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>data_string</strong> – data to be transmitted</li>
+<li><strong>data_format</strong> – 1=Text (default), 2=ASCII-Hex, 3=base64</li>
+<li><strong>msg_sin</strong> – first byte of message (default 128 “user”)</li>
+<li><strong>msg_min</strong> – second byte of message (default 1 “user”)</li>
+<li><strong>priority</strong> – 1(high) through 4(low, default)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean result</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_set_event_notifications">
+<code class="descname">at_set_event_notifications</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_set_event_notifications" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the event notification bitmap using an integer mask. Truncates the bitmap if too large.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – integer to set the S88 register bitmap</li>
+<li><strong>save</strong> – Boolean whether to write to Non-Volatile Memory</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean result</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_set_gnss_dpm">
+<code class="descname">at_set_gnss_dpm</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_set_gnss_dpm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the GNSS Dynamic Platform model (S33, default 0).  <code class="docutils literal notranslate"><span class="pre">gnss_dpm_mode</span></code> is an enumerated type:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">Portable</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">Stationary</span></code>: 2</li>
+<li><code class="docutils literal notranslate"><span class="pre">Pedestrian</span></code>: 3</li>
+<li><code class="docutils literal notranslate"><span class="pre">Automotive</span></code>: 4</li>
+<li><code class="docutils literal notranslate"><span class="pre">Sea</span></code>: 5</li>
+<li><code class="docutils literal notranslate"><span class="pre">Air</span> <span class="pre">1g</span></code>: 6</li>
+<li><code class="docutils literal notranslate"><span class="pre">Air</span> <span class="pre">2g</span></code>: 7</li>
+<li><code class="docutils literal notranslate"><span class="pre">Air</span> <span class="pre">4g</span></code>: 8</li>
+</ul>
+</div></blockquote>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Check with modem manufacturer to confirm available GNSS settings on your hardware variant.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – an enumerated type</li>
+<li><strong>save</strong> – if writing to NVM</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_event_notifications">
+<code class="descname">get_event_notifications</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_event_notifications" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads the event notifications bitmap and populates an <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code>.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_gnss_continuous">
+<code class="descname">get_gnss_continuous</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_gnss_continuous" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the GNSS continuous interval (S55, default 0) and stores in the Modem instance.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_gnss_dpm">
+<code class="descname">get_gnss_dpm</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_gnss_dpm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the GNSS Dynamic Platform Model (S33, default 0) and stores in Modem instance.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_gnss_mode">
+<code class="descname">get_gnss_mode</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_gnss_mode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the GNSS mode (S39, default 0) and stores in the Modem instance.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_power_mode">
+<code class="descname">get_power_mode</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_power_mode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the power mode (S50, default 0) and stores in the Modem instance.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_statistics">
+<code class="descname">get_statistics</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_statistics" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> of operating statistics for the modem/network.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"><code class="docutils literal notranslate"><span class="pre">dictionary</span></code> of strings and KPI values containing key statistics</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_wakeup_interval">
+<code class="descname">get_wakeup_interval</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_wakeup_interval" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the wakeup interval (S51, default 0) and stores in the Modem instance.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.log_at_config">
+<code class="descname">log_at_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.log_at_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logs/displays the current AT configuration options (e.g. CRC, Verbose, Echo, Quiet) on the console.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.log_sat_status">
+<code class="descname">log_sat_status</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.log_sat_status" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logs/displays the current satellite status on the console.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.log_statistics">
+<code class="descname">log_statistics</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.log_statistics" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logs the modem/network statistics.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.set_event_notification">
+<code class="descname">set_event_notification</code><span class="sig-paren">(</span><em>key</em>, <em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_event_notification" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets a particular event monitoring status in the event notification bitmap.
+event_notifications is an <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code> with:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">newGnssFix</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">newMtMsg</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">moMsgComplete</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">modemRegistered</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">modemReset</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">jamCutState</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">modemResetPending</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">lowPowerChange</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">utcUpdate</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">fixTimeout</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">eventCached</span></code></li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>key</strong> – event name as defined in the <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code></li>
+<li><strong>value</strong> – Boolean to set/clear the bit</li>
+<li><strong>save</strong> – Boolean to store the configuration to Non-Volatile Memory</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.set_gnss_continuous">
+<code class="descname">set_gnss_continuous</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_gnss_continuous" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the GNSS continuous mode refresh interval (S55, default 0).</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – (integer) seconds between refresh from 0..30.  0=disabled/on-demand.</li>
+<li><strong>save</strong> – if writing to NVM</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.set_gnss_mode">
+<code class="descname">set_gnss_mode</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_gnss_mode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the GNSS mode (S39) (GPS, GLONASS, Beidou).  <code class="docutils literal notranslate"><span class="pre">gnss_mode</span></code> is an enumerated type:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">GPS</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">GLONASS</span></code>: 1</li>
+<li><code class="docutils literal notranslate"><span class="pre">BEIDOU</span></code>: 2</li>
+<li><code class="docutils literal notranslate"><span class="pre">GPS+GLONASS</span></code>: 10</li>
+<li><code class="docutils literal notranslate"><span class="pre">GPS+BEIDOU</span></code>: 11</li>
+<li><code class="docutils literal notranslate"><span class="pre">GLONASS+BEIDOU</span></code>: 12</li>
+</ul>
+</div></blockquote>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Check with modem manufacturer to confirm available GNSS settings on your hardware variant.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – an enumerated type</li>
+<li><strong>save</strong> – if writing to NVM</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.set_power_mode">
+<code class="descname">set_power_mode</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_power_mode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the power mode (S50, default 0).  <code class="docutils literal notranslate"><span class="pre">power_mode</span></code> is an enumerated type with:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">Mobile</span> <span class="pre">Powered</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">Fixed</span> <span class="pre">Powered</span></code>: 1</li>
+<li><code class="docutils literal notranslate"><span class="pre">Mobile</span> <span class="pre">Battery</span></code>: 2</li>
+<li><code class="docutils literal notranslate"><span class="pre">Fixed</span> <span class="pre">Battery</span></code>: 3</li>
+<li><code class="docutils literal notranslate"><span class="pre">Mobile</span> <span class="pre">Minimal</span></code>: 4</li>
+<li><code class="docutils literal notranslate"><span class="pre">Mobile</span> <span class="pre">Stationary</span></code>: 5</li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – an enumerated type</li>
+<li><strong>save</strong> – if writing to NVM</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.set_wakeup_interval">
+<code class="descname">set_wakeup_interval</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_wakeup_interval" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the wakeup interval (S51, default 0).  <code class="docutils literal notranslate"><span class="pre">wakeup_interval</span></code> is an enumerated type:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">5</span> <span class="pre">seconds</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">30</span> <span class="pre">seconds</span></code>: 1</li>
+<li><code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">minute</span></code>: 2</li>
+<li><code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">minute</span></code>: 3</li>
+<li><code class="docutils literal notranslate"><span class="pre">10</span> <span class="pre">minute</span></code>: 4</li>
+<li><code class="docutils literal notranslate"><span class="pre">30</span> <span class="pre">minute</span></code>: 5</li>
+<li><code class="docutils literal notranslate"><span class="pre">60</span> <span class="pre">minute</span></code>: 6</li>
+<li><code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">minute</span></code>: 7</li>
+<li><code class="docutils literal notranslate"><span class="pre">5</span> <span class="pre">minute</span></code>: 8</li>
+<li><code class="docutils literal notranslate"><span class="pre">15</span> <span class="pre">minute</span></code>: 9</li>
+<li><code class="docutils literal notranslate"><span class="pre">20</span> <span class="pre">minute</span></code>: 10</li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>value</strong> – an enumerated type</li>
+<li><strong>save</strong> – if writing to NVM</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodem.Message">
+<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">Message</code><span class="sig-paren">(</span><em>name=None</em>, <em>msg_sin=255</em>, <em>msg_min=255</em>, <em>payload_b64=None</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Message" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class intended for abstracting message characteristics.</p>
+<dl class="method">
+<dt id="idpmodem.Message.add_field">
+<code class="descname">add_field</code><span class="sig-paren">(</span><em>name</em>, <em>data_type</em>, <em>value</em>, <em>bit_size</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Message.add_field" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add a field to the message.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>name</strong> – (string)</li>
+<li><strong>data_type</strong> – (string) from supported types</li>
+<li><strong>value</strong> – the value (compliant with data_type)</li>
+<li><strong>bit_size</strong> – string formatter ‘0nb’ where n is number of bits</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li>error code</li>
+<li>error string</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Message.delete_field">
+<code class="descname">delete_field</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Message.delete_field" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove a field from the message.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>name</strong> – of field (string)</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<li>error code (0 = no error)</li>
+<li>error string description (0 = “OK”)</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Message.encode_idp">
+<code class="descname">encode_idp</code><span class="sig-paren">(</span><em>data_format=2</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Message.encode_idp" title="Permalink to this definition">¶</a></dt>
+<dd><p>Encodes the message using the specified data format (Text, Hex, base64).</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>data_format</strong> – 1=Text, 2=ASCII-Hex, 3=base64</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">encoded_payload (string) to pass into AT%MGRT</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodem.MobileOriginatedMessage">
+<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">MobileOriginatedMessage</code><span class="sig-paren">(</span><em>name=None</em>, <em>msg_sin=255</em>, <em>msg_min=255</em>, <em>payload_b64=None</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.MobileOriginatedMessage" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class containing Mobile Originated (aka Return) message properties.
+Initializes Mobile Originated (Return) Message with state = <code class="docutils literal notranslate"><span class="pre">UNAVAILABLE</span></code>
+Return States enumeration (per modem documentation):</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">UNAVAILABLE</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">READY</span></code>: 4</li>
+<li><code class="docutils literal notranslate"><span class="pre">SENDING</span></code>: 5</li>
+<li><code class="docutils literal notranslate"><span class="pre">COMPLETE</span></code>: 6</li>
+<li><code class="docutils literal notranslate"><span class="pre">FAILED</span></code>: 7</li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>name</strong> – identifier for the message (tbd limitations)</li>
+<li><strong>msg_sin</strong> – Service Identification Number (1st byte of payload)</li>
+<li><strong>msg_min</strong> – Message Identification Number (2nd byte of payload)</li>
+<li><strong>payload_b64</strong> – (optional) base64 encoded payload (not including SIN/MIN)</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodem.MobileTerminatedMessage">
+<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">MobileTerminatedMessage</code><span class="sig-paren">(</span><em>name=None</em>, <em>msg_sin=255</em>, <em>msg_min=255</em>, <em>payload_b64=None</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.MobileTerminatedMessage" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class containing Mobile Terminated (aka Forward) message properties.
+Initializes Mobile Terminated (Forward) Message with state = <code class="docutils literal notranslate"><span class="pre">UNAVAILABLE</span></code>
+Forward States enumeration (per modem documentation):</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">UNAVAILABLE</span></code>: 0</li>
+<li><code class="docutils literal notranslate"><span class="pre">COMPLETE</span></code>: 2</li>
+<li><code class="docutils literal notranslate"><span class="pre">RETRIEVED</span></code>: 3</li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>name</strong> – </li>
+<li><strong>msg_sin</strong> – </li>
+<li><strong>msg_min</strong> – </li>
+<li><strong>payload_b64</strong> – </li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="module-idpmodemsample">
+<span id="idpmodemsample"></span><h2>idpmodemsample<a class="headerlink" href="#module-idpmodemsample" title="Permalink to this headline">¶</a></h2>
+<p>Sample program to run on Raspberry Pi (headless) or Windows (using ORBCOMM/SkyWave Modem Simulator)
+or Multitech Conduit with serial mCard (AP1 slot).
+Periodically queries modem status, checks for incoming messages and sends location reports</p>
+<dl class="docutils">
+<dt>Dependencies:</dt>
+<dd><ul class="first last simple">
+<li>(REQUIRED) crcxmodem.py calculates CRC-16-CCITT xmodem</li>
+<li>(REQUIRED) idpmodem.py contains object definitions for the modem</li>
+<li>(optional) RPi.GPIO for running headless on Raspberry Pi</li>
+<li>(optional) serialportfinder.py is used when running on Windows test environment (detect COM port)</li>
+</ul>
+</dd>
+</dl>
+<p>Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
+Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
+When a new interval is configured, a location report is generated immediately, thereafter at the new interval.</p>
+<dl class="class">
+<dt id="idpmodemsample.HMI">
+<em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">HMI</code><a class="headerlink" href="#idpmodemsample.HMI" title="Permalink to this definition">¶</a></dt>
+<dd><p>A Human Machine Interface element that can be used for headless operation</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodemsample.Location">
+<em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">Location</code><span class="sig-paren">(</span><em>latitude=5460000</em>, <em>longitude=10860000</em>, <em>altitude=0</em>, <em>speed=0</em>, <em>heading=0</em>, <em>timestamp=0</em>, <em>satellites=0</em>, <em>fixtype=1</em>, <em>PDOP=0</em>, <em>HDOP=0</em>, <em>VDOP=0</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.Location" title="Permalink to this definition">¶</a></dt>
+<dd><p>A class containing a specific set of location-based information for a given point in time.
+Uses 91/181 if lat/lon are unknown</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodemsample.ModemGPIO">
+<em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">ModemGPIO</code><a class="headerlink" href="#idpmodemsample.ModemGPIO" title="Permalink to this definition">¶</a></dt>
+<dd><p>Physical input/output interfaces for the modem e.g. reset, interrupts</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="idpmodemsample.RepeatingTimer">
+<em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">RepeatingTimer</code><span class="sig-paren">(</span><em>seconds</em>, <em>name=None</em>, <em>sleep_chunk=0.25</em>, <em>callback=None</em>, <em>*args</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer" title="Permalink to this definition">¶</a></dt>
+<dd><p>A Thread class that repeats function calls like a Timer but can be stopped, restarted and change interval.</p>
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.change_interval">
+<code class="descname">change_interval</code><span class="sig-paren">(</span><em>seconds</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.change_interval" title="Permalink to this definition">¶</a></dt>
+<dd><p>Change the timer interval and restart it.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.restart_timer">
+<code class="descname">restart_timer</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.restart_timer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Restart the repeating timer.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.run">
+<code class="descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.run" title="Permalink to this definition">¶</a></dt>
+<dd><p>Counts down the interval, checking every <code class="docutils literal notranslate"><span class="pre">sleep_chunk</span></code> the desired state.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.start_timer">
+<code class="descname">start_timer</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.start_timer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initially start the repeating timer.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.stop_timer">
+<code class="descname">stop_timer</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.stop_timer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Stop the repeating timer.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodemsample.RepeatingTimer.terminate">
+<code class="descname">terminate</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.terminate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Terminate the timer. (Cannot be restarted)</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.check_mt_messages">
+<code class="descclassname">idpmodemsample.</code><code class="descname">check_mt_messages</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.check_mt_messages" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks for Mobile-Terminated messages in modem queue, retrieves and handles.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.check_sat_status">
+<code class="descclassname">idpmodemsample.</code><code class="descname">check_sat_status</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.check_sat_status" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks satellite status using Trace Log Mode to update state and statistics</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.get_send_idp_location">
+<code class="descclassname">idpmodemsample.</code><code class="descname">get_send_idp_location</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.get_send_idp_location" title="Permalink to this definition">¶</a></dt>
+<dd><p>Queries GPS NMEA strings from the modem and submits to a send/processing routine.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.handle_mt_tracking_command">
+<code class="descclassname">idpmodemsample.</code><code class="descname">handle_mt_tracking_command</code><span class="sig-paren">(</span><em>message</em>, <em>data_type=2</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.handle_mt_tracking_command" title="Permalink to this definition">¶</a></dt>
+<dd><p>Expects to get SIN 255 MIN 1 to reconfigure tracking interval, in minutes, in a range from 1-1440.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>message</strong> – <p><code class="docutils literal notranslate"><span class="pre">dictionary</span></code> for Mobile-Terminated message with</p>
+<ul>
+<li><code class="docutils literal notranslate"><span class="pre">sin</span></code> Service Identifier Number</li>
+<li><code class="docutils literal notranslate"><span class="pre">min</span></code> Message Identifier Number</li>
+<li><code class="docutils literal notranslate"><span class="pre">payload</span></code> (including MIN byte)</li>
+<li><code class="docutils literal notranslate"><span class="pre">size</span></code> in bytes including SIN, MIN</li>
+</ul>
+</li>
+<li><strong>data_type</strong> – 1 = Text (string), 2 = Hex (bytearray), 3 = base64 (bytearray)</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.init_environment">
+<code class="descclassname">idpmodemsample.</code><code class="descname">init_environment</code><span class="sig-paren">(</span><em>default_logfile=None</em>, <em>debug=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.init_environment" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initializes the OS environment.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>default_logfile</strong> – name to use</li>
+<li><strong>debug</strong> – Boolean value passed in from execution options</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li>Boolean success</li>
+<li><dl class="first docutils">
+<dt><code class="docutils literal notranslate"><span class="pre">Dictionary</span></code> containing</dt>
+<dd><ul class="first last">
+<li><code class="docutils literal notranslate"><span class="pre">serial_name</span></code> e.g. <em>COM1</em></li>
+<li><code class="docutils literal notranslate"><span class="pre">logfile</span></code> e.g. <em>logfile.log</em></li>
+<li><code class="docutils literal notranslate"><span class="pre">tracking</span></code> interval in seconds</li>
+<li><code class="docutils literal notranslate"><span class="pre">debug</span></code> value (may be overridden by Windows GUI)</li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.init_log">
+<code class="descclassname">idpmodemsample.</code><code class="descname">init_log</code><span class="sig-paren">(</span><em>logfile=None</em>, <em>file_size=5</em>, <em>debug=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.init_log" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initializes logging to file and console.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>logfile</strong> – the name of the file</li>
+<li><strong>file_size</strong> – the max size of the file in megabytes, before wrapping occurs</li>
+<li><strong>debug</strong> – Boolean to enable verbose logging</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><code class="docutils literal notranslate"><span class="pre">log</span></code> object</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.main">
+<code class="descclassname">idpmodemsample.</code><code class="descname">main</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.main" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets up threads for polling satellite status, incoming over-the-air messages, and location updates.
+Monitors the serial connection to the modem and re-initializes on reconnect.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.modem_attach">
+<code class="descclassname">idpmodemsample.</code><code class="descname">modem_attach</code><span class="sig-paren">(</span><em>max_attempts=0</em>, <em>hmi_indicator=None</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.modem_attach" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initializes communications with the modem. Allows for HMI indicator use.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>max_attempts</strong> – the maximum number of tries sending a basic AT command (0 = infinite)</li>
+<li><strong>hmi_indicator</strong> – an optional object to provide headless notification (LED flasher)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Boolean success</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.monitor_com">
+<code class="descclassname">idpmodemsample.</code><code class="descname">monitor_com</code><span class="sig-paren">(</span><em>disconnect_timeouts=3</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.monitor_com" title="Permalink to this definition">¶</a></dt>
+<dd><p>Monitors the serial communication to detect disconnects/reconnects.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>disconnect_timeouts</strong> – the number of command timeouts before disconnect is declared</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">serial connection state to satellite modem</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.parse_args">
+<code class="descclassname">idpmodemsample.</code><code class="descname">parse_args</code><span class="sig-paren">(</span><em>argv</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.parse_args" title="Permalink to this definition">¶</a></dt>
+<dd><p>Parses the command line arguments.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>argv</strong> – An array containing the command line arguments</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">A dictionary containing the command line arguments and their values</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.parse_nmea_to_location">
+<code class="descclassname">idpmodemsample.</code><code class="descname">parse_nmea_to_location</code><span class="sig-paren">(</span><em>sentence</em>, <em>loc</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.parse_nmea_to_location" title="Permalink to this definition">¶</a></dt>
+<dd><p>Parses a NMEA string to partially populate a <code class="docutils literal notranslate"><span class="pre">Location</span></code> object.
+Several sentence parameters are unused but remain as placeholders for completeness/future use.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>sentence</strong> – NMEA sentence (including prefix and suffix)</li>
+<li><strong>loc</strong> – the Location object to be populated</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li>Boolean success of operation</li>
+<li>error string if not successful</li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.send_idp_location">
+<code class="descclassname">idpmodemsample.</code><code class="descname">send_idp_location</code><span class="sig-paren">(</span><em>loc</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.send_idp_location" title="Permalink to this definition">¶</a></dt>
+<dd><p>Prepares a specific binary-optimized location report using SIN=255, MIN=255.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>loc</strong> – a Location object</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Boolean success</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="idpmodemsample.validate_nmea_checksum">
+<code class="descclassname">idpmodemsample.</code><code class="descname">validate_nmea_checksum</code><span class="sig-paren">(</span><em>sentence</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.validate_nmea_checksum" title="Permalink to this definition">¶</a></dt>
+<dd><p>Validates NMEA sentence using checksum according to the standard.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>sentence</strong> – NMEA sentence including checksum</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<li>Boolean result (checksum correct)</li>
+<li>raw NMEA data string, with prefix $Gx and checksum suffix removed</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="module-crcxmodem">
+<span id="crcxmodem"></span><h2>crcxmodem<a class="headerlink" href="#module-crcxmodem" title="Permalink to this headline">¶</a></h2>
+<div class="line-block">
+<div class="line">Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.</div>
+<div class="line">Borrowed from <a class="reference external" href="https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation">https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation</a>.</div>
+</div>
+<dl class="function">
+<dt id="crcxmodem.crc">
+<code class="descclassname">crcxmodem.</code><code class="descname">crc</code><span class="sig-paren">(</span><em>string</em>, <em>initial=65535</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the CRC value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>string</strong> – to have CRC calculated on</li>
+<li><strong>initial</strong> – start value of CRC (0xFFFF for IDP modem)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">crc value</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="crcxmodem.crc_bytes">
+<code class="descclassname">crcxmodem.</code><code class="descname">crc_bytes</code><span class="sig-paren">(</span><em>*i</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc_bytes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the CRC value of a byte stream.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>i</strong> – byte stream</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">crc value</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+<div class="section" id="indices-and-tables">
+<h2>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></li>
+<li><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></li>
+<li><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></li>
+</ul>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">idp-modem  documentation</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2018, Geoff Bruce-Payne.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.7.6.
+    </div>
+  </body>
+</html>
