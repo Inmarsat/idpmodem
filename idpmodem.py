@@ -10,7 +10,7 @@ import binascii
 import base64
 import struct
 import sys
-import json
+# import json
 
 
 class Modem(object):
@@ -1602,7 +1602,9 @@ class Message(object):
                     # TODO: be careful on padding strings...this should pad with NULL
                     bin_field += ''.join('0' for pad in range(len(bin_field), bit_size))
             else:
-                raise
+                pass
+                # TODO: handle other cases
+                # raise
             bin_str += bin_field
         payload_pad_bits = len(bin_str) % 8
         while payload_pad_bits > 0:
