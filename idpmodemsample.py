@@ -12,7 +12,7 @@ Dependencies:
 
 Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
 Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
-  When a new interval is configured, a location report is generated immediately, thereafter at the new interval.
+When a new interval is configured, a location report is generated immediately, thereafter at the new interval.
 """
 
 import time
@@ -37,18 +37,21 @@ global shutdown_flag        # a flag triggered by an interrupt from a parallel s
 
 
 class RepeatingTimer(threading.Thread):
-    """ A Thread class that repeats function calls like a Timer but allows:
-        start_timer(), stop_timer(), restart_timer(), change_interval(), terminate()
-    :param seconds (float) the interval time between callbacks
-    :param name of the thread for identification
-    :param sleep_chunk the divisor of the interval for intermediate steps/threading
-    :param callback the function that will be executed each interval
-    :param *args optional argument pointers for the callback function
-    """
+    """A Thread class that repeats function calls like a Timer but can be stopped, restarted and change interval."""
     # TODO: move this class into an imported module
     global log
 
     def __init__(self, seconds, name=None, sleep_chunk=0.25, callback=None, *args):
+        """
+        Initialization of the subclass.
+
+        :param seconds: interval for timer repeat
+        :param name: used to identify the thread
+        :param sleep_chunk: tick cycle in seconds between state checks
+        :param callback: the callback to execute each timer expiry
+        :param args: optional arguments to pass into the callback
+
+        """
         threading.Thread.__init__(self)
         if name is not None:
             self.name = name
@@ -66,6 +69,7 @@ class RepeatingTimer(threading.Thread):
         self.count = self.interval / self.sleep_chunk
 
     def run(self):
+        """Counts down the interval, checking every ``sleep_chunk`` the desired state."""
         while not self.terminate_event.is_set():
             while self.count > 0 and self.start_event.is_set() and self.interval > 0:
                 ''' # comment this line for debug output every second
@@ -82,15 +86,18 @@ class RepeatingTimer(threading.Thread):
                     self.count = self.interval / self.sleep_chunk
 
     def start_timer(self):
+        """Initially start the repeating timer."""
         self.start_event.set()
         log.info(self.name + " timer started (" + str(self.interval) + " seconds)")
 
     def stop_timer(self):
+        """Stop the repeating timer."""
         self.start_event.clear()
         self.count = self.interval / self.sleep_chunk
         log.info(self.name + " timer stopped (" + str(self.interval) + " seconds)")
 
     def restart_timer(self):
+        """Restart the repeating timer."""
         if self.start_event.is_set():
             self.reset_event.set()
         else:
@@ -98,23 +105,42 @@ class RepeatingTimer(threading.Thread):
         log.info(self.name + " timer restarted (" + str(self.interval) + " seconds)")
 
     def change_interval(self, seconds):
+        """Change the timer interval and restart it."""
         log.info(self.name + " timer interval changed (" + str(self.interval) + " seconds)")
         self.interval = seconds
         self.restart_timer()
 
     def terminate(self):
+        """Terminate the timer. (Cannot be restarted)"""
         self.terminate_event.set()
         log.info(self.name + " timer terminated")
 
 
 class Location(object):
-    """ A class containing a specific set of location-based information for a given point in time
-        Uses 91/181 if lat/lon are unknown
+    """
+    A class containing a specific set of location-based information for a given point in time.
+    Uses 91/181 if lat/lon are unknown
     """
 
     def __init__(self, latitude=91*60*1000, longitude=181*60*1000, altitude=0,
                  speed=0, heading=0, timestamp=0, satellites=0, fixtype=1,
                  PDOP=0, HDOP=0, VDOP=0):
+        """
+        Creates a Location instance with default lat/lng 91/181 *unknown*
+
+        :param latitude: in 1/1000th minutes (approximately 1 m resolution)
+        :param longitude: in 1/1000th minutes (approximately 1 m resolution)
+        :param altitude: in metres
+        :param speed: in knots
+        :param heading: in degrees
+        :param timestamp: in seconds since 1970-01-01T00:00:00Z
+        :param satellites: in view at time of fix
+        :param fixtype: None, 2D or 3D
+        :param PDOP: Probability Dilution of Precision
+        :param HDOP: Horizontal DOP
+        :param VDOP: Vertical DOP
+
+        """
         self.latitude = latitude                # 1/1000th minutes
         self.longitude = longitude              # 1/1000th minutes
         self.altitude = altitude                # metres
@@ -179,13 +205,17 @@ def check_sat_status():
 
 
 def handle_mt_tracking_command(message, data_type=2):
-    """ Expects to get SIN 255 MIN 1 'reconfigure tracking interval, in minutes, in a range from 1-1440 
-    :param  message dictionary for Mobile-Terminated message with
-                'sin' Service Identifier Number
-                'min' Message Identifier Number
-                'payload' (including MIN byte)
-                'size' bytes including SIN, MIN
-    :param  data_type 1 = Text (string), 2 = Hex (bytearray), 3 = base64 (bytearray)
+    """
+    Expects to get SIN 255 MIN 1 to reconfigure tracking interval, in minutes, in a range from 1-1440.
+
+    :param message: ``dictionary`` for Mobile-Terminated message with
+
+       - ``sin`` Service Identifier Number
+       - ``min`` Message Identifier Number
+       - ``payload`` (including MIN byte)
+       - ``size`` in bytes including SIN, MIN
+    :param data_type: 1 = Text (string), 2 = Hex (bytearray), 3 = base64 (bytearray)
+
     """
     # TODO: Additional testing
     global log
@@ -215,7 +245,7 @@ def handle_mt_tracking_command(message, data_type=2):
 
 
 def check_mt_messages():
-    """ Checks for Mobile-Terminated messages in modem queue, retrieves and handles."""
+    """Checks for Mobile-Terminated messages in modem queue, retrieves and handles."""
     global log
     global modem
 
@@ -243,9 +273,12 @@ def check_mt_messages():
 
 
 def send_idp_location(loc):
-    """ Prepares a specific binary-optimized location report using SIN=255, MIN=255
-    :param  loc: a Location object
-    :return Boolean success
+    """
+    Prepares a specific binary-optimized location report using SIN=255, MIN=255.
+
+    :param loc: a Location object
+    :return: Boolean success
+
     """
     global modem
     message = idpmodem.MobileOriginatedMessage(msg_sin=255, msg_min=255)
@@ -267,12 +300,15 @@ def send_idp_location(loc):
 
 
 def validate_nmea_checksum(sentence):
-    """ Validates NMEA checksum according to the standard
-    :param sentence: NMEA sentence including checksum
-    :return: boolean result (checksum correct)
-             raw NMEA data string, with prefix $Gx and checksum suffix removed
     """
+    Validates NMEA sentence using checksum according to the standard.
 
+    :param sentence: NMEA sentence including checksum
+    :returns:
+       - Boolean result (checksum correct)
+       - raw NMEA data string, with prefix $Gx and checksum suffix removed
+
+    """
     sentence = sentence.strip('\n').strip('\r')
     nmeadata, cksum = sentence.split('*', 1)
     nmeadata = nmeadata.replace('$', '')
@@ -281,14 +317,17 @@ def validate_nmea_checksum(sentence):
 
 
 def parse_nmea_to_location(sentence, loc):
-    """ parses NMEA string(s) to populate a Location object
-    Several sentence parameters are unused but remain as placeholders for completeness/future use
+    """
+    Parses a NMEA string to partially populate a ``Location`` object.
+    Several sentence parameters are unused but remain as placeholders for completeness/future use.
+
     :param sentence: NMEA sentence (including prefix and suffix)
     :param loc: the Location object to be populated
-    :return: Boolean success of operation
-             error string if not successful
-    """
+    :returns:
+       - Boolean success of operation
+       - error string if not successful
 
+    """
     err_str = ''
     res, NMEA_data = validate_nmea_checksum(sentence)
     if res:
@@ -398,7 +437,7 @@ def parse_nmea_to_location(sentence, loc):
 
 
 def get_send_idp_location():
-    """ Queries GPS NMEA strings from the modem and submits to a send/processing routine. """
+    """Queries GPS NMEA strings from the modem and submits to a send/processing routine."""
     global log
     global modem
     global tracking_interval
@@ -428,11 +467,14 @@ def get_send_idp_location():
 
 
 def init_log(logfile=None, file_size=5, debug=False):
-    """ Initializes logging to file and console
-    :param  logfile the name of the file
-    :param  file_size the max size of the file in megabytes, before wrapping occurs
-    :param  debug enables verbose logging
-    :return log object
+    """
+    Initializes logging to file and console.
+
+    :param logfile: the name of the file
+    :param file_size: the max size of the file in megabytes, before wrapping occurs
+    :param debug: Boolean to enable verbose logging
+    :return: ``log`` object
+
     """
     # TODO: move into imported module
     if debug:
@@ -460,10 +502,13 @@ def init_log(logfile=None, file_size=5, debug=False):
 
 
 def modem_attach(max_attempts=0, hmi_indicator=None):
-    """ Initializes communications with the modem. Allows for HMI indicator use.
-    :param  max_attempts - the maximum number of tries sending a basic AT command (0 = infinite)
-    :param  hmi_indicator - an optional object to provide headless notification (LED flasher)
-    :return Boolean success
+    """
+    Initializes communications with the modem. Allows for HMI indicator use.
+
+    :param max_attempts: the maximum number of tries sending a basic AT command (0 = infinite)
+    :param hmi_indicator: an optional object to provide headless notification (LED flasher)
+    :return: Boolean success
+
     """
     # TODO: add HMI capability
     global log
@@ -489,7 +534,13 @@ def modem_attach(max_attempts=0, hmi_indicator=None):
 
 
 def monitor_com(disconnect_timeouts=3):
-    """ TODO: docs"""
+    """
+    Monitors the serial communication to detect disconnects/reconnects.
+
+    :param disconnect_timeouts: the number of command timeouts before disconnect is declared
+    :return: serial connection state to satellite modem
+
+    """
     global log
     global modem
 
@@ -501,15 +552,19 @@ def monitor_com(disconnect_timeouts=3):
 
 
 def init_environment(default_logfile=None, debug=False):
-    """Initializes the OS environment
-    :param  default_logfile name to use
-    :param  debug value passed in from execution options
-    :returns    Boolean success
-                Dictionary:
-                'serial_name' e.g. 'COM1'
-                'logfile' e.g. 'logfile.log'
-                'tracking' interval in seconds
-                'debug' value (may be overridden by Windows GUI)
+    """
+    Initializes the OS environment.
+
+    :param default_logfile: name to use
+    :param debug: Boolean value passed in from execution options
+    :returns:
+       - Boolean success
+       - ``Dictionary`` containing
+          - ``serial_name`` e.g. *COM1*
+          - ``logfile`` e.g. *logfile.log*
+          - ``tracking`` interval in seconds
+          - ``debug`` value (may be overridden by Windows GUI)
+
     """
     success = False
     serial_name = None
@@ -549,9 +604,12 @@ def init_environment(default_logfile=None, debug=False):
 
 
 def parse_args(argv):
-    """Parse the command line arguments
+    """
+    Parses the command line arguments.
+
     :param argv: An array containing the command line arguments
     :returns: A dictionary containing the command line arguments and their values
+
     """
     parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
 
@@ -577,7 +635,10 @@ def parse_args(argv):
 
 
 def main():
-
+    """
+    Sets up threads for polling satellite status, incoming over-the-air messages, and location updates.
+    Monitors the serial connection to the modem and re-initializes on reconnect.
+    """
     global log
     global modem
     global tracking_interval
