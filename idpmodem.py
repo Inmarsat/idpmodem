@@ -1653,10 +1653,26 @@ class Message(object):
 
 
 class MobileOriginatedMessage(Message):
-    """Class containing Mobile Originated (aka Forward) message properties."""
+    """
+    Class containing Mobile Originated (aka Return) message properties.
+    Initializes Mobile Originated (Return) Message with state = ``UNAVAILABLE``
+    Return States enumeration (per modem documentation):
+
+       - ``UNAVAILABLE``: 0
+       - ``READY``: 4
+       -  ``SENDING``: 5
+       - ``COMPLETE``: 6
+       - ``FAILED``: 7
+
+    :param name: identifier for the message (tbd limitations)
+    :param msg_sin: Service Identification Number (1st byte of payload)
+    :param msg_min: Message Identification Number (2nd byte of payload)
+    :param payload_b64: (optional) base64 encoded payload (not including SIN/MIN)
+
+    """
 
     class State:
-        """State enumeration for Mobile Originated (aka Forward) messages."""
+        # """State enumeration for Mobile Originated (aka Return) messages."""
         UNAVAILABLE = 0
         READY = 4
         SENDING = 5
@@ -1667,16 +1683,46 @@ class MobileOriginatedMessage(Message):
             pass
 
     def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
+        """
+        Initializes Mobile Originated (Return) Message with state = ``UNAVAILABLE``
+        Return States enumeration (per modem documentation):
+
+           - ``UNAVAILABLE``: 0
+           - ``READY``: 4
+           -  ``SENDING``: 5
+           - ``COMPLETE``: 6
+           - ``FAILED``: 7
+
+        :param name: identifier for the message (tbd limitations)
+        :param msg_sin: Service Identification Number (1st byte of payload)
+        :param msg_min: Message Identification Number (2nd byte of payload)
+        :param payload_b64: (optional) base64 encoded payload (not including SIN/MIN)
+
+        """
         Message.__init__(self, name=name, msg_sin=msg_sin, msg_min=msg_min, payload_b64=payload_b64)
         self.states = self.State()
         self.state = self.states.UNAVAILABLE
             
 
 class MobileTerminatedMessage(Message):
-    """Class containing Mobile Originated (aka Forward) message properties"""
+    """
+    Class containing Mobile Terminated (aka Forward) message properties.
+    Initializes Mobile Terminated (Forward) Message with state = ``UNAVAILABLE``
+    Forward States enumeration (per modem documentation):
+
+       - ``UNAVAILABLE``: 0
+       - ``COMPLETE``: 2
+       -  ``RETRIEVED``: 3
+
+    :param name:
+    :param msg_sin:
+    :param msg_min:
+    :param payload_b64:
+
+    """
 
     class State:
-        """State enumeration for Mobile Terminated (aka Return) messages."""
+        # """State enumeration for Mobile Terminated (aka Return) messages."""
         UNAVAILABLE = 0
         COMPLETE = 2
         RETRIEVED = 3
@@ -1685,6 +1731,20 @@ class MobileTerminatedMessage(Message):
             pass
 
     def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
+        """
+        Initializes Mobile Terminated (Forward) Message with state = ``UNAVAILABLE``
+        Forward States enumeration (per modem documentation):
+
+           - ``UNAVAILABLE``: 0
+           - ``COMPLETE``: 2
+           -  ``RETRIEVED``: 3
+
+        :param name:
+        :param msg_sin:
+        :param msg_min:
+        :param payload_b64:
+
+        """
         Message.__init__(self, name=name, msg_sin=msg_sin, msg_min=msg_min, payload_b64=payload_b64)
         self.states = self.State()
         self.state = self.states.UNAVAILABLE
