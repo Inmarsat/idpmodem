@@ -1,6 +1,6 @@
 """
-Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem 
-Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation
+| Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.
+| Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation.
 """
 
 POLYNOMIAL = 0x1021
@@ -31,10 +31,13 @@ def _update_crc(_crc, c):
 
 
 def crc(string, initial=0xffff):
-    """Returns the CRC value
-    :param string to be calculated
-    :param initial value of crc
-    :returns crc value
+    """
+    Returns the CRC value.
+
+    :param string: to have CRC calculated on
+    :param initial: start value of CRC (0xFFFF for IDP modem)
+    :returns: crc value
+
     """
     _crc = initial
     for c in string:
@@ -43,9 +46,12 @@ def crc(string, initial=0xffff):
 
 
 def crc_bytes(*i):
-    """Return the CRC value of a byte stream
-    :param *i byte stream
-    :returns crc value
+    """
+    Returns the CRC value of a byte stream.
+
+    :param i: byte stream
+    :returns: crc value
+
     """
     _crc = PRESET
     for b in i:
