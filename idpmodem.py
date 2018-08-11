@@ -96,10 +96,13 @@ class Modem(object):
     }
     
     def __init__(self, serial_port, log=None, debug=False):
-        """Initializes attributes and pointers used by class methods
-        :param  serial_port a pySerial.serial object
-        :param  log an optional logger
-        :param  debug Boolean option for verbose trace
+        """
+        Initializes attributes and pointers used by Modem class methods
+
+        :param serial_port: a pySerial.serial object
+        :param log: an optional logger
+        :param debug: Boolean option for verbose trace
+
         """
         self.mobile_id = 'unknown'
         self.is_connected = False
@@ -205,16 +208,22 @@ class Modem(object):
         }
 
     def _get_crc(self, at_cmd):
-        """ Returns the CRC-16-CCITT (initial value 0xFFFF) checksum
-        :param at_cmd the AT command to calculate CRC on
-        :return the CRC for the command
+        """
+        Returns the CRC-16-CCITT (initial value 0xFFFF) checksum using crcxmodem module.
+
+        :param at_cmd: the AT command to calculate CRC on
+        :return: the CRC for the AT command
+
         """
         return '{:04X}'.format(crcxmodem.crc(at_cmd, 0xffff))
 
     def _update_stats_at_response(self, at_send_time, at_cmd):
-        """ Updates the last and average AT command response time statistics
-        :param at_send_time the reference time the AT command was sent
-        :param at_cmd the command that was sent
+        """
+        Updates the last and average AT command response time statistics.
+
+        :param at_send_time: (integer) the reference time the AT command was sent
+        :param at_cmd: the command that was sent
+
         """
         log = self.log
         at_response_time_ms = int((time.time() - at_send_time) * 1000)
@@ -227,22 +236,25 @@ class Modem(object):
                 int((self.system_stats['avgATResponseTime_ms'] + at_response_time_ms) / 2)
 
     def at_get_response(self, at_cmd, at_timeout=10):
-        """ Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion
-          Parses the response, line by line, until a result code is received or at_timeout is exceeded
-          Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem
-          Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response
-        :param  at_cmd       the AT command to send
-        :param  at_timeout   the time in seconds to wait for a response
-        :param  debug        optional verbose runtime trace
-        :return a dictionary containing:
-                echo        - the AT command sent (including CRC if applied) or empty string if Echo disabled
-                response    - a list of (stripped) strings representing multi-line response
-                result      - a string returned after the response when Quiet mode is disabled
-                            'OK' or 'ERROR' if Verbose is enabled on the modem,
-                            or a numeric error code that can be looked up in idpmodem.atErrorResultCodes
-                checksum    - the CRC (if enabled) or None
-                error       - Boolean if CRC is correct
-                timeout     - Boolean if AT response timed out
+        """
+        Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion.
+        Parses the response, line by line, until a result code is received or at_timeout is exceeded.
+        Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem.
+        Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response.
+
+        :param at_cmd: the AT command to send
+        :param at_timeout: the time in seconds to wait for a response
+        :return: a ``dictionary`` containing:
+
+           - ``echo`` the AT command sent (including CRC if applied) or empty string if Echo disabled
+           - ``response`` a list of (stripped) strings representing multi-line response
+           - ``result`` a string returned after the response when Quiet mode is disabled
+              'OK' or 'ERROR' if Verbose is enabled on the modem, or a numeric error code that can be looked up
+              in idpmodem.atErrorResultCodes
+           - ``checksum`` the CRC (if enabled) or None
+           - ``error`` Boolean if CRC is correct
+           - ``timeout`` Boolean if AT response timed out
+
         """
         ser = self.serial_port
         log = self.log
@@ -435,10 +447,14 @@ class Modem(object):
                 'timeout': timed_out}
 
     def at_get_result_code(self, result_code):
-        """ Queries the details of an error response on the AT command interface
+        """
+        Queries the details of an error response on the AT command interface.
+
         :param result_code: the value returned by the AT command response
-        :returns: error_code - the specific error code
-                 error_desc - the interpretation of the error code
+        :returns:
+           - the specific error code
+           - the string description of the error code
+
         """
         log = self.log
 
@@ -467,8 +483,11 @@ class Modem(object):
         return error_code, error_desc
 
     def at_attach(self, at_timeout=1):
-        """Attempts to attach using basic AT command
-        :returns    Boolean success
+        """
+        Attempts to attach using basic AT command.
+
+        :return: Boolean success
+
         """
         log = self.log
 
@@ -485,11 +504,16 @@ class Modem(object):
         return success
 
     def at_initialize_modem(self, use_crc=False, verbose=True):
-        """ Initializes the modem after new connection. Restores saved defaults, disables Quiet mode,
+        """
+        Initializes the modem after new connection. Restores saved defaults, disables Quiet mode, enables Echo.
 
-        :param  use_crc  - optionally enables CRC on AT commands (e.g. if using long serial cable)
-        :param  verbose  - optionally use verbose mode for results (OK/ERROR)
-        :return Boolean success
+        .. note::
+           CRC use is recommended when using a long cable between your controller and the satellite modem.
+
+        :param use_crc: optionally enables CRC on AT commands (e.g. if using long serial cable)
+        :param verbose: optionally use verbose mode for results (OK/ERROR)
+        :return: Boolean success
+
         """
         log = self.log
         AT_WAIT = 0.1  # seconds between initialization commands
@@ -613,11 +637,14 @@ class Modem(object):
         return success
 
     def at_check_sat_status(self):
-        """Checks satellite status and updates state and statistics
-        :returns    Dictionary with:
-                    'success' Boolean
-                    'changed' Boolean
-                    'state' (string from ctrl_states)
+        """
+        Checks satellite status and updates state and statistics.
+
+        :returns: A ``dictionary`` with:
+           - ``success`` Boolean
+           - ``changed`` Boolean
+           - ``state`` (string from ctrl_states)
+
         """
         log = self.log
         success = False
@@ -716,16 +743,20 @@ class Modem(object):
         return {'success': success, 'changed': changed, 'state': self.sat_status['CtrlState']}
 
     def at_check_mt_messages(self):
-        """ Checks for Mobile-Terminated messages in modem queue and retrieves if present.
-         Logs a record of the receipt, and handles supported messages
-         :returns   Boolean True if message(s) have been received/completed and ready for retrieval
-                    list of dictionary messages consisting of
-                        'name' used for retrieval
-                        'priority' 0 for mobile-terminated messages
-                        'num' number assigned by modem
-                        'sin' Service Identifier Number (decimal)
-                        'state' where 2 = complete and ready to retrieve
-                        'size' including SIN and MIN bytes
+        """
+        Checks for Mobile-Terminated messages in modem queue and retrieves if present.
+        Logs a record of the receipt, and handles supported messages.
+
+        :returns:
+           - Boolean True if message(s) have been received/completed and ready for retrieval
+           - ``list`` of ``dictionary`` messages consisting of
+              - ``name`` used for retrieval
+              - ``priority`` 0 for mobile-terminated messages
+              - ``num`` number assigned by modem
+              - ``sin`` Service Identifier Number (decimal 0..255)
+              - ``state`` where 2 = complete and ready to retrieve
+              - ``size`` including SIN and MIN bytes
+
         """
         log = self.log
         messages = []
@@ -760,17 +791,21 @@ class Modem(object):
         return True if len(messages) > 0 else False, messages
 
     def at_get_mt_message(self, msg_name, msg_sin, msg_size, data_type=2):
-        """Retrieves a pending completed mobile-terminated message
-        :param      msg_name to be retrieved
-        :param      msg_sin to be retrieved
-        :param      msg_size to be retrieved
-        :param      data_type 1 = Text, 2 = Hex, 3 = base64
-        :returns    Boolean success
-                    dictionary message consisting of:
-                        'sin' Service Identifier Number
-                        'min' Message Identifier Number
-                        'payload' including MIN byte, structure depends on data_type
-                        'size' total in bytes including SIN, MIN
+        """
+        Retrieves a pending completed mobile-terminated message.
+
+        :param msg_name: to be retrieved
+        :param msg_sin: to be retrieved
+        :param msg_size: to be retrieved
+        :param data_type: 1 = Text, 2 = Hex, 3 = base64
+        :returns:
+           - Boolean success
+           - ``dictionary`` message consisting of:
+              - ``sin`` Service Identifier Number
+              - ``min`` Message Identifier Number
+              - ``payload`` including MIN byte, structure depends on data_type
+              - ``size`` total in bytes including SIN, MIN
+
         """
         log = self.log
         msg_retrieved = False
@@ -821,13 +856,16 @@ class Modem(object):
         return msg_retrieved, message
 
     def at_send_message(self, data_string, data_format=1, msg_sin=128, msg_min=1, priority=4):
-        """ Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary
-        :param  data_string: data to be transmitted
-        :param  data_format: 1=Text (default), 2=ASCII-Hex, 3=base64
-        :param  msg_sin: first byte of message (default 128 "user")
-        :param  msg_min: second byte of message (default 1 "user")
-        :param  priority 1(high) through 4(low, default)
-        :return Boolean result
+        """
+        Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary.
+
+        :param data_string: data to be transmitted
+        :param data_format: 1=Text (default), 2=ASCII-Hex, 3=base64
+        :param msg_sin: first byte of message (default 128 "user")
+        :param msg_min: second byte of message (default 1 "user")
+        :param priority: 1(high) through 4(low, default)
+        :return: Boolean result
+
         """
         log = self.log
         self.mo_msg_count += 1
@@ -903,14 +941,17 @@ class Modem(object):
         return msg_complete
 
     def at_get_nmea(self, rmc=True, gga=True, gsa=True, gsv=True, refresh=0):
-        """ Queries GPS NMEA strings from the modem and returns an array.
-        :param      gga essential fix data
-        :param      rmc recommended minimum
-        :param      gsa dilution of precision (DOP) and satellites
-        :param      gsv satellites in view
-        :param      refresh the update rate being used, in seconds
-        :returns    Boolean success
-                    array of NMEA sentences requested
+        """
+        Queries GNSS NMEA strings from the modem and returns an array.
+
+        :param gga: essential fix data
+        :param rmc: recommended minimum
+        :param gsa: dilution of precision (DOP) and satellites
+        :param gsv: satellites in view
+        :param refresh: the update rate being used, in seconds
+        :returns:
+           - Boolean success
+           - ``list`` of NMEA sentences requested
         """
         log = self.log
 
@@ -970,7 +1011,7 @@ class Modem(object):
         return success, resp_sentences
 
     def at_save_config(self):
-        """Store the current configuration including all S registers"""
+        """Store the current configuration including all S registers."""
         log = self.log
         success = False
         with self.thread_lock:
@@ -984,8 +1025,11 @@ class Modem(object):
         return success
 
     def at_get_event_notify_bitmap(self):
-        """Returns the event notification bitmap as an integer value
-        :return integer event notification bitmap
+        """
+        Returns the event notification bitmap as an integer value.
+
+        :return: integer event notification bitmap
+
         """
         log = self.log
         binary = '0b'
@@ -1006,12 +1050,15 @@ class Modem(object):
         return value
 
     def get_event_notifications(self):
-        """Reads the event notifications bitmap and populates an OrderedDict"""
+        """Reads the event notifications bitmap and populates an ``OrderedDict``."""
         self.at_get_event_notify_bitmap()
 
     def _set_event_notify_bitmap_proxy(self, value):
-        """Sets the proxy bitmap values in the modem object
-        :param  value the event bitmap (integer)
+        """
+        Sets the proxy bitmap values for event notification in the modem object.
+
+        :param value: the event bitmap (integer)
+
         """
         event_notify_bitmap = bin(value)[2:]
         if len(event_notify_bitmap) > len(self.event_notifications):
@@ -1024,10 +1071,13 @@ class Modem(object):
             i += 1
 
     def at_set_event_notifications(self, value, save=False):
-        """Sets the event notification bitmap using an integer mask. Truncates the bitmap if too large.
-        :param  value integer to set the S88 register bitmap
-        :param  save writes to NVM
-        :return Boolean result
+        """
+        Sets the event notification bitmap using an integer mask. Truncates the bitmap if too large.
+
+        :param value: integer to set the S88 register bitmap
+        :param save: Boolean whether to write to Non-Volatile Memory
+        :return: Boolean result
+
         """
         log = self.log
         success = False
@@ -1046,11 +1096,27 @@ class Modem(object):
         return success
 
     def set_event_notification(self, key, value, save=False):
-        """Sets a particular event monitoring status in the event notification bitmap
-        :param  key event name as defined in the ordered dictionary
-        :param  value Boolean to set/clear the bit
-        :param  save the configuration to NVM
-        :return Boolean success result
+        """
+        Sets a particular event monitoring status in the event notification bitmap.
+        event_notifications is an ``OrderedDict`` with:
+
+           - ``newGnssFix``
+           - ``newMtMsg``
+           - ``moMsgComplete``
+           - ``modemRegistered``
+           - ``modemReset``
+           - ``jamCutState``
+           - ``modemResetPending``
+           - ``lowPowerChange``
+           - ``utcUpdate``
+           - ``fixTimeout``
+           - ``eventCached``
+
+        :param key: event name as defined in the ``OrderedDict``
+        :param value: Boolean to set/clear the bit
+        :param save: Boolean to store the configuration to Non-Volatile Memory
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1080,11 +1146,14 @@ class Modem(object):
         return success
 
     def _at_sreg_write(self, register, value, save=False):
-        """Writes a pre-validated value to an s-register
-        :param  register string value e.g. 'S50'
-        :param  value to write
-        :param  save write to NVM
-        :return Boolean success
+        """
+        Writes a pre-validated value to an s-register.
+
+        :param register: string value e.g. 'S50'
+        :param value: (integer) to write
+        :param save: (Boolean) store to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1101,9 +1170,12 @@ class Modem(object):
         return success
 
     def _at_sreg_read(self, register):
-        """Writes a pre-validated value to an s-register
-        :param  register string value e.g. 'S50'
-        :return integer value
+        """
+        Writes a pre-validated value to an s-register.
+
+        :param register: string value e.g. 'S50'
+        :return: integer value held in the requested S-register
+
         """
         log = self.log
         value = None
@@ -1118,10 +1190,25 @@ class Modem(object):
         return value
 
     def set_wakeup_interval(self, value, save=False):
-        """Sets the wakeup interval (S51, default 0)
-        :param  value an enumerated type
-        :param  save if writing to NVM
-        :return Boolean success
+        """
+        Sets the wakeup interval (S51, default 0).  ``wakeup_interval`` is an enumerated type:
+
+           - ``5 seconds``: 0
+           - ``30 seconds``: 1
+           - ``1 minute``: 2
+           - ``3 minute``: 3
+           - ``10 minute``: 4
+           - ``30 minute``: 5
+           - ``60 minute``: 6
+           - ``2 minute``: 7
+           - ``5 minute``: 8
+           - ``15 minute``: 9
+           - ``20 minute``: 10
+
+        :param value: an enumerated type
+        :param save: if writing to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1134,7 +1221,7 @@ class Modem(object):
         return success
 
     def get_wakeup_interval(self):
-        """Gets the wakeup interval (S51, default 0)"""
+        """Gets the wakeup interval (S51, default 0) and stores in the Modem instance."""
         log = self.log
         value = self._at_sreg_read(register='S51')
         if value is not None:
@@ -1143,10 +1230,20 @@ class Modem(object):
             log.error("Error reading S51 wakeup interval")
 
     def set_power_mode(self, value, save=False):
-        """Sets the power mode (S50, default 0)
-        :param  value an enumerated type
-        :param  save if writing to NVM
-        :return Boolean success
+        """
+        Sets the power mode (S50, default 0).  ``power_mode`` is an enumerated type with:
+
+           - ``Mobile Powered``: 0
+           - ``Fixed Powered``: 1
+           - ``Mobile Battery``: 2
+           - ``Fixed Battery``: 3
+           - ``Mobile Minimal``: 4
+           - ``Mobile Stationary``: 5
+
+        :param value: an enumerated type
+        :param save: if writing to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1159,7 +1256,7 @@ class Modem(object):
         return success
 
     def get_power_mode(self):
-        """Gets the power mode (S50, default 0)"""
+        """Gets the power mode (S50, default 0) and stores in the Modem instance."""
         log = self.log
         value = self._at_sreg_read(register='S50')
         if value is not None:
@@ -1168,10 +1265,13 @@ class Modem(object):
             log.error("Error reading S50 power mode")
 
     def set_gnss_continuous(self, value, save=False):
-        """Sets the GNSS continuous mode refresh interval (S55, default 0)
-        :param  value an enumerated type
-        :param  save if writing to NVM
-        :return Boolean success
+        """
+        Sets the GNSS continuous mode refresh interval (S55, default 0).
+
+        :param value: (integer) seconds between refresh from 0..30.  0=disabled/on-demand.
+        :param save: if writing to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1184,7 +1284,7 @@ class Modem(object):
         return success
 
     def get_gnss_continuous(self):
-        """Gets the GNSS continuous interval (S55, default 0)"""
+        """Gets the GNSS continuous interval (S55, default 0) and stores in the Modem instance."""
         log = self.log
         value = self._at_sreg_read(register='S55')
         if value is not None:
@@ -1193,10 +1293,23 @@ class Modem(object):
             log.error("Error reading S55 gnss continuous")
 
     def set_gnss_mode(self, value, save=False):
-        """Sets the GNSS mode (S39) (GPS, GLONASS, Beidou)
-        :param  value an enumerated type
-        :param  save if writing to NVM
-        :return Boolean success
+        """
+        Sets the GNSS mode (S39) (GPS, GLONASS, Beidou).  ``gnss_mode`` is an enumerated type:
+
+           - ``GPS``: 0
+           - ``GLONASS``: 1
+           - ``BEIDOU``: 2
+           - ``GPS+GLONASS``: 10
+           - ``GPS+BEIDOU``: 11
+           - ``GLONASS+BEIDOU``: 12
+
+        .. note::
+           Check with modem manufacturer to confirm available GNSS settings on your hardware variant.
+
+        :param value: an enumerated type
+        :param save: if writing to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1209,7 +1322,7 @@ class Modem(object):
         return success
 
     def get_gnss_mode(self):
-        """Gets the GNSS mode (S39, default 0)"""
+        """Gets the GNSS mode (S39, default 0) and stores in the Modem instance."""
         log = self.log
         value = self._at_sreg_read(register='S39')
         if value is not None:
@@ -1218,10 +1331,25 @@ class Modem(object):
             log.error("Error reading S39 GNSS mode")
 
     def at_set_gnss_dpm(self, value, save=False):
-        """Sets the GNSS Dynamic Platform model (S33, default 0)
-        :param  value an enumerated type
-        :param  save if writing to NVM
-        :return Boolean success
+        """
+        Sets the GNSS Dynamic Platform model (S33, default 0).  ``gnss_dpm_mode`` is an enumerated type:
+
+           - ``Portable``: 0
+           - ``Stationary``: 2
+           - ``Pedestrian``: 3
+           - ``Automotive``: 4
+           - ``Sea``: 5
+           - ``Air 1g``: 6
+           - ``Air 2g``: 7
+           - ``Air 4g``: 8
+
+        .. note::
+           Check with modem manufacturer to confirm available GNSS settings on your hardware variant.
+
+        :param value: an enumerated type
+        :param save: if writing to NVM
+        :return: Boolean success
+
         """
         log = self.log
         success = False
@@ -1234,7 +1362,7 @@ class Modem(object):
         return success
 
     def get_gnss_dpm(self):
-        """Gets the GNSS Dynamic Platform Model (S33, default 0)"""
+        """Gets the GNSS Dynamic Platform Model (S33, default 0) and stores in Modem instance."""
         log = self.log
         value = self._at_sreg_read(register='S33')
         if value is not None:
@@ -1243,20 +1371,23 @@ class Modem(object):
             log.error("Error reading S33 GNSS DPM mode")
 
     def log_at_config(self):
-        """Displays the current AT options on the console"""
+        """Logs/displays the current AT configuration options (e.g. CRC, Verbose, Echo, Quiet) on the console."""
         self.log.info("*** Modem AT Configuration ***")
         for k in self.at_config:
             self.log.info("*  %s=%d" % (k, 1 if self.at_config[k] else 0))
 
     def log_sat_status(self):
-        """Displays the current satellite status on the console"""
+        """Logs/displays the current satellite status on the console."""
         self.log.info("*** Satellite Status ***")
         for stat in self.sat_status:
             self.log.info("*  %s: %s" % (stat, str(self.sat_status[stat])))
 
     def get_statistics(self):
-        """Returns a dictionary of operating statistics for the modem/network
-        :return list of strings containing key statistics
+        """
+        Returns a ``dictionary`` of operating statistics for the modem/network.
+
+        :return: ``dictionary`` of strings and KPI values containing key statistics
+
         """
         stat_list = [
             ('GNSS control (network) fixes', self.system_stats['nGNSS']),
@@ -1282,7 +1413,7 @@ class Modem(object):
         return stat_list
 
     def log_statistics(self):
-        """Logs the modem/network statistics"""
+        """Logs the modem/network statistics."""
         self.log.info("*" * 26 + " IDP MODEM STATISTICS " + "*" * 26)
         self.log.info("* Mobile ID: %s" % self.mobile_id)
         self.log.info("* Hardware version: %s" % self.hardware_version)
@@ -1294,7 +1425,7 @@ class Modem(object):
 
 
 class Message(object):
-    """ Class intended for abstracting message characteristics """
+    """Class intended for abstracting message characteristics."""
     # TODO: future use
     
     class Priority:
@@ -1318,12 +1449,15 @@ class Message(object):
                   'float', 'double', 'string']
 
     def __init__(self, name=None, msg_sin=255, msg_min=255, payload_b64=None):
-        """Initialize a message
-        :param:     name (optional)
-        :param:     msg_sin integer > 0
-        :param:     msg_min integer > 0
-        :param:     priority (1=high, 4=low)
-        :param:     payload_b64 base64 encoded payload (not including SIN, MIN)
+        """
+        Initialize a message.  Messages also have ``size`` determined, and can optionally include ``fields``.
+
+        :param name: (optional)
+        :param msg_sin: integer (0..255)
+        :param msg_min: integer (0..255)
+        :param priority: (1=high, 4=low)
+        :param payload_b64: base64 encoded payload (not including SIN, MIN)
+
         """
         self.priorities = self.Priority()
         self.data_formats = self.DataFormat()
@@ -1336,7 +1470,7 @@ class Message(object):
         self.size = 0
 
     def _get_size(self):
-        """Updates the message size attribute"""
+        """Updates the message size attribute."""
         if self.sin is not None:
             self.size = 1
         if self.payload_b64 != '':
@@ -1360,12 +1494,17 @@ class Message(object):
                 self.size += len(base64.b64decode(self.payload_b64))
 
     def add_field(self, name, data_type, value, bit_size):
-        """Add a field to the message
-        :param:     name (string)
-        :param:     data_type (string) from supported types
-        :param:     value
-        :param:     bit_size string formatter '0nb' where n is number of bits
-        :return:    err_code, err_str
+        """
+        Add a field to the message.
+
+        :param name: (string)
+        :param data_type: (string) from supported types
+        :param value: the value (compliant with data_type)
+        :param bit_size: string formatter '0nb' where n is number of bits
+        :return:
+           - error code
+           - error string
+
         """
         # TODO: make it so fields cannot be added/deleted/modified without explicit class methods
         field = {}
@@ -1404,10 +1543,14 @@ class Message(object):
         return err_code, err_str
 
     def delete_field(self, name):
-        """Remove a field from the message
-        :param:     name of field (string)
-        :returns:   err_code (0 = no error)
-                    err_str describing error (0 = "OK")
+        """
+        Remove a field from the message.
+
+        :param name: of field (string)
+        :returns:
+           - error code (0 = no error)
+           - error string description (0 = "OK")
+
         """
         err_code = 1
         err_str = "Field not found in message"
@@ -1419,9 +1562,12 @@ class Message(object):
         return err_code, err_str
 
     def encode_idp(self, data_format=2):
-        """Encodes the message using the specified data format (Text, Hex, base64)
-        :param:     data_format 1=Text, 2=ASCII-Hex, 3=base64
-        :returns:   encoded_payload (string) to pass into AT%MGRT
+        """
+        Encodes the message using the specified data format (Text, Hex, base64).
+
+        :param data_format: 1=Text, 2=ASCII-Hex, 3=base64
+        :returns: encoded_payload (string) to pass into AT%MGRT
+
         """
         encoded_payload = ''
         bin_str = ''
@@ -1475,9 +1621,14 @@ class Message(object):
             encoded_payload = self.payload_b64
         return encoded_payload
 
+    '''
     def decode_idp_json(self):
-        """Decodes the message received to JSON from the modem based on data format retrieved from IDP modem
-        :return:    JSON-formatted string
+        """
+        Decodes the message received to JSON from the modem based on data format retrieved from IDP modem.
+        For future use with Message Definition Files
+        
+        :return: JSON-formatted string
+        
         """
         if self.size > 0:
             json_str = '{"name":%s,"SIN":%d,"MIN":%d,"size":%d,"Fields":[' \
@@ -1498,12 +1649,14 @@ class Message(object):
         else:
             json_str = ''
         return json_str
+    '''
 
 
 class MobileOriginatedMessage(Message):
-    """Class containing Mobile Originated (aka Forward) message properties"""
+    """Class containing Mobile Originated (aka Forward) message properties."""
 
     class State:
+        """State enumeration for Mobile Originated (aka Forward) messages."""
         UNAVAILABLE = 0
         READY = 4
         SENDING = 5
@@ -1523,6 +1676,7 @@ class MobileTerminatedMessage(Message):
     """Class containing Mobile Originated (aka Forward) message properties"""
 
     class State:
+        """State enumeration for Mobile Terminated (aka Return) messages."""
         UNAVAILABLE = 0
         COMPLETE = 2
         RETRIEVED = 3
