@@ -79,7 +79,11 @@
 </div>
 <div class="section" id="module-idpmodem">
 <span id="idpmodem"></span><h2>idpmodem<a class="headerlink" href="#module-idpmodem" title="Permalink to this headline">¶</a></h2>
-<p>Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands</p>
+<p>Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.</p>
+<div class="admonition-todo admonition" id="index-0">
+<p class="first admonition-title">Todo</p>
+<p class="last">Reference contextual documentation pages for things like event notifications, low power, etc.</p>
+</div>
 <dl class="class">
 <dt id="idpmodem.Modem">
 <em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">Modem</code><span class="sig-paren">(</span><em>serial_port</em>, <em>log=None</em>, <em>debug=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem" title="Permalink to this definition">¶</a></dt>
@@ -137,24 +141,62 @@ Logs a record of the receipt, and handles supported messages.</p>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">A <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> with:
-- <code class="docutils literal notranslate"><span class="pre">success</span></code> Boolean
-- <code class="docutils literal notranslate"><span class="pre">changed</span></code> Boolean
-- <code class="docutils literal notranslate"><span class="pre">state</span></code> (string from ctrl_states)</td>
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">A <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> with:<ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">success</span></code> Boolean</li>
+<li><code class="docutils literal notranslate"><span class="pre">changed</span></code> Boolean</li>
+<li><code class="docutils literal notranslate"><span class="pre">state</span></code> (string from ctrl_states)</li>
+</ul>
+</td>
 </tr>
 </tbody>
 </table>
 </dd></dl>
 
 <dl class="method">
-<dt id="idpmodem.Modem.at_get_event_notify_bitmap">
-<code class="descname">at_get_event_notify_bitmap</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_event_notify_bitmap" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the event notification bitmap as an integer value.</p>
+<dt id="idpmodem.Modem.at_get_event_notify_assert_bitmap">
+<code class="descname">at_get_event_notify_assert_bitmap</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_event_notify_assert_bitmap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the Event Notification Assert Status (S89) bitmap as an integer value.
+See <a class="reference internal" href="#idpmodem.Modem.at_get_event_notify_control_bitmap" title="idpmodem.Modem.at_get_event_notify_control_bitmap"><code class="xref py py-func docutils literal notranslate"><span class="pre">event</span> <span class="pre">notification</span> <span class="pre">bitmap</span></code></a></p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">This operation clears the S89 register upon reading.</p>
+</div>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">integer event notification bitmap</td>
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">(integer) event notification assert status (e.g. 2 = new Mobile Terminated Message received)</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.at_get_event_notify_control_bitmap">
+<code class="descname">at_get_event_notify_control_bitmap</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_get_event_notify_control_bitmap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the Event Notification Control (S88) bitmap as an integer value,
+and updates the event_notifications attribute of the Modem instance.</p>
+<p>Event Notifications:</p>
+<blockquote>
+<div><ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">newGnssFix</span></code> (bit 0) the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)</li>
+<li><code class="docutils literal notranslate"><span class="pre">newMtMsg</span></code> (bit 1) a new Mobile-Terminated (aka Forward) message has been received over-the-air</li>
+<li><code class="docutils literal notranslate"><span class="pre">moMsgComplete</span></code> (bit 2) a Mobile-Originated (aka Return) message has completed sending over-the-air</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemRegistered</span></code> (bit 3) the modem has registered on the satellite network</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemReset</span></code> (bit 4) the modem has just reset</li>
+<li><code class="docutils literal notranslate"><span class="pre">jamCutState</span></code> (bit 5) the modem has detected antenna cut or GNSS signal jamming</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemResetPending</span></code> (bit 6) a modem reset has been requested (typically received over-the-air)</li>
+<li><code class="docutils literal notranslate"><span class="pre">lowPowerChange</span></code> (bit 7) the modem’s low power wakeup interval has been changed</li>
+<li><code class="docutils literal notranslate"><span class="pre">utcUpdate</span></code> (bit 8) the modem has received a system time update/correction</li>
+<li><code class="docutils literal notranslate"><span class="pre">fixTimeout</span></code> (bit 9) the latest GNSS location request has timed out (unable to acquire GNSS/location)</li>
+<li><code class="docutils literal notranslate"><span class="pre">eventCached</span></code> (bit 10) a requested event has been cached for retrieval using capture trace S-registers</li>
+</ul>
+</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">(integer) event notification bitmap (e.g. 139 = newGnssFix, newMtMsg, modemRegistered, lowPowerChange)</td>
 </tr>
 </tbody>
 </table>
@@ -339,9 +381,10 @@ in idpmodem.atErrorResultCodes</dd>
 </dd></dl>
 
 <dl class="method">
-<dt id="idpmodem.Modem.at_set_event_notifications">
-<code class="descname">at_set_event_notifications</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_set_event_notifications" title="Permalink to this definition">¶</a></dt>
-<dd><p>Sets the event notification bitmap using an integer mask. Truncates the bitmap if too large.</p>
+<dt id="idpmodem.Modem.at_set_event_notification_control_bitmap">
+<code class="descname">at_set_event_notification_control_bitmap</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_set_event_notification_control_bitmap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the <a class="reference internal" href="#idpmodem.Modem.at_get_event_notify_control_bitmap" title="idpmodem.Modem.at_get_event_notify_control_bitmap"><code class="xref py py-func docutils literal notranslate"><span class="pre">event</span> <span class="pre">notifications</span> <span class="pre">bitmap</span></code></a> using an integer mask.
+Truncates the bitmap if too large.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -397,9 +440,55 @@ in idpmodem.atErrorResultCodes</dd>
 </dd></dl>
 
 <dl class="method">
-<dt id="idpmodem.Modem.get_event_notifications">
-<code class="descname">get_event_notifications</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_event_notifications" title="Permalink to this definition">¶</a></dt>
-<dd><p>Reads the event notifications bitmap and populates an <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code>.</p>
+<dt id="idpmodem.Modem.get_event_notification_assertions">
+<code class="descname">get_event_notification_assertions</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_event_notification_assertions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a <code class="docutils literal notranslate"><span class="pre">dictionary</span></code> with the events that triggered the notification assert pin, by calling
+<a class="reference internal" href="#idpmodem.Modem.at_get_event_notify_assert_bitmap" title="idpmodem.Modem.at_get_event_notify_assert_bitmap"><code class="xref py py-func docutils literal notranslate"><span class="pre">at_get_event_notify_assert_bitmap</span></code></a>.</p>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">This function is meant to be called only after the physical modem has asserted its notification output.
+Calling this function clears all status conditions upon reading.</p>
+</div>
+<div class="admonition-todo admonition" id="index-1">
+<p class="first admonition-title">Todo</p>
+<p class="last">Testing incomplete.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">an <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code> with Boolean values against event keys<ul class="simple">
+<li><code class="docutils literal notranslate"><span class="pre">newGnssFix</span></code> the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)</li>
+<li><code class="docutils literal notranslate"><span class="pre">newMtMsg</span></code> a new Mobile-Terminated (aka Forward) message has been received over-the-air</li>
+<li><code class="docutils literal notranslate"><span class="pre">moMsgComplete</span></code> a Mobile-Originated (aka Return) message has completed sending over-the-air</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemRegistered</span></code> the modem has registered on the satellite network</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemReset</span></code> the modem has just reset</li>
+<li><code class="docutils literal notranslate"><span class="pre">jamCutState</span></code> the modem has detected antenna cut or GNSS signal jamming</li>
+<li><code class="docutils literal notranslate"><span class="pre">modemResetPending</span></code> a modem reset has been requested (typically received over-the-air)</li>
+<li><code class="docutils literal notranslate"><span class="pre">lowPowerChange</span></code> the modem’s low power wakeup interval has been changed</li>
+<li><code class="docutils literal notranslate"><span class="pre">utcUpdate</span></code> the modem has received a system time update/correction</li>
+<li><code class="docutils literal notranslate"><span class="pre">fixTimeout</span></code> the latest GNSS location request has timed out (unable to acquire GNSS/location)</li>
+<li><code class="docutils literal notranslate"><span class="pre">eventCached</span></code> a requested event has been cached for retrieval using capture trace S-registers</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="idpmodem.Modem.get_event_notification_control">
+<code class="descname">get_event_notification_control</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.get_event_notification_control" title="Permalink to this definition">¶</a></dt>
+<dd><p>Updates the <code class="docutils literal notranslate"><span class="pre">event_notifications</span></code> attribute by calling
+<a class="reference internal" href="#idpmodem.Modem.at_get_event_notify_control_bitmap" title="idpmodem.Modem.at_get_event_notify_control_bitmap"><code class="xref py py-func docutils literal notranslate"><span class="pre">at_get_event_notify_control_bitmap</span></code></a>.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">An <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code> corresponding to the <code class="docutils literal notranslate"><span class="pre">event_notifications</span></code> attribute.</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="method">
@@ -465,25 +554,10 @@ in idpmodem.atErrorResultCodes</dd>
 </dd></dl>
 
 <dl class="method">
-<dt id="idpmodem.Modem.set_event_notification">
-<code class="descname">set_event_notification</code><span class="sig-paren">(</span><em>key</em>, <em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_event_notification" title="Permalink to this definition">¶</a></dt>
-<dd><p>Sets a particular event monitoring status in the event notification bitmap.
-event_notifications is an <code class="docutils literal notranslate"><span class="pre">OrderedDict</span></code> with:</p>
-<blockquote>
-<div><ul class="simple">
-<li><code class="docutils literal notranslate"><span class="pre">newGnssFix</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">newMtMsg</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">moMsgComplete</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">modemRegistered</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">modemReset</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">jamCutState</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">modemResetPending</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">lowPowerChange</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">utcUpdate</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">fixTimeout</span></code></li>
-<li><code class="docutils literal notranslate"><span class="pre">eventCached</span></code></li>
-</ul>
-</div></blockquote>
+<dt id="idpmodem.Modem.set_event_notification_control">
+<code class="descname">set_event_notification_control</code><span class="sig-paren">(</span><em>key</em>, <em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_event_notification_control" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets a particular event monitoring status in the
+<a class="reference internal" href="#idpmodem.Modem.at_get_event_notify_control_bitmap" title="idpmodem.Modem.at_get_event_notify_control_bitmap"><code class="xref py py-func docutils literal notranslate"><span class="pre">event</span> <span class="pre">notification</span> <span class="pre">bitmap</span></code></a>.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -592,7 +666,8 @@ event_notifications is an <code class="docutils literal notranslate"><span class
 <dl class="method">
 <dt id="idpmodem.Modem.set_wakeup_interval">
 <code class="descname">set_wakeup_interval</code><span class="sig-paren">(</span><em>value</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.set_wakeup_interval" title="Permalink to this definition">¶</a></dt>
-<dd><p>Sets the wakeup interval (S51, default 0).  <code class="docutils literal notranslate"><span class="pre">wakeup_interval</span></code> is an enumerated type:</p>
+<dd><p>Sets the wakeup interval (S51, default 0).</p>
+<p id="wakeup-interval"><code class="docutils literal notranslate"><span class="pre">wakeup_interval</span></code> is an enumerated type:</p>
 <blockquote>
 <div><ul class="simple">
 <li><code class="docutils literal notranslate"><span class="pre">5</span> <span class="pre">seconds</span></code>: 0</li>

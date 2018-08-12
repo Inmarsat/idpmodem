@@ -1,7 +1,11 @@
 """
 Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.
+
+.. todo::
+   Reference contextual documentation pages for things like event notifications, low power, etc.
+
 """
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 import crcxmodem
 from collections import OrderedDict
@@ -98,7 +102,7 @@ class Modem(object):
     
     def __init__(self, serial_port, log=None, debug=False):
         """
-        Initializes attributes and pointers used by Modem class methods
+        Initializes attributes and pointers used by Modem class methods.
 
         :param serial_port: a pySerial.serial object
         :param log: an optional logger
@@ -626,7 +630,7 @@ class Modem(object):
 
         # Get relevant configuration (S-register) values
         time.sleep(AT_WAIT)
-        self.get_event_notifications()
+        self.get_event_notification_control()
         self.get_wakeup_interval()
         self.get_power_mode()
         self.get_gnss_mode()
@@ -642,6 +646,7 @@ class Modem(object):
         Checks satellite status and updates state and statistics.
 
         :returns: A ``dictionary`` with:
+
            - ``success`` Boolean
            - ``changed`` Boolean
            - ``state`` (string from ctrl_states)
@@ -1025,12 +1030,26 @@ class Modem(object):
                     log.error("Save configuration failed (%s)" % err_str)
         return success
 
-    def at_get_event_notify_bitmap(self):
+    def at_get_event_notify_control_bitmap(self):
         """
-        Returns the event notification :ref:`event_notifications` bitmap as an integer value,
+        Returns the Event Notification Control (S88) bitmap as an integer value,
         and updates the event_notifications attribute of the Modem instance.
 
-        :return: integer event notification bitmap
+        Event Notifications:
+
+           - ``newGnssFix`` (bit 0) the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)
+           - ``newMtMsg`` (bit 1) a new Mobile-Terminated (aka Forward) message has been received over-the-air
+           - ``moMsgComplete`` (bit 2) a Mobile-Originated (aka Return) message has completed sending over-the-air
+           - ``modemRegistered`` (bit 3) the modem has registered on the satellite network
+           - ``modemReset`` (bit 4) the modem has just reset
+           - ``jamCutState`` (bit 5) the modem has detected antenna cut or GNSS signal jamming
+           - ``modemResetPending`` (bit 6) a modem reset has been requested (typically received over-the-air)
+           - ``lowPowerChange`` (bit 7) the modem's low power wakeup interval has been changed
+           - ``utcUpdate`` (bit 8) the modem has received a system time update/correction
+           - ``fixTimeout`` (bit 9) the latest GNSS location request has timed out (unable to acquire GNSS/location)
+           - ``eventCached`` (bit 10) a requested event has been cached for retrieval using capture trace S-registers
+
+        :return: (integer) event notification bitmap (e.g. 139 = newGnssFix, newMtMsg, modemRegistered, lowPowerChange)
 
         """
         log = self.log
@@ -1049,13 +1068,18 @@ class Modem(object):
                         self._set_event_notify_bitmap_proxy(register_value)
                 else:
                     log.error("Error querying S88")
-        return value
+        return register_value
 
-    def get_event_notifications(self):
+    def get_event_notification_control(self):
         """
-        Updates the event_notifications :ref:`event_notifications` attribute by calling at_get_event_notify_bitmap.
+        Updates the ``event_notifications`` attribute by calling
+        :py:func:`at_get_event_notify_control_bitmap <at_get_event_notify_control_bitmap>`.
+
+        :return: An ``OrderedDict`` corresponding to the ``event_notifications`` attribute.
+
         """
-        self.at_get_event_notify_bitmap()
+        self.at_get_event_notify_control_bitmap()   # Does not use the integer value directly
+        return self.event_notifications
 
     def _set_event_notify_bitmap_proxy(self, value):
         """
@@ -1074,9 +1098,9 @@ class Modem(object):
             self.event_notifications[key] = True if event_notify_bitmap[i] == '1' else False
             i += 1
 
-    def at_set_event_notifications(self, value, save=False):
+    def at_set_event_notification_control_bitmap(self, value, save=False):
         """
-        Sets the event notification bitmap :ref:`event_notifications` using an integer mask.
+        Sets the :py:func:`event notifications bitmap <at_get_event_notify_control_bitmap>` using an integer mask.
         Truncates the bitmap if too large.
 
         :param value: integer to set the S88 register bitmap
@@ -1100,25 +1124,10 @@ class Modem(object):
 
         return success
 
-    def set_event_notification(self, key, value, save=False):
+    def set_event_notification_control(self, key, value, save=False):
         """
-        Sets a particular event monitoring status in the event notification bitmap.
-
-        .. _event_notifications:
-
-        Events supported:
-
-           - ``newGnssFix`` the modem has acquired time/position from GNSS (e.g. GPS, GLONASS)
-           - ``newMtMsg`` a new Mobile-Terminated (aka Forward) message has been received over-the-air
-           - ``moMsgComplete`` a Mobile-Originated (aka Return) message has completed sending over-the-air
-           - ``modemRegistered`` the modem has registered on the satellite network
-           - ``modemReset`` the modem has just reset
-           - ``jamCutState`` the modem has detected antenna cut or GNSS signal jamming
-           - ``modemResetPending`` a modem reset has been requested (typically received over-the-air)
-           - ``lowPowerChange`` the modem's low power wakeup interval has been changed (tbd mode changes too?)
-           - ``utcUpdate`` the modem has received a system time update/correction
-           - ``fixTimeout`` the latest GNSS location request has timed out (unable to acquire GNSS/location)
-           - ``eventCached`` a flagged/configured event has been cached for retrieval using trace methods
+        Sets a particular event monitoring status in the
+        :py:func:`event notification bitmap <at_get_event_notify_control_bitmap>`.
 
         :param key: event name as defined in the ``OrderedDict``
         :param value: Boolean to set/clear the bit
@@ -1131,7 +1140,7 @@ class Modem(object):
         if isinstance(value, bool):
             if key in self.event_notifications:
                 binary = '0b'
-                register_bitmap = self.at_get_event_notify_bitmap()
+                register_bitmap = self.at_get_event_notify_control_bitmap()
                 for event in reversed(self.event_notifications):
                     bit = '1' if self.event_notifications[event] else '0'
                     if key == event:
@@ -1140,7 +1149,7 @@ class Modem(object):
                     binary += bit
                 new_bitmap = int(binary, 2)
                 if new_bitmap != register_bitmap:
-                    success = self.at_set_event_notifications(value=new_bitmap, save=save)
+                    success = self.at_set_event_notification_control_bitmap(value=new_bitmap, save=save)
                     if success:
                         log.info("%s event notification %s" % (key, "enabled" if value else "disabled"))
                 else:
@@ -1152,6 +1161,65 @@ class Modem(object):
             log.error("Value not Boolean")
 
         return success
+
+    def at_get_event_notify_assert_bitmap(self):
+        """
+        Returns the Event Notification Assert Status (S89) bitmap as an integer value.
+        See :py:func:`event notification bitmap <at_get_event_notify_control_bitmap>`
+
+        .. note::
+           This operation clears the S89 register upon reading.
+
+        :return: (integer) event notification assert status (e.g. 2 = new Mobile Terminated Message received)
+
+        """
+        log = self.log
+        with self.thread_lock:
+            response = self.at_get_response('ATS89?')
+            if not response['timeout']:
+                err_code, err_str = self.at_get_result_code(response['result'])
+                if err_code == 0:
+                    register_value = int(response['response'][0])
+                else:
+                    log.error("Error querying S89")
+        return register_value
+
+    def get_event_notification_assertions(self):
+        """
+        Returns a ``dictionary`` with the events that triggered the notification assert pin, by calling
+        :py:func:`at_get_event_notify_assert_bitmap <at_get_event_notify_assert_bitmap>`.
+
+        .. note::
+           This function is meant to be called only after the physical modem has asserted its notification output.
+           Calling this function clears all status conditions upon reading.
+
+        .. todo::
+           Testing incomplete.
+
+        :return: an ``OrderedDict`` with Boolean values against event keys
+
+           - ``newGnssFix`` the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)
+           - ``newMtMsg`` a new Mobile-Terminated (aka Forward) message has been received over-the-air
+           - ``moMsgComplete`` a Mobile-Originated (aka Return) message has completed sending over-the-air
+           - ``modemRegistered`` the modem has registered on the satellite network
+           - ``modemReset`` the modem has just reset
+           - ``jamCutState`` the modem has detected antenna cut or GNSS signal jamming
+           - ``modemResetPending`` a modem reset has been requested (typically received over-the-air)
+           - ``lowPowerChange`` the modem's low power wakeup interval has been changed
+           - ``utcUpdate`` the modem has received a system time update/correction
+           - ``fixTimeout`` the latest GNSS location request has timed out (unable to acquire GNSS/location)
+           - ``eventCached`` a requested event has been cached for retrieval using capture trace S-registers
+
+        """
+        register_value = self.at_get_event_notify_assert_bitmap()
+        event_dict = self.event_notifications
+        format_str = '{0:' + str(len(event_dict)) + 'b}'
+        bitmap = format_str.format(register_value)
+        index = 0
+        for event in reversed(event_dict):
+            event_dict[event] = True if bitmap[index] == '1' else False
+            index += 1
+        return event_dict
 
     def _at_sreg_write(self, register, value, save=False):
         """
@@ -1199,7 +1267,11 @@ class Modem(object):
 
     def set_wakeup_interval(self, value, save=False):
         """
-        Sets the wakeup interval (S51, default 0).  ``wakeup_interval`` is an enumerated type:
+        Sets the wakeup interval (S51, default 0).
+
+        .. _wakeup-interval:
+
+        ``wakeup_interval`` is an enumerated type:
 
            - ``5 seconds``: 0
            - ``30 seconds``: 1
