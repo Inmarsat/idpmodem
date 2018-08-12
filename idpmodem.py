@@ -1,10 +1,11 @@
 """
-Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands
+Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.
 """
+__version__ = "1.0.1"
 
+import crcxmodem
 from collections import OrderedDict
 import time
-import crcxmodem
 import threading
 import binascii
 import base64
@@ -1026,7 +1027,8 @@ class Modem(object):
 
     def at_get_event_notify_bitmap(self):
         """
-        Returns the event notification bitmap as an integer value.
+        Returns the event notification :ref:`event_notifications` bitmap as an integer value,
+        and updates the event_notifications attribute of the Modem instance.
 
         :return: integer event notification bitmap
 
@@ -1050,7 +1052,9 @@ class Modem(object):
         return value
 
     def get_event_notifications(self):
-        """Reads the event notifications bitmap and populates an ``OrderedDict``."""
+        """
+        Updates the event_notifications :ref:`event_notifications` attribute by calling at_get_event_notify_bitmap.
+        """
         self.at_get_event_notify_bitmap()
 
     def _set_event_notify_bitmap_proxy(self, value):
@@ -1072,7 +1076,8 @@ class Modem(object):
 
     def at_set_event_notifications(self, value, save=False):
         """
-        Sets the event notification bitmap using an integer mask. Truncates the bitmap if too large.
+        Sets the event notification bitmap :ref:`event_notifications` using an integer mask.
+        Truncates the bitmap if too large.
 
         :param value: integer to set the S88 register bitmap
         :param save: Boolean whether to write to Non-Volatile Memory
@@ -1098,19 +1103,22 @@ class Modem(object):
     def set_event_notification(self, key, value, save=False):
         """
         Sets a particular event monitoring status in the event notification bitmap.
-        event_notifications is an ``OrderedDict`` with:
 
-           - ``newGnssFix``
-           - ``newMtMsg``
-           - ``moMsgComplete``
-           - ``modemRegistered``
-           - ``modemReset``
-           - ``jamCutState``
-           - ``modemResetPending``
-           - ``lowPowerChange``
-           - ``utcUpdate``
-           - ``fixTimeout``
-           - ``eventCached``
+        .. _event_notifications:
+
+        Events supported:
+
+           - ``newGnssFix`` the modem has acquired time/position from GNSS (e.g. GPS, GLONASS)
+           - ``newMtMsg`` a new Mobile-Terminated (aka Forward) message has been received over-the-air
+           - ``moMsgComplete`` a Mobile-Originated (aka Return) message has completed sending over-the-air
+           - ``modemRegistered`` the modem has registered on the satellite network
+           - ``modemReset`` the modem has just reset
+           - ``jamCutState`` the modem has detected antenna cut or GNSS signal jamming
+           - ``modemResetPending`` a modem reset has been requested (typically received over-the-air)
+           - ``lowPowerChange`` the modem's low power wakeup interval has been changed (tbd mode changes too?)
+           - ``utcUpdate`` the modem has received a system time update/correction
+           - ``fixTimeout`` the latest GNSS location request has timed out (unable to acquire GNSS/location)
+           - ``eventCached`` a flagged/configured event has been cached for retrieval using trace methods
 
         :param key: event name as defined in the ``OrderedDict``
         :param value: Boolean to set/clear the bit

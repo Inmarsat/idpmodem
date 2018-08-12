@@ -2,6 +2,7 @@
 | Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.
 | Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation.
 """
+__version__ = "1.0.1"
 
 POLYNOMIAL = 0x1021
 PRESET = 0

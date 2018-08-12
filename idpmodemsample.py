@@ -14,6 +14,7 @@ Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
 Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
 When a new interval is configured, a location report is generated immediately, thereafter at the new interval.
 """
+__version__ = "1.0.1"
 
 import time
 import datetime

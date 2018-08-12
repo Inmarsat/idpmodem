@@ -1,4 +1,5 @@
-"""Provides a Windows GUI manager for PC-based IDP modem testing/simulation"""
+"""Provides a Windows GUI manager for PC-based IDP modem testing/simulation."""
+__version__ = "1.0.1"
 
 import sys
 
@@ -20,14 +21,17 @@ _debug = False
 
 
 def initialize(logfile_name=None):
-    """ Initializes for Windows testing by presenting a dialog to assign COM port and log file name.
-      Also allows user to enable/disable verbose debug and set a tracking interval
-    :param  logfile_name the name that will be used if nothing is selected
-    :return dictionary:
-            'serial_name' e.g. 'COM1'
-            'logfile' e.g. 'myLogFile.log'
-            'debug' Boolean
-            'tracking_interval' integer seconds
+    """
+    | Initializes for Windows testing by presenting a dialog to assign COM port and log file name.
+    | Also allows user to enable/disable verbose debug and set a tracking interval
+
+    :param logfile_name: the name that will be used if nothing is selected
+    :return: ``dictionary`` containing
+       - ``serial_name`` e.g. 'COM1'
+       - ``logfile`` e.g. 'myLogFile.log'
+       - ``debug`` Boolean debug output
+       - ``tracking_interval`` (integer) seconds to send location data
+
     """
     global _ser_name
     global _tracking_interval
