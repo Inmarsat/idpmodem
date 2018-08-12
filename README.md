@@ -1,7 +1,9 @@
-# idp-modem
+idp-modem
+=========
+
 Python projects for integrating with IDP satellite modem.
+[Documentation](https://gbrucepayne.github.io/idp-modem/)
 
 To do:
 - create install package
-- add docs (code is Sphinx-ified but I haven't figured out how to use GitHub master/docs yet...)
-- reorganize folders
+- reorganize/optimize folders
