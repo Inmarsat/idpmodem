@@ -3,11 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/doctrees/environment.pickle" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/doctrees/environment.pickle" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/doctrees/index.doctree" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/doctrees/index.doctree" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/searchindex.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/searchindex.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/idpmodem.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodem.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -27,12 +22,12 @@
         <counts>
           <entry key="py" value="2943" />
           <entry key="rst" value="8" />
-          <entry key="txt" value="168" />
+          <entry key="txt" value="210" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="PLAIN_TEXT" value="168" />
+          <entry key="PLAIN_TEXT" value="210" />
           <entry key="Python" value="2943" />
           <entry key="ReST" value="8" />
         </counts>
@@ -226,6 +221,9 @@
       </pane>
     </panes>
   </component>
+  <component name="PropertiesComponent">
+    <property name="settings.editor.selected.configurable" value="project.propVCSSupport.Mappings" />
+  </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\geoffbp\workspace\idpmodem\idpmodem" />
@@ -276,7 +274,14 @@
       <option name="project" value="LOCAL" />
       <updated>1536150292567</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Additional documentation and placeholders.">
+      <created>1536181139199</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1536181139199</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="ToolWindowManager">
@@ -309,7 +314,8 @@
     <MESSAGE value="Directory restructure" />
     <MESSAGE value="Adjusted path for sphinx documentation to revised directory structure." />
     <MESSAGE value="Added to do elements and some documentation cleanup." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added to do elements and some documentation cleanup." />
+    <MESSAGE value="Additional documentation and placeholders." />
+    <option name="LAST_COMMIT_MESSAGE" value="Additional documentation and placeholders." />
   </component>
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/../pi_serial_server/docs/conf.py">
