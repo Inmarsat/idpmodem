@@ -2,7 +2,7 @@ idp-modem
 =========
 
 Python projects for integrating with IDP satellite modem.
-[Documentation](https://gbrucepayne.github.io/idpmodem/)
+[Documentation](https://inmarsat.github.io/idpmodem/)
 
 To do:
 - create install package
