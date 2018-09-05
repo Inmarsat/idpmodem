@@ -632,7 +632,7 @@ def init_environment(default_logfile=None, debug=False):
 
     elif sys.platform.lower().startswith('win32'):
         try:
-            import idpwindows
+            from idpmodem.tests import idpwindows
             success = True
             print("\n ** Windows environment detected")
             res = idpwindows.initialize()
