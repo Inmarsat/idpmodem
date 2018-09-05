@@ -13,6 +13,13 @@ Dependencies:
 Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
 Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
 When a new interval is configured, a location report is generated immediately, thereafter at the new interval.
+
+.. todo::
+
+   * Extract generic functions/modules such as wrapping logger, RepeatingTimer, NMEA parsing
+   * Embed modem process threads within idpmodem with registered callbacks
+   * Restructure parse_args for automagic documentation with sphinx argparse extension
+
 """
 __version__ = "1.0.1"
 
@@ -38,7 +45,16 @@ global shutdown_flag        # a flag triggered by an interrupt from a parallel s
 
 
 class RepeatingTimer(threading.Thread):
-    """A Thread class that repeats function calls like a Timer but can be stopped, restarted and change interval."""
+    """
+    A Thread class that repeats function calls like a Timer but can be stopped, restarted and change interval.
+
+    :param seconds: interval for timer repeat
+    :param name: used to identify the thread
+    :param sleep_chunk: tick cycle in seconds between state checks
+    :param callback: the callback to execute each timer expiry
+    :param args: optional arguments to pass into the callback
+
+    """
     # TODO: move this class into an imported module
     global log
 
@@ -121,6 +137,19 @@ class Location(object):
     """
     A class containing a specific set of location-based information for a given point in time.
     Uses 91/181 if lat/lon are unknown
+
+    :param latitude: in 1/1000th minutes (approximately 1 m resolution)
+    :param longitude: in 1/1000th minutes (approximately 1 m resolution)
+    :param altitude: in metres
+    :param speed: in knots
+    :param heading: in degrees
+    :param timestamp: in seconds since 1970-01-01T00:00:00Z
+    :param satellites: in view at time of fix
+    :param fixtype: None, 2D or 3D
+    :param PDOP: Probability Dilution of Precision
+    :param HDOP: Horizontal DOP
+    :param VDOP: Vertical DOP
+
     """
 
     def __init__(self, latitude=91*60*1000, longitude=181*60*1000, altitude=0,
@@ -159,8 +188,15 @@ class Location(object):
 
 
 class HMI(object):
-    """A Human Machine Interface element that can be used for headless operation"""
-    # TODO: develop
+    """
+    A Human Machine Interface element that can be used for headless operation.  Examples: LED indicator, buzzer.
+
+    .. todo::
+       Non-functional.  Develop this concept.
+
+    :returns: HMI object (non-functional)
+
+    """
     def __init__(self):
         pass
 
@@ -175,8 +211,15 @@ class HMI(object):
 
 
 class ModemGPIO(object):
-    """Physical input/output interfaces for the modem e.g. reset, interrupts"""
-    # TODO: develop
+    """
+    Physical input/output interfaces for the modem e.g. reset, interrupts
+
+    .. todo::
+       Non-functional. Develop this concept, perhaps internalized within ``idpmodem``.
+
+    :returns: GPIO object (non-functional)
+
+    """
     def __init__(self):
         pass
 

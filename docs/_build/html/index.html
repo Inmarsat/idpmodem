@@ -39,8 +39,8 @@
   <ul>
 <li><a class="reference internal" href="#">Welcome to idp-modem’s documentation!</a><ul>
 <li><a class="reference internal" href="#module-idpmodem">idpmodem</a></li>
-<li><a class="reference internal" href="#module-idpmodemsample">idpmodemsample</a></li>
 <li><a class="reference internal" href="#module-crcxmodem">crcxmodem</a></li>
+<li><a class="reference internal" href="#module-idpmodemsample">idpmodemsample</a></li>
 <li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
 </ul>
 </li>
@@ -82,7 +82,10 @@
 <p>Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.</p>
 <div class="admonition-todo admonition" id="index-0">
 <p class="first admonition-title">Todo</p>
-<p class="last">Reference contextual documentation pages for things like event notifications, low power, etc.</p>
+<ul class="last simple">
+<li>Reference contextual documentation pages for things like event notifications, low power, etc.</li>
+<li>Internalize threads for typical monitoring processes to callback to registered external functions</li>
+</ul>
 </div>
 <dl class="class">
 <dt id="idpmodem.Modem">
@@ -832,6 +835,50 @@ Forward States enumeration (per modem documentation):</p>
 </dd></dl>
 
 </div>
+<div class="section" id="module-crcxmodem">
+<span id="crcxmodem"></span><h2>crcxmodem<a class="headerlink" href="#module-crcxmodem" title="Permalink to this headline">¶</a></h2>
+<div class="line-block">
+<div class="line">Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.</div>
+<div class="line">Borrowed from <a class="reference external" href="https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation">https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation</a>.</div>
+</div>
+<dl class="function">
+<dt id="crcxmodem.crc">
+<code class="descclassname">crcxmodem.</code><code class="descname">crc</code><span class="sig-paren">(</span><em>string</em>, <em>initial=65535</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the CRC value.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>string</strong> – to have CRC calculated on</li>
+<li><strong>initial</strong> – start value of CRC (0xFFFF for IDP modem)</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">crc value</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="crcxmodem.crc_bytes">
+<code class="descclassname">crcxmodem.</code><code class="descname">crc_bytes</code><span class="sig-paren">(</span><em>*i</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc_bytes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the CRC value of a byte stream.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>i</strong> – byte stream</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">crc value</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
 <div class="section" id="module-idpmodemsample">
 <span id="idpmodemsample"></span><h2>idpmodemsample<a class="headerlink" href="#module-idpmodemsample" title="Permalink to this headline">¶</a></h2>
 <p>Sample program to run on Raspberry Pi (headless) or Windows (using ORBCOMM/SkyWave Modem Simulator)
@@ -850,10 +897,30 @@ Periodically queries modem status, checks for incoming messages and sends locati
 <p>Mobile-Originated location reports are 17 bytes using SIN 255 MIN 255
 Mobile-Terminated location interval change uses SIN 255 MIN 1, plus 1 byte payload for the new interval in minutes.
 When a new interval is configured, a location report is generated immediately, thereafter at the new interval.</p>
+<div class="admonition-todo admonition" id="index-2">
+<p class="first admonition-title">Todo</p>
+<ul class="last simple">
+<li>Extract generic functions/modules such as wrapping logger, RepeatingTimer, NMEA parsing</li>
+<li>Embed modem process threads within idpmodem with registered callbacks</li>
+<li>Restructure parse_args for automagic documentation with sphinx argparse extension</li>
+</ul>
+</div>
 <dl class="class">
 <dt id="idpmodemsample.HMI">
 <em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">HMI</code><a class="headerlink" href="#idpmodemsample.HMI" title="Permalink to this definition">¶</a></dt>
-<dd><p>A Human Machine Interface element that can be used for headless operation</p>
+<dd><p>A Human Machine Interface element that can be used for headless operation.  Examples: LED indicator, buzzer.</p>
+<div class="admonition-todo admonition" id="index-3">
+<p class="first admonition-title">Todo</p>
+<p class="last">Non-functional.  Develop this concept.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">HMI object (non-functional)</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="class">
@@ -861,18 +928,66 @@ When a new interval is configured, a location report is generated immediately, t
 <em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">Location</code><span class="sig-paren">(</span><em>latitude=5460000</em>, <em>longitude=10860000</em>, <em>altitude=0</em>, <em>speed=0</em>, <em>heading=0</em>, <em>timestamp=0</em>, <em>satellites=0</em>, <em>fixtype=1</em>, <em>PDOP=0</em>, <em>HDOP=0</em>, <em>VDOP=0</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.Location" title="Permalink to this definition">¶</a></dt>
 <dd><p>A class containing a specific set of location-based information for a given point in time.
 Uses 91/181 if lat/lon are unknown</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>latitude</strong> – in 1/1000th minutes (approximately 1 m resolution)</li>
+<li><strong>longitude</strong> – in 1/1000th minutes (approximately 1 m resolution)</li>
+<li><strong>altitude</strong> – in metres</li>
+<li><strong>speed</strong> – in knots</li>
+<li><strong>heading</strong> – in degrees</li>
+<li><strong>timestamp</strong> – in seconds since 1970-01-01T00:00:00Z</li>
+<li><strong>satellites</strong> – in view at time of fix</li>
+<li><strong>fixtype</strong> – None, 2D or 3D</li>
+<li><strong>PDOP</strong> – Probability Dilution of Precision</li>
+<li><strong>HDOP</strong> – Horizontal DOP</li>
+<li><strong>VDOP</strong> – Vertical DOP</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="class">
 <dt id="idpmodemsample.ModemGPIO">
 <em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">ModemGPIO</code><a class="headerlink" href="#idpmodemsample.ModemGPIO" title="Permalink to this definition">¶</a></dt>
 <dd><p>Physical input/output interfaces for the modem e.g. reset, interrupts</p>
+<div class="admonition-todo admonition" id="index-4">
+<p class="first admonition-title">Todo</p>
+<p class="last">Non-functional. Develop this concept, perhaps internalized within <code class="docutils literal notranslate"><span class="pre">idpmodem</span></code>.</p>
+</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body">GPIO object (non-functional)</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="class">
 <dt id="idpmodemsample.RepeatingTimer">
 <em class="property">class </em><code class="descclassname">idpmodemsample.</code><code class="descname">RepeatingTimer</code><span class="sig-paren">(</span><em>seconds</em>, <em>name=None</em>, <em>sleep_chunk=0.25</em>, <em>callback=None</em>, <em>*args</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer" title="Permalink to this definition">¶</a></dt>
 <dd><p>A Thread class that repeats function calls like a Timer but can be stopped, restarted and change interval.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>seconds</strong> – interval for timer repeat</li>
+<li><strong>name</strong> – used to identify the thread</li>
+<li><strong>sleep_chunk</strong> – tick cycle in seconds between state checks</li>
+<li><strong>callback</strong> – the callback to execute each timer expiry</li>
+<li><strong>args</strong> – optional arguments to pass into the callback</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
 <dl class="method">
 <dt id="idpmodemsample.RepeatingTimer.change_interval">
 <code class="descname">change_interval</code><span class="sig-paren">(</span><em>seconds</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodemsample.RepeatingTimer.change_interval" title="Permalink to this definition">¶</a></dt>
@@ -1128,50 +1243,6 @@ Several sentence parameters are unused but remain as placeholders for completene
 <li>raw NMEA data string, with prefix $Gx and checksum suffix removed</li>
 </ul>
 </td>
-</tr>
-</tbody>
-</table>
-</dd></dl>
-
-</div>
-<div class="section" id="module-crcxmodem">
-<span id="crcxmodem"></span><h2>crcxmodem<a class="headerlink" href="#module-crcxmodem" title="Permalink to this headline">¶</a></h2>
-<div class="line-block">
-<div class="line">Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.</div>
-<div class="line">Borrowed from <a class="reference external" href="https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation">https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation</a>.</div>
-</div>
-<dl class="function">
-<dt id="crcxmodem.crc">
-<code class="descclassname">crcxmodem.</code><code class="descname">crc</code><span class="sig-paren">(</span><em>string</em>, <em>initial=65535</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the CRC value.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>string</strong> – to have CRC calculated on</li>
-<li><strong>initial</strong> – start value of CRC (0xFFFF for IDP modem)</li>
-</ul>
-</td>
-</tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">crc value</p>
-</td>
-</tr>
-</tbody>
-</table>
-</dd></dl>
-
-<dl class="function">
-<dt id="crcxmodem.crc_bytes">
-<code class="descclassname">crcxmodem.</code><code class="descname">crc_bytes</code><span class="sig-paren">(</span><em>*i</em><span class="sig-paren">)</span><a class="headerlink" href="#crcxmodem.crc_bytes" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the CRC value of a byte stream.</p>
-<table class="docutils field-list" frame="void" rules="none">
-<col class="field-name" />
-<col class="field-body" />
-<tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>i</strong> – byte stream</td>
-</tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">crc value</td>
 </tr>
 </tbody>
 </table>

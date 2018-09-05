@@ -2,7 +2,9 @@
 Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.
 
 .. todo::
-   Reference contextual documentation pages for things like event notifications, low power, etc.
+
+   * Reference contextual documentation pages for things like event notifications, low power, etc.
+   * Internalize threads for typical monitoring processes to callback to registered external functions
 
 """
 __version__ = "1.0.2"
@@ -1704,6 +1706,7 @@ class Message(object):
         return encoded_payload
 
     '''
+    # TODO: this is not a modem function, belongs with external controller / edge compute
     def decode_idp_json(self):
         """
         Decodes the message received to JSON from the modem based on data format retrieved from IDP modem.

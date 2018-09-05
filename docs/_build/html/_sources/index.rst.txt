@@ -18,17 +18,17 @@ idpmodem
    :members: Modem, Message, MobileOriginatedMessage, MobileTerminatedMessage
 
 
-idpmodemsample
-==============
-
-.. automodule:: idpmodemsample
-   :members:
-
-
 crcxmodem
 =========
 
 .. automodule:: crcxmodem
+   :members:
+
+
+idpmodemsample
+==============
+
+.. automodule:: idpmodemsample
    :members:
 
 
