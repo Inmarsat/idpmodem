@@ -1,5 +1,24 @@
 """
-Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.
+Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (**IDP**) modem using AT commands.
+
+IDP is a store-and-forward satellite messaging technology with messages structured as:
+
+.. table::
+
+   +--------------------------------------------+------------------------------------------------+
+   | Service Identifier Number (1 byte **SIN**) | Payload (up to 6399 bytes MO or 9999 bytes MT) |
+   +--------------------------------------------+------------------------------------------------+
+
+Where the first byte of Payload can optionally be defined as a Message Identifier Number (**MIN**)
+to facilitate decoding.
+
+* MO = **Mobile Originated** aka *Return* aka *From-Mobile* message sent from modem to cloud application
+* MT = **Mobile Terminated** aka *Forward message* aka *To-Mobile* message sent from cloud application to modem
+
+Upon power-up or reset, the modem first acquires its location using Global Navigation Satellite Systems (GNSS).
+After getting its location, the modem tunes to the correct frequency, then registers on the network.
+Prolonged obstruction of satellite signal will put the modem into a "blockage" state from which it will
+automatically try to recover based on an algorithm influenced by its *power mode* setting.
 
 .. todo::
 
@@ -21,7 +40,23 @@ import sys
 
 
 class Modem(object):
-    """Abstracts attributes and statistics related to an IDP modem"""
+    """
+    Abstracts attributes and statistics related to an IDP modem
+
+    :param serial_port: a pySerial.serial object
+    :param log: an optional logger
+    :param debug: Boolean option for verbose trace
+    :param callbacks: optional dictionary of callback functions for
+
+       * ``all`` below events
+       * ``sat_status`` satellite status change e.g. registration, blockage
+       * ``new_mt_message`` message received over-the-air
+       * ``mo_message_complete`` message sent or failed
+       * ``wakeup_interval_change``
+       * ``new_gnss_fix``
+       * ``trace_event`` for configured trace events that would assert the notification pin
+
+    """
 
     ctrl_states = [
         'Stopped',
@@ -102,13 +137,25 @@ class Modem(object):
         'Air 4g': 8
     }
     
-    def __init__(self, serial_port, log=None, debug=False):
+    def __init__(self, serial_port, log=None, debug=False, *callbacks):
         """
         Initializes attributes and pointers used by Modem class methods.
+
+        .. todo::
+           *callbacks*
 
         :param serial_port: a pySerial.serial object
         :param log: an optional logger
         :param debug: Boolean option for verbose trace
+        :param callbacks: (FUTURE) optional dictionary of callback functions {event_type, event_detail} for:
+
+           * ``all`` below events
+           * ``sat_status`` satellite status change, new status e.g. registration, blockage
+           * ``new_mt_message`` message received over-the-air, list of relevant message retrieval details
+           * ``mo_message_complete`` message sent or failed, new state
+           * ``wakeup_interval_change`` changed, new state
+           * ``new_gnss_fix`` fix or timeout, fix details or None
+           * ``trace_event`` for configured trace events that would assert the notification pin
 
         """
         self.mobile_id = 'unknown'
@@ -213,6 +260,9 @@ class Modem(object):
             "pps": None,
             "reset_in": None
         }
+        if callbacks is not None:
+            # TODO: instantiate threads for each notification callback
+            pass
 
     def _get_crc(self, at_cmd):
         """
@@ -811,7 +861,7 @@ class Modem(object):
            - ``dictionary`` message consisting of:
               - ``sin`` Service Identifier Number
               - ``min`` Message Identifier Number
-              - ``payload`` including MIN byte, structure depends on data_type
+              - ``payload`` including MIN byte, structure depends on data_type (text, hex, base64)
               - ``size`` total in bytes including SIN, MIN
 
         """
@@ -830,17 +880,17 @@ class Modem(object):
                         msg_envelope = response['response'][0].replace('%MGFG:', '').strip().split(',')
                         msg_content = msg_envelope[7]
                         msg_content_str = ''
-                        if data_type == 1:
+                        if data_type == 1:      # text
                             message['min'] = int(msg_content.replace('"', '')[1:3], 16)
                             msg_content_str = msg_content.replace('"', '')[3:]
                             message['payload'] = msg_content_str
                             message['size'] = len(msg_content_str) + 2
-                        elif data_type == 2:
+                        elif data_type == 2:      # hex-string
                             message['min'] = int(msg_content[0:2], 16)
                             msg_content_str = '0x' + str(msg_content)
                             message['payload'] = bytearray(msg_content.decode("hex"))
                             message['size'] = len(message['payload']) + 1
-                        elif data_type == 3:
+                        elif data_type == 3:      # base64-string
                             msg_content_bytes = bytearray(binascii.a2b_base64(msg_content))
                             message['min'] = int(msg_content_bytes[0])
                             msg_content_str = str(msg_content)

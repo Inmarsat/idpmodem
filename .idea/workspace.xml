@@ -2,31 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/_build/doctrees/environment.pickle" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/doctrees/environment.pickle" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/_build/doctrees/index.doctree" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/doctrees/index.doctree" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_sources/index.rst.txt" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_sources/index.rst.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/basic.css" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/basic.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/bizstyle.css" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/bizstyle.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/bizstyle.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/bizstyle.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/css3-mediaqueries.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/css3-mediaqueries.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/css3-mediaqueries_src.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/css3-mediaqueries_src.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/doctools.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/doctools.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/documentation_options.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/documentation_options.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/jquery-3.2.1.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/jquery-3.2.1.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/jquery.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/jquery.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/searchtools.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/searchtools.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/underscore-1.3.1.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/underscore-1.3.1.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/underscore.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/underscore.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/_static/websupport.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/_static/websupport.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/genindex.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/genindex.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/_build/html/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/py-modindex.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/py-modindex.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/_build/html/search.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/search.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docs/_build/html/searchindex.js" beforeDir="false" afterPath="$PROJECT_DIR$/docs/_build/html/searchindex.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/conf.py" beforeDir="false" afterPath="$PROJECT_DIR$/docs/conf.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/index.rst" beforeDir="false" afterPath="$PROJECT_DIR$/docs/index.rst" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/idpmodem/idpmodem.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodem.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodemsample.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -44,15 +25,15 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="py" value="832" />
+          <entry key="py" value="2943" />
           <entry key="rst" value="8" />
-          <entry key="txt" value="115" />
+          <entry key="txt" value="168" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="PLAIN_TEXT" value="115" />
-          <entry key="Python" value="832" />
+          <entry key="PLAIN_TEXT" value="168" />
+          <entry key="Python" value="2943" />
           <entry key="ReST" value="8" />
         </counts>
       </usages-collector>
@@ -72,12 +53,16 @@
   </component>
   <component name="FileEditorManager">
     <leaf>
-      <file pinned="false" current-in-tab="true">
+      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/idpmodem/idpmodemsample.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="380">
-              <caret line="64" selection-start-line="64" selection-end-line="64" />
+            <state relative-caret-position="219">
+              <caret line="46" column="39" selection-start-line="46" selection-start-column="39" selection-end-line="46" selection-end-column="39" />
               <folding>
+                <element signature="e#1596#4924#0" />
+                <element signature="e#4955#6655#0" />
+                <element signature="e#6681#6966#0" />
+                <element signature="e#6998#7320#0" />
                 <element signature="e#7614#9351#0" />
                 <element signature="e#9383#10504#0" />
                 <element signature="e#10539#11632#0" />
@@ -108,13 +93,60 @@
           <provider selected="true" editor-type-id="restructured-text-editor" />
         </entry>
       </file>
-      <file pinned="false" current-in-tab="false">
+      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="102">
-              <caret line="6" column="3" selection-start-line="6" selection-start-column="3" selection-end-line="6" selection-end-column="3" />
+            <state relative-caret-position="306">
+              <caret line="149" column="108" selection-start-line="149" selection-start-column="108" selection-end-line="149" selection-end-column="108" />
               <folding>
-                <element signature="e#399#65688#0" />
+                <element signature="e#484#929#0" />
+                <element signature="e#957#1519#0" />
+                <element signature="e#1544#1812#0" />
+                <element signature="e#1832#2013#0" />
+                <element signature="e#2032#2293#0" />
+                <element signature="e#2316#2501#0" />
+                <element signature="e#2907#3026#0" />
+                <element signature="e#3053#3220#0" />
+                <element signature="e#3268#3681#0" />
+                <element signature="e#3933#4564#0" />
+                <element signature="e#4733#4865#0" />
+                <element signature="e#4951#5020#0" />
+                <element signature="e#6242#6378#0" />
+                <element signature="e#6420#6690#0" />
+                <element signature="e#6763#7533#0" />
+                <element signature="e#7597#17504#0" />
+                <element signature="e#17561#18713#0" />
+                <element signature="e#18762#19350#0" />
+                <element signature="e#19424#24925#0" />
+                <element signature="e#24970#31568#0" />
+                <element signature="e#31614#33772#0" />
+                <element signature="e#33857#37294#0" />
+                <element signature="e#37399#42061#0" />
+                <element signature="e#42149#45291#0" />
+                <element signature="e#45331#45833#0" />
+                <element signature="e#45893#48132#0" />
+                <element signature="e#48188#48588#0" />
+                <element signature="e#48651#49336#0" />
+                <element signature="e#49421#50356#0" />
+                <element signature="e#50436#52058#0" />
+                <element signature="e#52117#52932#0" />
+                <element signature="e#52991#54961#0" />
+                <element signature="e#55030#55825#0" />
+                <element signature="e#55874#56564#0" />
+                <element signature="e#56628#57595#0" />
+                <element signature="e#57640#57939#0" />
+                <element signature="e#57998#58785#0" />
+                <element signature="e#58825#59109#0" />
+                <element signature="e#59173#59796#0" />
+                <element signature="e#59841#60149#0" />
+                <element signature="e#60207#61085#0" />
+                <element signature="e#61124#61405#0" />
+                <element signature="e#61465#62411#0" />
+                <element signature="e#62449#62752#0" />
+                <element signature="e#62791#63060#0" />
+                <element signature="e#63100#63327#0" />
+                <element signature="e#63367#65137#0" />
+                <element signature="e#65177#65688#0" />
               </folding>
             </state>
           </provider>
@@ -140,15 +172,15 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/idpmodem/idpmodem.py" />
         <option value="$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py" />
         <option value="$PROJECT_DIR$/docs/conf.py" />
         <option value="$PROJECT_DIR$/docs/index.rst" />
         <option value="$PROJECT_DIR$/idpmodem/idpmodemsample.py" />
+        <option value="$PROJECT_DIR$/idpmodem/idpmodem.py" />
       </list>
     </option>
   </component>
-  <component name="ProjectFrameBounds" extendedState="7">
+  <component name="ProjectFrameBounds" extendedState="6">
     <option name="x" value="-1757" />
     <option name="y" value="-117" />
     <option name="width" value="1616" />
@@ -237,11 +269,19 @@
       <option name="project" value="LOCAL" />
       <updated>1536147504156</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Added to do elements and some documentation cleanup.">
+      <created>1536150292567</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1536150292567</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="ToolWindowManager">
     <frame x="-1928" y="-188" width="1936" height="1096" extended-state="6" />
+    <editor active="true" />
     <layout>
       <window_info id="Favorites" side_tool="true" />
       <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24973656" />
@@ -268,7 +308,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Directory restructure" />
     <MESSAGE value="Adjusted path for sphinx documentation to revised directory structure." />
-    <option name="LAST_COMMIT_MESSAGE" value="Adjusted path for sphinx documentation to revised directory structure." />
+    <MESSAGE value="Added to do elements and some documentation cleanup." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added to do elements and some documentation cleanup." />
   </component>
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/../pi_serial_server/docs/conf.py">
@@ -287,21 +328,15 @@
     <entry file="file://$PROJECT_DIR$/docs/index.rst">
       <provider selected="true" editor-type-id="restructured-text-editor" />
     </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="102">
-          <caret line="6" column="3" selection-start-line="6" selection-start-column="3" selection-end-line="6" selection-end-column="3" />
-          <folding>
-            <element signature="e#399#65688#0" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/idpmodemsample.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="380">
-          <caret line="64" selection-start-line="64" selection-end-line="64" />
+        <state relative-caret-position="219">
+          <caret line="46" column="39" selection-start-line="46" selection-start-column="39" selection-end-line="46" selection-end-column="39" />
           <folding>
+            <element signature="e#1596#4924#0" />
+            <element signature="e#4955#6655#0" />
+            <element signature="e#6681#6966#0" />
+            <element signature="e#6998#7320#0" />
             <element signature="e#7614#9351#0" />
             <element signature="e#9383#10504#0" />
             <element signature="e#10539#11632#0" />
@@ -313,6 +348,63 @@
             <element signature="e#20121#20627#0" />
             <element signature="e#20691#22737#0" />
             <element signature="e#22766#24109#0" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="306">
+          <caret line="149" column="108" selection-start-line="149" selection-start-column="108" selection-end-line="149" selection-end-column="108" />
+          <folding>
+            <element signature="e#484#929#0" />
+            <element signature="e#957#1519#0" />
+            <element signature="e#1544#1812#0" />
+            <element signature="e#1832#2013#0" />
+            <element signature="e#2032#2293#0" />
+            <element signature="e#2316#2501#0" />
+            <element signature="e#2907#3026#0" />
+            <element signature="e#3053#3220#0" />
+            <element signature="e#3268#3681#0" />
+            <element signature="e#3933#4564#0" />
+            <element signature="e#4733#4865#0" />
+            <element signature="e#4951#5020#0" />
+            <element signature="e#6242#6378#0" />
+            <element signature="e#6420#6690#0" />
+            <element signature="e#6763#7533#0" />
+            <element signature="e#7597#17504#0" />
+            <element signature="e#17561#18713#0" />
+            <element signature="e#18762#19350#0" />
+            <element signature="e#19424#24925#0" />
+            <element signature="e#24970#31568#0" />
+            <element signature="e#31614#33772#0" />
+            <element signature="e#33857#37294#0" />
+            <element signature="e#37399#42061#0" />
+            <element signature="e#42149#45291#0" />
+            <element signature="e#45331#45833#0" />
+            <element signature="e#45893#48132#0" />
+            <element signature="e#48188#48588#0" />
+            <element signature="e#48651#49336#0" />
+            <element signature="e#49421#50356#0" />
+            <element signature="e#50436#52058#0" />
+            <element signature="e#52117#52932#0" />
+            <element signature="e#52991#54961#0" />
+            <element signature="e#55030#55825#0" />
+            <element signature="e#55874#56564#0" />
+            <element signature="e#56628#57595#0" />
+            <element signature="e#57640#57939#0" />
+            <element signature="e#57998#58785#0" />
+            <element signature="e#58825#59109#0" />
+            <element signature="e#59173#59796#0" />
+            <element signature="e#59841#60149#0" />
+            <element signature="e#60207#61085#0" />
+            <element signature="e#61124#61405#0" />
+            <element signature="e#61465#62411#0" />
+            <element signature="e#62449#62752#0" />
+            <element signature="e#62791#63060#0" />
+            <element signature="e#63100#63327#0" />
+            <element signature="e#63367#65137#0" />
+            <element signature="e#65177#65688#0" />
           </folding>
         </state>
       </provider>

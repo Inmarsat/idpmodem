@@ -79,7 +79,29 @@
 </div>
 <div class="section" id="module-idpmodem">
 <span id="idpmodem"></span><h2>idpmodem<a class="headerlink" href="#module-idpmodem" title="Permalink to this headline">¶</a></h2>
-<p>Data structure and operations for a SkyWave/ORBCOMM IDP modem using AT commands.</p>
+<p>Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (<strong>IDP</strong>) modem using AT commands.</p>
+<p>IDP is a store-and-forward satellite messaging technology with messages structured as:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="48%" />
+<col width="52%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td>Service Identifier Number (1 byte <strong>SIN</strong>)</td>
+<td>Payload (up to 6399 bytes MO or 9999 bytes MT)</td>
+</tr>
+</tbody>
+</table>
+<p>Where the first byte of Payload can optionally be defined as a Message Identifier Number (<strong>MIN</strong>)
+to facilitate decoding.</p>
+<ul class="simple">
+<li>MO = <strong>Mobile Originated</strong> aka <em>Return</em> aka <em>From-Mobile</em> message sent from modem to cloud application</li>
+<li>MT = <strong>Mobile Terminated</strong> aka <em>Forward message</em> aka <em>To-Mobile</em> message sent from cloud application to modem</li>
+</ul>
+<p>Upon power-up or reset, the modem first acquires its location using Global Navigation Satellite Systems (GNSS).
+After getting its location, the modem tunes to the correct frequency, then registers on the network.
+Prolonged obstruction of satellite signal will put the modem into a “blockage” state from which it will
+automatically try to recover based on an algorithm influenced by its <em>power mode</em> setting.</p>
 <div class="admonition-todo admonition" id="index-0">
 <p class="first admonition-title">Todo</p>
 <ul class="last simple">
@@ -89,8 +111,32 @@
 </div>
 <dl class="class">
 <dt id="idpmodem.Modem">
-<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">Modem</code><span class="sig-paren">(</span><em>serial_port</em>, <em>log=None</em>, <em>debug=False</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">idpmodem.</code><code class="descname">Modem</code><span class="sig-paren">(</span><em>serial_port</em>, <em>log=None</em>, <em>debug=False</em>, <em>*callbacks</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem" title="Permalink to this definition">¶</a></dt>
 <dd><p>Abstracts attributes and statistics related to an IDP modem</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>serial_port</strong> – a pySerial.serial object</li>
+<li><strong>log</strong> – an optional logger</li>
+<li><strong>debug</strong> – Boolean option for verbose trace</li>
+<li><strong>callbacks</strong> – <p>optional dictionary of callback functions for</p>
+<ul>
+<li><code class="docutils literal notranslate"><span class="pre">all</span></code> below events</li>
+<li><code class="docutils literal notranslate"><span class="pre">sat_status</span></code> satellite status change e.g. registration, blockage</li>
+<li><code class="docutils literal notranslate"><span class="pre">new_mt_message</span></code> message received over-the-air</li>
+<li><code class="docutils literal notranslate"><span class="pre">mo_message_complete</span></code> message sent or failed</li>
+<li><code class="docutils literal notranslate"><span class="pre">wakeup_interval_change</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">new_gnss_fix</span></code></li>
+<li><code class="docutils literal notranslate"><span class="pre">trace_event</span></code> for configured trace events that would assert the notification pin</li>
+</ul>
+</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
 <dl class="method">
 <dt id="idpmodem.Modem.at_attach">
 <code class="descname">at_attach</code><span class="sig-paren">(</span><em>at_timeout=1</em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.Modem.at_attach" title="Permalink to this definition">¶</a></dt>
@@ -228,7 +274,7 @@ and updates the event_notifications attribute of the Modem instance.</p>
 <dd><ul class="first last">
 <li><code class="docutils literal notranslate"><span class="pre">sin</span></code> Service Identifier Number</li>
 <li><code class="docutils literal notranslate"><span class="pre">min</span></code> Message Identifier Number</li>
-<li><code class="docutils literal notranslate"><span class="pre">payload</span></code> including MIN byte, structure depends on data_type</li>
+<li><code class="docutils literal notranslate"><span class="pre">payload</span></code> including MIN byte, structure depends on data_type (text, hex, base64)</li>
 <li><code class="docutils literal notranslate"><span class="pre">size</span></code> total in bytes including SIN, MIN</li>
 </ul>
 </dd>
