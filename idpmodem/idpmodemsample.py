@@ -595,7 +595,7 @@ def monitor_com(disconnect_timeouts=3):
     return modem.is_connected
 
 
-def init_environment(default_logfile=None, debug=False):
+def init_environment(default_logfile=None, debug=False, tracking=None):
     """
     Initializes the OS environment.
 
@@ -613,7 +613,6 @@ def init_environment(default_logfile=None, debug=False):
     success = False
     serial_name = None
     logfile = None
-    tracking = None
     if sys.platform.lower().startswith('linux2'):
         try:
             import RPi.GPIO as GPIO  # Successful import of this module implies running on Raspberry Pi
@@ -639,10 +638,10 @@ def init_environment(default_logfile=None, debug=False):
             if res['logfile'] != '':
                 logfile = res['logfile']
             tracking = res['tracking']
-        except ImportError:
-            print("\n Could not import idpwindows.py test utility")
+        except ImportError as error:
+            print(error.message)
     else:
-        print('\n Operation undefined on current platform. Please use RPi/GPIO, MultiTech AEP or Windows.')
+        print('Operation undefined on current platform. Please use RPi/GPIO, MultiTech AEP or Windows.')
 
     return success, {'serial_name': serial_name, 'logfile': logfile, 'tracking': tracking, 'debug': debug}
 
@@ -669,7 +668,7 @@ def parse_args(argv):
     parser.add_argument('-c', '--crc', dest='use_crc', action='store_true',
                         help="force use of CRC on serial port (default OFF)")
 
-    parser.add_argument('-t', '--track', dest='tracking', type=int, default=0,
+    parser.add_argument('-t', '--track', dest='tracking', type=int, default=15,
                         help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
 
     parser.add_argument('-f', '--fishdish', dest='fish_dish', action='store_true',
@@ -698,7 +697,6 @@ def main():
     # Timer intervals (seconds)
     SAT_STATUS_INTERVAL = 5
     MT_MESSAGE_CHECK_INTERVAL = 15
-    tracking_interval = 900
 
     # Thread lock for background processes to avoid overlapping AT requests
     thread_lock = threading.RLock()     # TODO: is there a need to pass this into the modem instance?
@@ -712,14 +710,13 @@ def main():
         logfile = user_options['logfile']
     log_size = user_options['log_size']
     debug = user_options['debug']
-    if user_options['tracking'] is not None:
-        if 0 <= user_options['tracking'] <= 1440:
-            tracking_interval = int(user_options['tracking'] * 60)
-        else:
-            sys.exit("Invalid tracking interval, must be in range 0..1440")
+    if 0 <= user_options['tracking'] <= 1440:
+        tracking_interval = int(user_options['tracking'] * 60)
+    else:
+        sys.exit("Invalid tracking interval, must be in range 0..1440")
 
     # Pre-initialization of platform
-    env, res = init_environment(default_logfile=logfile, debug=debug)
+    env, res = init_environment(default_logfile=logfile, debug=debug, tracking=tracking_interval)
     if not env:
         sys.exit('Unable to initialize environment.')
     else:

@@ -1748,7 +1748,7 @@ class Message(object):
             hex_str += format(int(bin_str[index_byte:index_byte + 8], 2), '02X').upper()
             index_byte += 8
         self.size = len(hex_str) / 2 + 2
-        self.payload_b64 = hex_str.decode('hex').encode('base64')
+        self.payload_b64 = hex_str.decode('hex').encode('base64').strip()
         if data_format == 2:
             encoded_payload = hex_str
         elif data_format == 3:
