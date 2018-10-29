@@ -336,10 +336,21 @@ def send_idp_location(loc):
     message.add_field('pdop', 'int_8', loc.PDOP, '04b')
     message.delete_field('pdop')
     data_str = message.encode_idp(data_format=3)
-    success = modem.at_send_message(data_string=data_str, data_format=3, msg_sin=message.sin, msg_min=message.min)
-    if not success:
-        log.error("Failed to send location message")
-        message.state = message.states.FAILED
+    success, mo_msg_name, mo_submit_time = modem.at_submit_message(data_string=data_str, data_format=3,
+                                                                   msg_sin=message.sin, msg_min=message.min)
+    if success:
+        status_poll_count = 0
+        msg_complete = False
+        while not msg_complete:
+            time.sleep(1)
+            status_poll_count += 1
+            log.debug("MGRS queries: {count}".format(count=status_poll_count))
+            success, msg_complete = modem.at_check_mo_status(mo_msg_name, mo_submit_time)
+            if not success:
+                log.error("Failed MO status request")
+    else:
+        log.error("Failed to submit location message")
+        # message.state = message.states.FAILED
     return success
 
 

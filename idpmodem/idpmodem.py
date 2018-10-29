@@ -913,7 +913,7 @@ class Modem(object):
 
         return msg_retrieved, message
 
-    def at_send_message(self, data_string, data_format=1, msg_sin=128, msg_min=1, priority=4):
+    def at_submit_message(self, data_string, data_format=1, msg_sin=128, msg_min=1, priority=4):
         """
         Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary.
 
@@ -922,7 +922,11 @@ class Modem(object):
         :param msg_sin: first byte of message (default 128 "user")
         :param msg_min: second byte of message (default 1 "user")
         :param priority: 1(high) through 4(low, default)
-        :return: Boolean result
+        :return:
+
+           * Boolean result
+           * String message name
+           * Integer submit time
 
         """
         log = self.log
@@ -932,7 +936,7 @@ class Modem(object):
         mo_msg_sin = msg_sin
         mo_msg_min = msg_min
         mo_msg_format = data_format
-        msg_complete = False
+        msg_submitted = False
         if data_format == 1:
             mo_msg_content = '"' + data_string + '"'
         else:
@@ -947,56 +951,136 @@ class Modem(object):
                 err_code, err_str = self.at_get_result_code(response['result'])
                 mo_submit_time = time.time()
                 if err_code == 0:
+                    msg_submitted = True
+                    # TODO: convert to a thread with callback on completion
+                    '''
                     status_poll_count = 0
+                    msg_complete = False
                     while not msg_complete:
                         time.sleep(1)
                         status_poll_count += 1
-                        log.debug("MGRS queries: %d" % status_poll_count)
-                        response1 = self.at_get_response('AT%MGRS="' + mo_msg_name + '"')
-                        if not response1['timeout']:
-                            err_code1, err_str1 = self.at_get_result_code(response['result'])
-                            if err_code1 == 0:
-                                res_param = response1['response'][0].split(',')
-                                res_header = res_param[0]
-                                res_msg_no = res_param[1]
-                                res_priority = int(res_param[2])
-                                res_sin = int(res_param[3])
-                                res_state = int(res_param[4])
-                                res_size = int(res_param[5])
-                                res_sent = int(res_param[6])
-                                if res_state > 5:
-                                    msg_complete = True
-                                    if res_state == 6:
-                                        msg_latency = int(time.time() - mo_submit_time)
-                                        log.info("MO message SIN=%d MIN=%d (%d bytes) completed in %d seconds"
-                                                 % (mo_msg_sin, mo_msg_min, res_size, msg_latency))
-                                        if self.system_stats['avgMOMsgSize'] == 0:
-                                            self.system_stats['avgMOMsgSize'] = res_size
-                                        else:
-                                            self.system_stats['avgMOMsgSize'] = int(
-                                                (self.system_stats['avgMOMsgSize'] + res_size) / 2)
-                                        if self.system_stats['avgMOMsgLatency_s'] == 0:
-                                            self.system_stats['avgMOMsgLatency_s'] = msg_latency
-                                        else:
-                                            self.system_stats['avgMOMsgLatency_s'] = int(
-                                                (self.system_stats['avgMOMsgLatency_s'] + msg_latency) / 2)
+                        log.debug("MGRS queries: {count}".format(count=status_poll_count))
+                        success, msg_complete = self.at_check_mo_status(mo_msg_name)
+                    '''
+                    '''
+                    response1 = self.at_get_response('AT%MGRS="' + mo_msg_name + '"')
+                    if not response1['timeout']:
+                        err_code1, err_str1 = self.at_get_result_code(response['result'])
+                        if err_code1 == 0:
+                            res_param = response1['response'][0].split(',')
+                            res_header = res_param[0]
+                            res_msg_no = res_param[1]
+                            res_priority = int(res_param[2])
+                            res_sin = int(res_param[3])
+                            res_state = int(res_param[4])
+                            res_size = int(res_param[5])
+                            res_sent = int(res_param[6])
+                            if res_state > 5:
+                                msg_submitted = True
+                                if res_state == 6:
+                                    msg_latency = int(time.time() - mo_submit_time)
+                                    log.info("MO message SIN=%d MIN=%d (%d bytes) completed in %d seconds"
+                                             % (mo_msg_sin, mo_msg_min, res_size, msg_latency))
+                                    if self.system_stats['avgMOMsgSize'] == 0:
+                                        self.system_stats['avgMOMsgSize'] = res_size
                                     else:
-                                        log.info("MO message (%d bytes) failed after %d seconds"
-                                                 % (res_size, int(time.time() - mo_submit_time)))
-                            elif err_code == 109:
-                                log.debug("Message complete, Unavailable")
-                                break
-                            else:
-                                log.error("Error getting message state (%s)" % err_str1)
-                        else:
-                            log.error("Message status check timed out")
+                                        self.system_stats['avgMOMsgSize'] = int(
+                                            (self.system_stats['avgMOMsgSize'] + res_size) / 2)
+                                    if self.system_stats['avgMOMsgLatency_s'] == 0:
+                                        self.system_stats['avgMOMsgLatency_s'] = msg_latency
+                                    else:
+                                        self.system_stats['avgMOMsgLatency_s'] = int(
+                                            (self.system_stats['avgMOMsgLatency_s'] + msg_latency) / 2)
+                                else:
+                                    log.info("MO message (%d bytes) failed after %d seconds"
+                                             % (res_size, int(time.time() - mo_submit_time)))
+                        elif err_code == 109:
+                            log.debug("Message complete, Unavailable")
                             break
+                        else:
+                            log.error("Error getting message state (%s)" % err_str1)
+                    else:
+                        log.error("Message status check timed out")
+                        break
+                    '''
                 else:
                     log.error("Message submit error (%s)" % err_str)
             else:
                 log.warning("Timeout attempting to submit MO message")
 
-        return msg_complete
+        return msg_submitted, mo_msg_name, mo_submit_time
+
+    def at_check_mo_status(self, mo_msg_name, mo_submit_time=None):
+        """
+        TODO: docstring
+
+        :param mo_msg_name:
+        :param mo_submit_time:
+        :return:
+
+           * Boolean success of operation
+           * Boolean message complete
+
+        """
+        log = self.log
+        success = False
+        msg_complete = False
+        with self.thread_lock:
+            # pending_mo_message['status_poll_count'] += 1
+            # status_poll_count = pending_mo_message['status_poll_count']
+            # mo_msg_sin = pending_mo_message['mo_msg_sin']
+            # mo_msg_min = pending_mo_message['mo_msg_min']
+            # log.debug("MGRS queries: %d" % status_poll_count)
+            response = self.at_get_response('AT%MGRS="' + mo_msg_name + '"')
+            if not response['timeout']:
+                err_code, err_str = self.at_get_result_code(response['result'])
+                if err_code == 0:
+                    success = True
+                    res_param = response['response'][0].split(',')
+                    res_header = res_param[0]
+                    res_msg_no = res_param[1]
+                    res_priority = int(res_param[2])
+                    res_sin = int(res_param[3])
+                    res_state = int(res_param[4])
+                    res_size = int(res_param[5])
+                    res_sent = int(res_param[6])
+                    if res_state > 5:
+                        msg_complete = True
+                        if mo_submit_time is not None:
+                            msg_latency = int(time.time() - mo_submit_time)
+                        else:
+                            msg_latency = "??"
+                        msg_min = "??"
+                        if res_state == 6:
+                            log.info("MO message SIN={sin} MIN={min} ({size} bytes) "
+                                     "completed in {time} seconds".format(sin=res_sin, min=msg_min, size=res_size,
+                                                                          time=msg_latency))
+                            if self.system_stats['avgMOMsgSize'] == 0:
+                                self.system_stats['avgMOMsgSize'] = res_size
+                            else:
+                                self.system_stats['avgMOMsgSize'] = int(
+                                    (self.system_stats['avgMOMsgSize'] + res_size) / 2)
+                            if self.system_stats['avgMOMsgLatency_s'] == 0:
+                                self.system_stats['avgMOMsgLatency_s'] = msg_latency
+                            else:
+                                self.system_stats['avgMOMsgLatency_s'] = int(
+                                    (self.system_stats['avgMOMsgLatency_s'] + msg_latency) / 2)
+                        else:
+                            log.warning("MO message SIN={sin} MIN={min} ({size} bytes) "
+                                        "failed after {time} seconds".format(sin=res_sin, min=msg_min, size=res_size,
+                                                                             time=msg_latency))
+                elif err_code == 109:
+                    success = True
+                    log.debug("Message complete, Unavailable")
+                    # TODO: is this the right place for this?
+                    # self.pending_mo_messages.remove(pending_mo_message)
+                    msg_complete = True
+                else:
+                    log.error("Error getting message state: {err}".format(err=err_str))
+                    # TODO: this may require the message to be "parked" rather than stay pending
+            else:
+                log.error("Message status check timed out")
+        return success, msg_complete
 
     def at_get_nmea(self, rmc=True, gga=True, gsa=True, gsv=True, refresh=0):
         """
