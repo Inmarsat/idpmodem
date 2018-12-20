@@ -17,7 +17,7 @@ When a new interval is configured, a location report is generated immediately, t
 .. todo::
 
    * Extract generic functions/modules such as wrapping logger, RepeatingTimer, NMEA parsing
-   * Embed modem process threads within idpmodem with registered callbacks
+   * Embed modem process timer_threads within idpmodem with registered callbacks
    * Restructure parse_args for automagic documentation with sphinx argparse extension
 
 """
@@ -505,6 +505,7 @@ def get_send_idp_location():
     sentences = []
     attempts = 0
     while not retrieved and attempts < MAX_ATTEMPTS:
+        # TODO: consider using GPS status trace (Class 4, Subclass 2) to check age of fix before requesting a new fix.
         retrieved, sentences = modem.at_get_nmea(refresh=tracking_interval)
         attempts += 1
         time.sleep(3)
@@ -690,7 +691,7 @@ def parse_args(argv):
 
 def main():
     """
-    Sets up threads for polling satellite status, incoming over-the-air messages, and location updates.
+    Sets up timer_threads for polling satellite status, incoming over-the-air messages, and location updates.
     Monitors the serial connection to the modem and re-initializes on reconnect.
     """
     global log
@@ -759,9 +760,8 @@ def main():
 
             modem = idpmodem.Modem(ser, log)
 
-            # (Proxy) Timer threads for background tasks
-            status_thread = RepeatingTimer(seconds=SAT_STATUS_INTERVAL, name='check_sat_status',
-                                           callback=check_sat_status)
+            # (Proxy) Timer timer_threads for background tasks
+            status_thread = RepeatingTimer(seconds=SAT_STATUS_INTERVAL, name='check_sat_status', callback=check_sat_status)
             threads.append(status_thread.name)
             status_thread.start()
 
