@@ -11,7 +11,7 @@ import serial.tools.list_ports
 
 
 def is_logger(log):
-    return type(log) is logging.Logger
+    return isinstance(log, logging.Logger)
 
 
 def get_wrapping_log(logfile=None, file_size=5, debug=False):

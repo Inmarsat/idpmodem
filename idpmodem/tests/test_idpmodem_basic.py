@@ -1,13 +1,14 @@
 import unittest
 import time
-from context import idpmodem
+from context import idpmodem, headless
 
 
 class IdpModemTestCase(unittest.TestCase):
     def setUp(self):
         print("Setting up test case...")
+        self.log = headless.get_wrapping_log(logfile=None, debug=True)
         try:
-            self.modem = idpmodem.Modem(serial_name='COM38', debug=True, auto_monitor=True)
+            self.modem = idpmodem.Modem(serial_name='COM38', debug=True, log=self.log)
         except ValueError as e:
             self.modem = idpmodem.Modem(serial_name='COM37', debug=True)
         self.event_callback = None
@@ -97,20 +98,21 @@ class IdpModemTestCase(unittest.TestCase):
 #         self.assertTrue(self.event_callback is not None)
 
 
-# class Test5SendMessage(IdpModemTestCase):
-#     def runTest(self):
-#         self.test_case = 5
-#         print("TEST CASE {} CHECK MOBILE-ORIGINATED STATUSES".format(self.test_case))
-#         payload = bytearray([16, 1, 2, 3])
-#         msg_sin = None
-#         msg_min = None
-#         test_msg = idpmodem.MobileOriginatedMessage(payload=payload, msg_sin=msg_sin, msg_min=msg_min, debug=True)
-#         q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
-#         self.mo_msg_complete = False
-#         self.mo_messages.append(q_name)
-#         while test_msg.state < 6:
-#             pass
-#         self.assertTrue(test_msg.state >= 6)
+class Test5SendMessage(IdpModemTestCase):
+    def runTest(self):
+        self.test_case = 5
+        print("TEST CASE {} CHECK MOBILE-ORIGINATED STATUSES".format(self.test_case))
+        # TODO: different message types text, ascii-hex,
+        payload = bytearray([16, 1, 2, 3])
+        msg_sin = None
+        msg_min = None
+        test_msg = idpmodem.MobileOriginatedMessage(payload=payload, msg_sin=msg_sin, msg_min=msg_min, debug=True)
+        q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
+        self.mo_msg_complete = False
+        self.mo_messages.append(q_name)
+        while test_msg.state < 6:
+            pass
+        self.assertTrue(test_msg.state >= 6)
 
 
 class Test6ReceiveMessage(IdpModemTestCase):
@@ -141,8 +143,8 @@ class Test6ReceiveMessage(IdpModemTestCase):
                 data_format = 2
             else:
                 data_format = 3
-            success, error = self.modem.get_message(msg_name=msg.q_name, data_format=data_format,
-                                                    callback=self.cb_get_mt_message)
+            success, error = self.modem.get_mt_message(msg_name=msg.q_name, data_format=data_format,
+                                                       callback=self.cb_get_mt_message)
         if not success:
             print error
             self.assertFalse(success)
