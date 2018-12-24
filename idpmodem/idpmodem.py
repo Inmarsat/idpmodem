@@ -660,9 +660,9 @@ class Modem(object):
 
     def _on_initialized(self):
         if self.autonomous:
-            self.thread_sat_status.start_timer()
+            # self.thread_sat_status.start_timer()
             self.thread_mt_monitor.start_timer()
-            self.thread_mo_monitor.start_timer()
+            # self.thread_mo_monitor.start_timer()
             # self.thread_event_monitor.start_timer()
         else:
             self.log.info("Automonous mode disabled, user application must query modem actively")
@@ -1255,6 +1255,7 @@ class Modem(object):
                             self.system_stats['avgBlockageDuration'] = blockage_duration
                             sat_status_change = 'unblocked'
                     if not self.sat_status.registered:
+                        self.log.debug("Modem registered")
                         self.sat_status.registered = True
                         self.system_stats['nRegistration'] += 1
                         if self.system_stats['lastRegStartTime'] > 0:
@@ -1275,8 +1276,7 @@ class Modem(object):
                     self.log.info("Blockage started")
                     sat_status_change = 'blocked'
                 # Other transitions for statistics tracking:
-                if old_sat_ctrl_state == 'Waiting for GNSS fix' \
-                        and new_sat_ctrl_state not in ['Stopped', 'Blocked']:
+                if old_sat_ctrl_state == 'Waiting for GNSS fix':
                     gnss_duration = int(time.time() - self.system_stats['lastGNSSStartTime'])
                     self.log.info("GNSS acquired in {} seconds".format(gnss_duration))
                     if self.system_stats['avgGNSSFixDuration'] > 0:
@@ -1284,7 +1284,10 @@ class Modem(object):
                             = int((gnss_duration + self.system_stats['avgGNSSFixDuration']) / 2)
                     else:
                         self.system_stats['avgGNSSFixDuration'] = gnss_duration
-                    sat_status_change = 'new_gnss_fix'
+                    if new_sat_ctrl_state not in ['Stopped', 'Blocked', 'Active']:
+                        sat_status_change = 'new_gnss_fix'
+                    else:
+                        self.log.debug("GNSS fix implied by state transition to {}".format(new_sat_ctrl_state))
                 if old_sat_ctrl_state == 'Downloading Bulletin Board' \
                         and new_sat_ctrl_state not in ['Stopped', 'Blocked']:
                     bulletin_duration = int(time.time() - self.system_stats['lastBBStartTime'])
@@ -1318,6 +1321,27 @@ class Modem(object):
                 self.log.info("No callback defined for satellite_status_change")
 
     # --------------------- MESSAGE HANDING -------------------------------------------------------- #
+    @staticmethod
+    def get_msg_state(state):
+        state_str = ""
+        if state == UNAVAILABLE:
+            state_str = "Unavailable"
+        elif state == RX_COMPLETE:
+            state_str = "MT (Rx) Complete"
+        elif state == RX_RETRIEVED:
+            state_str = "MT (Rx) Retrieved"
+        elif state == TX_READY:
+            state_str = "MO (Tx) Ready"
+        elif state == TX_SENDING:
+            state_str = "MO (Tx) Sending"
+        elif state == TX_COMPLETE:
+            state_str = "MO (Tx) Complete"
+        elif state == TX_FAILED:
+            state_str = "MO (Tx) Failed"
+        else:
+            state_str = "UNKNOWN"
+        return "{} ({})".format(state_str, state)
+
     def send_message(self, mo_message, callback=None, priority=None):
         """
         Submits a message on the AT command interface and calls back when complete.
@@ -1328,7 +1352,7 @@ class Modem(object):
         :return: (string) a unique 8-character name for the message based on the time it was submitted
 
         """
-        self.log.debug("Sending message {}".format(mo_message.name))
+        self.log.debug("User submitted message name: {}".format(mo_message.name))
         if isinstance(mo_message, MobileOriginatedMessage):
             mo_message.priority = priority if priority is not None else mo_message.priority
             p_msg = self._PendingMoMessage(message=mo_message, callback=callback)
@@ -1350,6 +1374,11 @@ class Modem(object):
             self.log.debug("Mobile-Originated message submitted {}".format(request))
         else:
             self.log.error(responses)
+            # TODO: de-queue failed message?
+            for p_msg in self.mo_msg_queue:
+                if p_msg.name == request.split('\"')[1]:
+                    self.mo_msg_queue.remove(p_msg)
+                    break
 
     def check_mo_messages(self, msg_name=None, user_callback=None):
         """
@@ -1360,7 +1389,7 @@ class Modem(object):
         :return:
         """
         if len(self.mo_msg_queue) > 0:
-            self.log.debug("{} MO messages queued".format(len(self.mo_msg_queue)))
+            self.log.debug("{} MO messages queued ({})".format(len(self.mo_msg_queue), self.mo_msg_queue))
             callback = self._cb_check_mo_messages if user_callback is None else user_callback
             self.submit_at_command(at_command='AT%MGRS{}'
                                    .format('={}'.format(msg_name) if msg_name is not None else ''),
@@ -1386,8 +1415,8 @@ class Modem(object):
             # Format of responses should be: %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
             for res in responses:
                 self.log.debug("Processing response: {}".format(res))
-                if len(res.replace('%MGRS: ', '')) > 0:
-                    name, msg_no, priority, sin, state, size, sent_bytes = res.replace('%MGRS: ', '').split(',')
+                if len(res.replace('%MGRS:', '').strip()) > 0:
+                    name, msg_no, priority, sin, state, size, sent_bytes = res.replace('%MGRS:', '').strip().split(',')
                     name = name.replace('\"', '')
                     priority = int(priority)
                     sin = int(sin)
@@ -1397,18 +1426,23 @@ class Modem(object):
                     for p_msg in self.mo_msg_queue:
                         if p_msg.q_name == name:
                             msg = p_msg.message
-                            self.log.debug("Processing MO message: {}"
-                                           .format(msg.name if msg.name is not None else p_msg.q_name))
+                            self.log.debug("Processing MO message: {} ({}) state: {}"
+                                           .format(msg.name, p_msg.q_name, self.get_msg_state(state)))
                             if state != msg.state:
                                 msg.state = state
                                 if state in (TX_COMPLETE, TX_FAILED):
                                     p_msg.complete_time = time.time()
                                     p_msg.failed = True if state == TX_FAILED else False
+                                    self.log.debug("Removing {} from pending message queue".format(p_msg.q_name))
+                                    self.mo_msg_queue.remove(p_msg)
                                     # TODO: calculate statistics for MO message transmission times
                                     if p_msg.callback is not None:
                                         p_msg.callback(msg.name, p_msg.q_name, msg.state, msg.size)
                                     else:
                                         self.log.warning("No callback defined for {}".format(p_msg.q_name))
+                                else:
+                                    self.log.debug("MO message {} state changed to: {}"
+                                                   .format(p_msg.q_name, self.get_msg_state(state)))
                             break
                 else:
                     self.log.debug("Empty MO message queue returned")
@@ -1426,7 +1460,7 @@ class Modem(object):
                 # Format of responses should be: %MGFN: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<bytes_rcvd>
                 msg_pending = res.replace('%MGFN:', '').strip()
                 if msg_pending:
-                    name, number, priority, sin, state, size, bytes = msg_pending.split(',')
+                    name, number, priority, sin, state, size, bytes_read = msg_pending.split(',')
                     name = name.replace('\"', '')
                     priority = int(priority)
                     sin = int(sin)
@@ -1434,15 +1468,28 @@ class Modem(object):
                     size = int(size)
                     if state == RX_COMPLETE:  # Complete and not read
                         # TODO: assign data_format based on size?
-                        p_msg = self._PendingMtMessage(message=None, q_name=name, sin=sin, size=size)
-                        self.mt_msg_queue.append(p_msg)
+                        queued = False
+                        for p_msg in self.mt_msg_queue:
+                            if p_msg.q_name == name:
+                                queued = True
+                                self.log.debug("Pending message {} already in queue".format(name))
+                                break
+                        if not queued:
+                            p_msg = self._PendingMtMessage(message=None, q_name=name, sin=sin, size=size)
+                            self.mt_msg_queue.append(p_msg)
+                            if self.event_callbacks['new_mt_message'] is not None:
+                                self.log.debug("Calling back to {}"
+                                               .format(self.event_callbacks['new_mt_message'].__name__))
+                                self.event_callbacks['new_mt_message'](self.mt_msg_queue)
+                            else:
+                                self.log.warning("No callback registered for new MT messages")
                     else:
-                        self.log.debug("Message {} not complete".format(name))
-            if len(self.mt_msg_queue) > 0:
-                if self.event_callbacks['new_mt_message'] is not None:
-                    self.event_callbacks['new_mt_message'](self.mt_msg_queue)
-                else:
-                    self.log.warning("No callback registered for new MT messages")
+                        self.log.debug("Message {} not complete ({}/{} bytes)".format(name, bytes_read, size))
+            # if len(self.mt_msg_queue) > 0:
+            #     if self.event_callbacks['new_mt_message'] is not None:
+            #         self.event_callbacks['new_mt_message'](self.mt_msg_queue)
+            #     else:
+            #         self.log.warning("No callback registered for new MT messages")
 
     def get_mt_message(self, msg_name, callback, data_format=None):
         found = False
@@ -1485,6 +1532,7 @@ class Modem(object):
                 if m.q_name == q_name:
                     self.mt_msg_queue.remove(m)
                     if m.callback is not None:
+                        self.log.debug("Calling back to {}".format(m.callback.__name__))
                         m.callback(mt_msg)
                     else:
                         self.log.error("No callback defined for message {}".format(q_name))
