@@ -1,14 +1,14 @@
 import unittest
 import time
-from context import idpmodem, headless
+from context import idpmodem
+from context import headless
 
 
 class IdpModemTestCase(unittest.TestCase):
     def setUp(self):
         print("Setting up test case...")
-        self.log = headless.get_wrapping_log(logfile=None, debug=True)
         try:
-            self.modem = idpmodem.Modem(serial_name='COM38', debug=True, log=self.log)
+            self.modem = idpmodem.Modem(serial_name='COM38', debug=True)
         except ValueError as e:
             self.modem = idpmodem.Modem(serial_name='COM37', debug=True)
         self.event_callback = None
@@ -17,6 +17,18 @@ class IdpModemTestCase(unittest.TestCase):
         self.mt_messages = []
         self.mo_messages = []
         self.test_case = None
+
+    def tearDown(self):
+        self.modem.terminate()
+        # print("**** TEST CASE {} COMPLETE ****".format(self.test_case))
+        # time.sleep(2)
+
+    def test_1_connection(self):
+        self.test_case = 1
+        print("TEST CASE {} BASIC CONNECTION".format(self.test_case))
+        while not self.modem.is_connected:
+            pass
+        self.assertTrue(self.modem.is_connected)
 
     def cb_sat_status(self, sat_status='Unknown'):
         print "TEST CASE {} CALLBACK FROM SATELLITE STATUS RECEIVED: {}".format(self.test_case, sat_status)
@@ -37,11 +49,6 @@ class IdpModemTestCase(unittest.TestCase):
         self.mt_messages = self.modem.mt_msg_queue
         if len(self.mt_messages) == 0:
             self.new_mt_messages = False
-
-    def tearDown(self):
-        self.modem.terminate()
-        print("**** TEST CASE {} COMPLETE ****".format(self.test_case))
-        time.sleep(2)
 
 
 # class Test1Connection(IdpModemTestCase):
@@ -96,77 +103,74 @@ class IdpModemTestCase(unittest.TestCase):
 #                 print("{}\n TRIGGER MODEM REGISTRATION Trace Class 3 Subclass 1 Index 22 Value 10 ({}) \n{}"
 #                       .format(wrapper, self.modem.sat_status.ctrl_state, wrapper))
 #         self.assertTrue(self.event_callback is not None)
-
-
-class Test5SendMessage(IdpModemTestCase):
-    def runTest(self):
-        self.test_case = 5
-        print("TEST CASE {} CHECK MOBILE-ORIGINATED STATUSES".format(self.test_case))
-        # TODO: different message types text, ascii-hex,
-        payload = bytearray([16, 1, 2, 3])
-        msg_sin = None
-        msg_min = None
-        test_msg = idpmodem.MobileOriginatedMessage(payload=payload, msg_sin=msg_sin, msg_min=msg_min, debug=True)
-        q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
-        self.mo_msg_complete = False
-        self.mo_messages.append(q_name)
-        while test_msg.state < 6:
-            pass
-        self.assertTrue(test_msg.state >= 6)
-
-
-class Test6ReceiveMessage(IdpModemTestCase):
-    def runTest(self):
-        self.test_case = 6
-        print("TEST CASE {} CHECK MOBILE-TERMINATED MESSAGES".format(self.test_case))
-        success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.cb_new_mt_message)
-        if not success:
-            print error
-            self.assertFalse(success)
-        ref_time = time.time()
-        tick = 5
-        while not self.new_mt_messages:
-            if time.time() - ref_time >= tick:
-                ref_time = time.time()
-                wrapper = "*" * 65
-                print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
-        self.assertTrue(self.new_mt_messages)
-        self._followupTest()
-
-    def _followupTest(self):
-        self.test_case = 7
-        print("TEST CASE {} RETRIEVE MOBILE-TERMINATED MESSAGE".format(self.test_case))
-        for msg in self.mt_messages:
-            if msg.sin == 128:
-                data_format = 1
-            elif msg.size <= 100:
-                data_format = 2
-            else:
-                data_format = 3
-            success, error = self.modem.get_mt_message(msg_name=msg.q_name, data_format=data_format,
-                                                       callback=self.cb_get_mt_message)
-        if not success:
-            print error
-            self.assertFalse(success)
-        ref_time = time.time()
-        tick = 5
-        while not self.new_mt_messages:
-            if time.time() - ref_time >= tick:
-                ref_time = time.time()
-                wrapper = "*" * 65
-                print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
-        while len(self.mt_messages) > 0:
-            pass
-        self.assertFalse(self.new_mt_messages)
+#
+#
+# class Test5SendMessage(IdpModemTestCase):
+#     def runTest(self):
+#         self.test_case = 5
+#         print("TEST CASE {} CHECK MOBILE-ORIGINATED STATUSES".format(self.test_case))
+#         # TODO: different message types text, ascii-hex,
+#         payload = bytearray([16, 1, 2, 3])
+#         msg_sin = None
+#         msg_min = None
+#         test_msg = idpmodem.MobileOriginatedMessage(payload=payload, msg_sin=msg_sin, msg_min=msg_min, debug=True)
+#         q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
+#         self.mo_msg_complete = False
+#         self.mo_messages.append(q_name)
+#         while test_msg.state < 6:
+#             pass
+#         self.assertTrue(test_msg.state >= 6)
+#
+#
+# class Test6ReceiveMessage(IdpModemTestCase):
+#     def runTest(self):
+#         self.test_case = 6
+#         print("TEST CASE {} CHECK MOBILE-TERMINATED MESSAGES".format(self.test_case))
+#         success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.cb_new_mt_message)
+#         if not success:
+#             print error
+#             self.assertFalse(success)
+#         ref_time = time.time()
+#         tick = 5
+#         while not self.new_mt_messages:
+#             if time.time() - ref_time >= tick:
+#                 ref_time = time.time()
+#                 wrapper = "*" * 65
+#                 print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
+#         self.assertTrue(self.new_mt_messages)
+#         self._followupTest()
+#
+#     def _followupTest(self):
+#         self.test_case = 7
+#         print("TEST CASE {} RETRIEVE MOBILE-TERMINATED MESSAGE".format(self.test_case))
+#         for msg in self.mt_messages:
+#             if msg.sin == 128:
+#                 data_format = 1
+#             elif msg.size <= 100:
+#                 data_format = 2
+#             else:
+#                 data_format = 3
+#             success, error = self.modem.get_mt_message(msg_name=msg.q_name, data_format=data_format,
+#                                                        callback=self.cb_get_mt_message)
+#         if not success:
+#             print error
+#             self.assertFalse(success)
+#         ref_time = time.time()
+#         tick = 5
+#         while not self.new_mt_messages:
+#             if time.time() - ref_time >= tick:
+#                 ref_time = time.time()
+#                 wrapper = "*" * 65
+#                 print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
+#         while len(self.mt_messages) > 0:
+#             pass
+#         self.assertFalse(self.new_mt_messages)
 
 
 def suite():
-    test_cases = (Test2SendMessage)
-    suite = unittest.TestSuite()
-    for test_class in test_cases:
-        tests = unittest.loader
-    suite.addTest(TestIdpmodem('test_creation'))
-    return suite
+    # suite.addTest(TestIdpmodem('test_creation'))
+    pass
+    # return suite
 
 
 if __name__ == '__main__':

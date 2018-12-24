@@ -764,7 +764,7 @@ def main():
             # Store GlobalSat device(s) details
             gs_motes = []
 
-            # (Proxy) Timer threads for background tasks
+            # (Proxy) Timer timer_threads for background tasks
             status_thread = RepeatingTimer(seconds=SAT_STATUS_INTERVAL, name='check_sat_status',
                                            callback=check_sat_status, logger=log)
             threads.append(status_thread.name)
