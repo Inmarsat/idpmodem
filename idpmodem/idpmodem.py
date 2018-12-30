@@ -42,11 +42,12 @@ import threading
 import serial
 import binascii
 import base64
+import string
 import sys
 # import struct
 # import json
 
-PRIORITY_HIGH, PRIORITY_MEDH, PRIORITY_MEDL, PRIORITY_LOW = (1, 2, 3, 4)
+PRIORITY_MT, PRIORITY_HIGH, PRIORITY_MEDH, PRIORITY_MEDL, PRIORITY_LOW = (0, 1, 2, 3, 4)
 FORMAT_TEXT, FORMAT_HEX, FORMAT_B64 = (1, 2, 3)
 # Message States
 UNAVAILABLE = 0
@@ -341,7 +342,7 @@ class Modem(object):
             self.echo_received = False
             self.result = None
             self.result_code = None
-            self.error = None
+            self.error = False
             self.response_raw = ""
             self.responses = []
             self.response_time = None
@@ -459,14 +460,16 @@ class Modem(object):
         self.gpio = self._init_gpio()
         self.event_callbacks = self._init_event_callbacks()
         # AT command queue
-        self.pending_at_commands = []
-        self.active_at_command = None
+        self.at_commands_pending = []
+        self.at_command_active = None
+        self.at_command_parked = None
         # Message queues
         self.mo_msg_count = 0
         self.mo_msg_queue = []
         self.mt_msg_count = 0
         self.mt_msg_queue = []
         # --- Serial processing threads ---
+        self.autonomous = auto_monitor
         self._terminate = False
         self.daemon_threads = []
         self.thread_com_listener = threading.Thread(name='com_listener', target=self._listen_serial)
@@ -490,7 +493,6 @@ class Modem(object):
                                                  callback=self._com_monitor)
         self.timer_threads.append(self.thread_com_monitor.name)
         # --- Timer threads for self-monitoring
-        self.autonomous = auto_monitor
         self.sat_status_interval = 5
         self.sat_mt_message_interval = 5
         self.sat_events_interval = 1
@@ -660,9 +662,9 @@ class Modem(object):
 
     def _on_initialized(self):
         if self.autonomous:
-            # self.thread_sat_status.start_timer()
+            self.thread_sat_status.start_timer()
             self.thread_mt_monitor.start_timer()
-            # self.thread_mo_monitor.start_timer()
+            self.thread_mo_monitor.start_timer()
             # self.thread_event_monitor.start_timer()
         else:
             self.log.info("Automonous mode disabled, user application must query modem actively")
@@ -673,7 +675,7 @@ class Modem(object):
         Called on a repeating timer on power up or after connection is lost,
         attempts to establish and restore saved config using ATZ.
         """
-        if not self.is_connected and self.active_at_command is None:
+        if not self.is_connected and self.at_command_active is None:
             self.at_connect_attempts += 1
             self.total_at_connect_attempts += 1
             timeout = int(self.com_connect_interval / 2)
@@ -752,11 +754,11 @@ class Modem(object):
             if ser.inWaiting() > 0:
                 c = ser.read(1)
             else:
-                if not parsing_at_response and self.active_at_command is not None:
-                    self.log.debug("{} command pending...".format(self.active_at_command.command))
+                if not parsing_at_response and self.at_command_active is not None:
+                    self.log.debug("{} command pending...".format(self.at_command_active.command))
                     parsing_at_response = True
                 if parsing_at_response:
-                    at_cmd = self.active_at_command
+                    at_cmd = self.at_command_active
                     if time.time() - at_cmd.submit_time > at_cmd.timeout:
                         parsing_at_response = False
                         at_tick = 0
@@ -767,16 +769,16 @@ class Modem(object):
                             self.log.debug("Waiting for {} response - tick={}".format(at_cmd.command, at_tick))
                 time.sleep(CHAR_WAIT)
             if c is not None:
-                if parsing_at_response or not parsing_unsolicited and self.active_at_command is not None:
+                if parsing_at_response or not parsing_unsolicited and self.at_command_active is not None:
                     if not parsing_at_response:
-                        self.log.debug("Parsing started for {}".format(self.active_at_command.command))
+                        self.log.debug("Parsing started for {}".format(self.at_command_active.command))
                         parsing_at_response = True
                     read_str, complete = self._parse_at_response(read_str, c)
                     if complete:
                         parsing_at_response = False
                         at_tick = 0
                         read_str = ""
-                        self._on_at_response(self.active_at_command)
+                        self._on_at_response(self.at_command_active)
                 else:
                     parsing_unsolicited = True
                     read_str, complete = self._parse_unsolicited(read_str, c)
@@ -798,26 +800,26 @@ class Modem(object):
         """
         ser = self.serial_port
         read_str += c
-        self.active_at_command.response_raw += c
+        self.at_command_active.response_raw += c
         response_complete = False
         if c == '\r':
             # cases <echo><cr>
             # or <cr>...
             # or <numeric code><cr> (verbose off, no crc)
-            if self.active_at_command.command in read_str:
+            if self.at_command_active.command in read_str:
                 # case <echo><cr>
-                if self.active_at_command.command.upper() == 'ATE0':
+                if self.at_command_active.command.upper() == 'ATE0':
                     self.at_config.echo = False
                     self.log.debug("ATE0 (echo disable) requested - takes effect for next AT command")
                 else:
                     self.at_config.echo = True
-                if not self.active_at_command.echo_received:
+                if not self.at_command_active.echo_received:
                     self.log.debug("Echo {} received - removing from raw response".format(read_str.strip()))
-                    self.active_at_command.echo_received = True
+                    self.at_command_active.echo_received = True
                 else:
                     self.log.warning("Echo {} received more than once - removing from raw message"
                                      .format(read_str.strip()))
-                self.active_at_command.response_raw = self.active_at_command.response_raw.replace(read_str, '')
+                self.at_command_active.response_raw = self.at_command_active.response_raw.replace(read_str, '')
                 # <echo><cr> will be not be followed by <lf>
                 # can be followed by <text><cr><lf>
                 # or <cr><lf><text><cr><lf>
@@ -825,7 +827,7 @@ class Modem(object):
                 # or <cr><lf><verbose code><cr><lf>
                 read_str = ""  # clear for next line of parsing
             elif ser.inWaiting() == 0 and read_str.strip() != '':
-                if read_str.strip() != '0' and self.active_at_command.command != 'ATV0' and self.at_config.verbose:
+                if read_str.strip() != '0' and self.at_command_active.command != 'ATV0' and self.at_config.verbose:
                     # case <cr><lf><text><cr>...<lf> e.g. delay between NMEA sentences
                     # or Quiet mode? --unsupported, suppresses result codes
                     self.log.debug("Assuming delay between <cr> and <lf> of Verbose response...waiting")
@@ -835,7 +837,7 @@ class Modem(object):
                         self.log.debug("Assuming receipt of <numeric code = {}><cr> with Verbose undetected"
                                        .format(read_str.strip()))
                         self.at_config.verbose = False
-                    self.active_at_command.result_code = read_str.strip()
+                    self.at_command_active.result_code = read_str.strip()
                     response_complete = True
                     # else keep parsing next character
         elif c == '\n':
@@ -846,7 +848,7 @@ class Modem(object):
             # or <*crc><cr><lf>
             if 'OK' in read_str or 'ERROR' in read_str:
                 # <cr><lf><verbose code><cr><lf>
-                self.active_at_command.result = read_str.strip()
+                self.at_command_active.result = read_str.strip()
                 if ser.inWaiting() == 0:  # no checksum pending...response complete
                     response_complete = True
                 else:
@@ -854,9 +856,9 @@ class Modem(object):
             elif '*' in read_str and len(read_str.strip()) == 5:
                 # <*crc><cr><lf>
                 self.at_config.crc = True
-                self.active_at_command.response_crc = read_str.replace('*', '').strip()
+                self.at_command_active.response_crc = read_str.replace('*', '').strip()
                 self.log.debug("Found CRC {} - removing from raw response".format(read_str.strip()))
-                self.active_at_command.response_raw = self.active_at_command.response_raw.replace(read_str, '')
+                self.at_command_active.response_raw = self.at_command_active.response_raw.replace(read_str, '')
                 response_complete = True
             else:
                 # case <cr><lf>
@@ -867,7 +869,7 @@ class Modem(object):
                     self.at_config.verbose = True
                 else:
                     if read_str.strip() != '':  # don't add empty lines
-                        self.active_at_command.responses.append(read_str.strip())  # don't include \r\n in callback
+                        self.at_command_active.responses.append(read_str.strip())  # don't include \r\n in callback
                     read_str = ""  # clear for next line parsing
         return read_str, response_complete
 
@@ -913,20 +915,20 @@ class Modem(object):
                        .format(at_command, command.submit_time, timeout,
                                callback.__name__ if callback is not None else None))
         if jump_queue:
-            self.pending_at_commands.insert(0, command)
+            self.at_commands_pending.insert(1, command)   # Not inserted at 0 since the prior command needs to complete
         else:
-            self.pending_at_commands.append(command)
+            self.at_commands_pending.append(command)
 
     def _process_pending_at_command(self):
         """Checks the queue of pending AT commands and sends on serial if one is pending and none are active"""
         while self.serial_port.isOpen() and not self._terminate:
-            if len(self.pending_at_commands) > 0:
-                if self.active_at_command is None:
-                    # for cmd in self.pending_at_commands:
-                    #     self.log.debug("[{}]: {}".format(self.pending_at_commands.index(cmd), cmd.command))
-                    at_cmd = self.pending_at_commands[0]
+            if len(self.at_commands_pending) > 0:
+                if self.at_command_active is None:
+                    # for cmd in self.at_commands_pending:
+                    #     self.log.debug("[{}]: {}".format(self.at_commands_pending.index(cmd), cmd.command))
+                    at_cmd = self.at_commands_pending[0]
                     self.log.debug("{} Pending commands - processing: {}"
-                                   .format(len(self.pending_at_commands), at_cmd.command))
+                                   .format(len(self.at_commands_pending), at_cmd.command))
                     if self.at_config.crc:
                         to_send = at_cmd.command + ('*'+self.get_crc(at_cmd.command) if self.at_config.crc else '')
                     else:
@@ -941,9 +943,9 @@ class Modem(object):
                     self.log.debug("Sending {} at {} with timeout {} seconds"
                                    .format(to_send, at_cmd.send_time, at_cmd.timeout))
                     self.serial_port.write(to_send + '\r')
-                    self.active_at_command = at_cmd
+                    self.at_command_active = at_cmd
                 # else:
-                #     self.log.debug("Processing AT command: {}".format(self.active_at_command.command))
+                #     self.log.debug("Processing AT command: {}".format(self.at_command_active.command))
 
     def _on_at_response(self, response):
         """
@@ -972,7 +974,10 @@ class Modem(object):
                     self.log.info("CRC found on response but not explicitly configured...capturing config")
                     self.at_config.crc = True
         if response.result == 'ERROR' or response.result_code == '4':
+            response.error = True
+            self.at_command_parked = response
             self.log.warning("Error detected on response, checking last error code")
+            # TODO: fix problem with queueing second response before first response is closed
             self.submit_at_command(at_command='ATS80?', callback=self._cb_get_result_code, jump_queue=True)
         self._update_stats_at_response(response)
         self._complete_pending_command(response)
@@ -986,8 +991,11 @@ class Modem(object):
         """
         if valid_response:
             result_code = responses[0]
-            self.pending_at_commands[1].result_code = result_code
-            self.pending_at_commands[1].error = self.at_err_result_codes[str(result_code)]
+            error_desc = self.at_err_result_codes[str(result_code)]
+            self.at_command_parked.result_code = result_code
+            self.at_command_parked.result = error_desc
+            self.log.debug("Processing result code {} for: {}".format(error_desc, vars(self.at_command_parked)))
+            self._complete_pending_command(self.at_command_parked)
         else:
             self.log.error("Unhandled exception: {} {}".format(request, responses))
 
@@ -1010,6 +1018,36 @@ class Modem(object):
         self._com_monitor()
         self._complete_pending_command(response)
 
+    def _is_at_pending(self, response):
+        is_pending = False
+        pending = self.at_commands_pending[0] if len(self.at_commands_pending) > 0 else None
+        if pending is not None and response.command == pending.command and response.submit_time == pending.submit_time:
+            is_pending = True
+        return is_pending
+
+    def _is_at_active(self, response):
+        is_active = False
+        active = self.at_command_active if self.at_command_active is not None else None
+        if active is not None and response.command == active.command and response.submit_time == active.submit_time:
+            is_active = True
+        return is_active
+
+    def _is_at_parked(self, response):
+        is_parked = False
+        parked = self.at_command_parked if self.at_command_parked is not None else None
+        if parked is not None and response.command == parked.command and response.submit_time == parked.submit_time:
+            is_parked = True
+        return is_parked
+
+    def _retry_command(self, response):
+        if response.retries > 0:
+            self.log.info("Retrying command {}".format(response.command))
+            response.retries -= 1
+            self.submit_at_command(at_command=response.command, callback=response.callback,
+                                   timeout=response.timeout, retries=response.retries - 1)
+        else:
+            self.log.debug("No retries remaining for command {}".format(response.command))
+
     def _complete_pending_command(self, response):
         """
         Handles final processing of a pending command, either re-attempting or calling back with response details
@@ -1023,29 +1061,38 @@ class Modem(object):
 
         """
         complete = False
-        if response in self.pending_at_commands:
-            discard = self.pending_at_commands.pop(0)
+        # TODO: fix error handling and recovery for failed AT e.g. AT%MGRT
+        if self._is_at_pending(response):
+            discard = self.at_commands_pending.pop(0)
             if discard is not None:
                 self.log.debug("Pending AT command buffer FIFO popped ({}) - {} pending AT commands"
-                               .format(discard.command, len(self.pending_at_commands)))
+                               .format(discard.command, len(self.at_commands_pending)))
             else:
                 self.log.error("Tried to pop pending command from AT queue but got nothing")
-            if (response.timed_out or not response.crc_ok) and response.retries > 0:
-                self.log.info("Retrying command {}".format(response.command))
-                response.retries -= 1
-                self.submit_at_command(at_command=response.command, callback=response.callback,
-                                       timeout=response.timeout, retries=response.retries - 1, jump_queue=True)
+        if self._is_at_parked(response):
+            self.log.debug("Processing error result for {}: {}".format(response.command, response.result))
+            if response.result is not None and response.result != 'ERROR':
+                self.log.debug("Closing parked command {}".format(response.command))
+                complete = True
+                self.at_command_parked = None
+                self._retry_command(response)
+            else:
+                self.log.debug("Awaiting closure of parked command {}".format(response.command))
+        elif self._is_at_active(response):
+            if response.timed_out or not response.crc_ok:
+                self._retry_command(response)
+            if self._is_at_parked(response):
+                self.log.debug("Awaiting error code for {}".format(response.command))
             else:
                 complete = True
         else:
-            self.log.warning("Did not find {} in pending_at_commands".format(response.command))
-        if len(self.pending_at_commands) > 0:
-            self.log.debug("Next pending command: {}".format(self.pending_at_commands[0].command))
-            # self.active_at_command = self.pending_at_commands[0]
+            self.log.warning("Did not find {} in at_commands_pending".format(response.command))
+        if len(self.at_commands_pending) > 0:
+            self.log.debug("Next pending command: {}".format(self.at_commands_pending[0].command))
         else:
             self.log.debug("No pending AT commands")
         self.log.debug("Clearing active command")
-        self.active_at_command = None
+        self.at_command_active = None
         if complete:
             if response.callback is not None:
                 self.log.debug("Calling back to {}".format(response.callback.__name__))
@@ -1053,12 +1100,14 @@ class Modem(object):
                     response.callback(False, "TIMED_OUT", response.command)
                 elif not response.crc_ok:
                     response.callback(False, "RESPONSE_CRC_ERROR", response.command)
-                elif response.error is not None:
-                    response.callback(False, response.error, response.command)
+                elif response.error:
+                    response.callback(False, response.result, response.command)
                 else:
                     response.callback(True, response.responses, response.command)
             else:
                 self.log.warning("No callback defined for command {}".format(response.command))
+        else:
+            self.log.warning("Message incomplete, awaiting further processing...(probably ATS80?)")
 
     def _update_stats_at_response(self, response):
         """
@@ -1356,14 +1405,16 @@ class Modem(object):
         if isinstance(mo_message, MobileOriginatedMessage):
             mo_message.priority = priority if priority is not None else mo_message.priority
             p_msg = self._PendingMoMessage(message=mo_message, callback=callback)
+            msg_min = mo_message.min if mo_message.min is not None else None
             self.mo_msg_queue.append(p_msg)
             self.submit_at_command(at_command='AT%MGRT={name},{priority},{sin}{min},{data_format},{data}'
                                    .format(name='\"{}\"'.format(p_msg.q_name),
                                            priority=mo_message.priority,
                                            sin=mo_message.sin,
-                                           min='.{}'.format(mo_message.min) if min is not None else '',
+                                           min='.{}'.format(mo_message.min) if msg_min is not None else '',
                                            data_format=mo_message.data_format,
-                                           data=mo_message.payload),
+                                           data=mo_message.data(mo_message.data_format,
+                                                                include_min=False if msg_min is not None else True)),
                                    callback=self._cb_send_message)
             return p_msg.q_name
         else:
@@ -1373,10 +1424,13 @@ class Modem(object):
         if valid_response:
             self.log.debug("Mobile-Originated message submitted {}".format(request))
         else:
-            self.log.error(responses)
+            msg_name = request.split('\"')[1]
+            self.log.error("MO Message {} Failed: {}".format(msg_name, responses))
             # TODO: de-queue failed message?
             for p_msg in self.mo_msg_queue:
-                if p_msg.name == request.split('\"')[1]:
+                if p_msg.q_name == msg_name:
+                    if p_msg.callback is not None:
+                        p_msg.callback(success=False, message=None)
                     self.mo_msg_queue.remove(p_msg)
                     break
 
@@ -1437,7 +1491,8 @@ class Modem(object):
                                     self.mo_msg_queue.remove(p_msg)
                                     # TODO: calculate statistics for MO message transmission times
                                     if p_msg.callback is not None:
-                                        p_msg.callback(msg.name, p_msg.q_name, msg.state, msg.size)
+                                        p_msg.callback(success=True,
+                                                       message=(msg.name, p_msg.q_name, msg.state, msg.size))
                                     else:
                                         self.log.warning("No callback defined for {}".format(p_msg.q_name))
                                 else:
@@ -1508,25 +1563,33 @@ class Modem(object):
     def _cb_get_mt_message(self, valid_response, responses, request):
         if valid_response:
             # Response format: "<fwdMsgName>",<msgNum>,<priority>,<sin>,<state>,<length>,<dataFormat>,<data>
+            #  where <data> is surrounded by quotes if dataFormat is text
             if len(responses) > 1:
                 self.log.warning("Unexpected responses {}".format(responses))
             response = responses[0].replace('%MGFG:', '').strip()
             q_name, msg_num, priority, sin, state, length, data_format, data = response.split(',')
             q_name = q_name.replace('\"', '')
+            priority = int(priority)
+            if priority != PRIORITY_MT:
+                # T203 states that priority is always 0 for Mobile-Terminated messages
+                self.log.warning("MT Message {} priority non-zero: {}".format(msg_num, priority))
             sin = int(sin)
             size = int(length)
             data_format = int(data_format)
             msg_min = None
             if data_format == FORMAT_TEXT:
-                b_payload = bytearray(b'{}'.format(data[1:len(data)-1]))   # remove only quotes at ends, not in middle
-                msg_min = int(b_payload[0])
-                payload = str(b_payload[1:])
+                text = data[1:len(data)-1]   # remove quotes but only at both ends, not in the middle
+                if text[0] == '\\':
+                    msg_min = int(text[1:3], 16)
+                    payload = str(text[3:])
+                else:
+                    payload = text
             elif data_format == FORMAT_HEX:
                 payload = _hex_to_bytearray(data)
             elif data_format == FORMAT_B64:
                 payload = _b64_to_bytearray(b'{}'.format(data))
             mt_msg = MobileTerminatedMessage(payload=payload, name=q_name, msg_sin=sin, msg_min=msg_min,
-                                             priority=PRIORITY_LOW, data_format=data_format, size=size,
+                                             msg_num=msg_num, priority=PRIORITY_MT, data_format=data_format, size=size,
                                              debug=self.debug)
             for m in self.mt_msg_queue:
                 if m.q_name == q_name:
@@ -2970,6 +3033,16 @@ def _is_hex_string(s):
     return all(c in hex_chars for c in s)
 
 
+def _bytearray_to_str(arr):
+    s = ''
+    for b in bytearray(arr):
+        if chr(b) in string.printable:
+            s += chr(b)
+        else:
+            s += '{0:#04x}'.format(b).replace('0x', '\\')
+    return s
+
+
 def _bytearray_to_hex(arr):
     return binascii.hexlify(bytearray(arr))
 
@@ -3009,105 +3082,101 @@ class Message(object):
 
     MAX_HEX_SIZE = 100
 
-    def __init__(self, payload, name="user", msg_sin=None, msg_min=None, priority=PRIORITY_LOW,
-                 data_format=None, size=None, log=None, debug=False):
+    def __init__(self, name, payload, msg_sin=None, msg_min=None, priority=PRIORITY_LOW,
+                 data_format=FORMAT_HEX, size=None, log=None, debug=False):
         if is_logger(log):
             self.log = log
         else:
             self.log = get_wrapping_log(logfile=log, debug=debug)
-        # if isinstance(payload, str):
-        #     if _is_hex_string(payload):
-        #         payload = bytearray.fromhex(payload)
-        #     else:
-        #         if msg_sin is not None and msg_min is not None:
-        #             if data_format is None or data_format != FORMAT_TEXT:
-        #                 payload = bytearray(payload)
-        #         else:
-        #             raise ValueError("Function call with text string payload must include SIN and MIN")
-        # elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255)) for i in payload):
-        #     payload = bytearray(payload)
-        # elif not isinstance(payload, bytearray):
-        #     raise ValueError("Invalid payload type, must be text or hex string, integer list or bytearray")
+        if name is not None:
+            self.name = name
+        else:
+            raise ValueError("Message must have a valid name (not None)")
         if msg_min is not None:
             if msg_sin is None:
-                raise ValueError("msg_sin must be specified if msg_min is specified")
-            if isinstance(msg_min, int) and msg_min in range(0, 255):
+                raise ValueError("SIN must be specified if MIN is specified")
+            elif isinstance(msg_min, int) and msg_min in range(0, 255):
                 self.min = msg_min
-                # if payload is not None:
-                #     raw_payload = bytearray(b'{}'.format(msg_min)) + bytearray(payload)
+                # assume that payload does not also include MIN
             else:
                 self.log.warning("Invalid MIN value {} must be integer in range 0..255".format(msg_min))
         elif payload is not None:
-            self.min = bytearray(payload)[1]
+            if isinstance(payload, bytearray):
+                self.min = None
+            else:
+                raise ValueError("Payload must be bytearray type if MIN is not specified")
         else:
-            self.min = None
+            raise ValueError("Payload cannot be None if MIN is not specified")
         if msg_sin is not None:
             if isinstance(msg_sin, int) and msg_sin in range(16, 255):
                 self.sin = msg_sin
-                # if payload is not None:
-                #     raw_payload = bytearray(b'{}'.format(msg_sin)) + payload
             else:
                 raise ValueError("Invalid SIN value {}, must be integer in range 16..255".format(msg_sin))
         elif payload is not None:
-            if bytearray(payload)[0] > 15:
-                self.sin = bytearray(payload)[0]
-                self.log.debug("Received bytearray with implied SIN={}".format(self.sin))
-                # raw_payload = payload
-            else:
-                raise ValueError("Invalid payload, first byte (SIN) must be integer in range 16..255")
-        else:
-            self.sin = None
-        # self.payload = payload
-        self.raw_payload = bytearray(0)
-        if payload is not None:
-            if isinstance(payload, str):
-                if _is_hex_string(payload) and data_format != FORMAT_TEXT:
-                    payload = bytearray.fromhex(payload)
+            if isinstance(payload, bytearray):
+                if payload[0] > 15:
+                    self.sin = payload[0]
+                    self.log.debug("Received bytearray with implied SIN={}".format(self.sin))
+                    payload = payload[1:] if msg_min is None else payload[2:]
                 else:
+                    raise ValueError("Invalid payload, first byte (SIN) must be integer in range 16..255")
+            else:
+                raise ValueError("Payload must be bytearray type if SIN is not specified")
+        else:
+            raise ValueError("Payload cannot be None if SIN is not specified")
+        self.raw_payload = bytearray(0)
+        if self.sin is not None and payload is not None:
+            if isinstance(payload, str):
+                if data_format == FORMAT_TEXT:
                     if msg_sin is not None and msg_min is not None:
                         payload = bytearray(payload)
                     else:
                         raise ValueError("Function call with text string payload must include SIN and MIN")
+                elif data_format == FORMAT_HEX:
+                    if _is_hex_string(payload):
+                        payload = _hex_to_bytearray(payload)
+                    else:
+                        raise ValueError("Hex format received with invalid characters")
+                elif data_format == FORMAT_B64:
+                    if msg_sin is not None and msg_min is not None:
+                        payload = _b64_to_bytearray(payload)
+                    else:
+                        raise ValueError("Function call with base64 string payload must include SIN and MIN")
+                else:
+                    raise ValueError("Unrecognized data_format: {}".format(data_format))
             elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255)) for i in payload):
                 payload = bytearray(payload)
             elif not isinstance(payload, bytearray):
                 raise ValueError("Invalid payload type, must be text or hex string, integer list or bytearray")
-            self.raw_payload = bytearray(payload)
+            self.raw_payload = payload
             if msg_min is not None:
-                self.raw_payload = bytearray(b'{}'.format(msg_min)) + self.raw_payload
-            if msg_sin is not None:
-                self.raw_payload = bytearray(b'{}'.format(msg_sin)) + self.raw_payload
+                self.raw_payload = bytearray([self.min]) + self.raw_payload
+            if self.sin is not None:
+                self.raw_payload = bytearray([self.sin]) + self.raw_payload
             self.size = len(self.raw_payload)
-        else:
-            self.size = size
-        # TODO: simplify this so that the raw payload is always a bytearray
-        if data_format is None:
-            if self.size is not None and self.size <= self.MAX_HEX_SIZE:
-                self.data_format = FORMAT_HEX
-                self.payload = _bytearray_to_hex(self.raw_payload[1:])
-            else:
-                self.data_format = FORMAT_B64
-                self.payload = _bytearray_to_b64(self.raw_payload[1:])
-        elif data_format in (FORMAT_TEXT, FORMAT_HEX, FORMAT_B64):
-            self.data_format = FORMAT_TEXT
-            self.payload = '\"{}\"'.format(payload)
-        else:
-            raise ValueError("Unsupported data format: {}".format(data_format))
         self.priority = priority
-        self.name = name
+        self.data_format = data_format
+        # self.log.debug("New message created: {}".format(vars(self)))
 
-    def data(self, data_format=FORMAT_HEX):
+    def data(self, data_format=FORMAT_HEX, include_min=True, include_sin=False):
         if len(self.raw_payload) > 0:
-            if data_format == FORMAT_TEXT:
-                return '\"{}\"'.format(self.raw_payload[2:])
-            elif data_format == FORMAT_HEX:
-                return _bytearray_to_hex(self.raw_payload[1:])
-            elif data_format == FORMAT_B64:
-                return _bytearray_to_b64(self.raw_payload[1:])
+            if include_sin:
+                if not include_min:
+                    raise ValueError("Must include MIN when including SIN")
+                else:
+                    payload = self.raw_payload
             else:
-                raise ValueError("Invalid data format")
+                payload = self.raw_payload[1:] if include_min else self.raw_payload[2:]
+            if data_format == FORMAT_TEXT:
+                self.log.warning("This is broken when using to submit MO messages")
+                data = '\"{}\"'.format(_bytearray_to_str(payload))
+            elif data_format == FORMAT_HEX:
+                data = _bytearray_to_hex(payload)
+            else:
+                data = _bytearray_to_b64(payload)
+            return data
         else:
-            return None
+            raise ValueError("No data to return")
 
 
 class MobileOriginatedMessage(Message):
@@ -3128,7 +3197,7 @@ class MobileOriginatedMessage(Message):
 
     """
 
-    def __init__(self, payload, data_format=None, msg_sin=None, msg_min=None, **kwargs):
+    def __init__(self, name, payload, data_format=FORMAT_HEX, msg_sin=None, msg_min=None, **kwargs):
         """
 
         :param name: identifier for the message (tbd limitations)
@@ -3150,7 +3219,7 @@ class MobileOriginatedMessage(Message):
             payload = bytearray(payload)
         elif not isinstance(payload, bytearray):
             raise ValueError("Invalid payload type, must be text or hex string, integer list or bytearray")
-        super(MobileOriginatedMessage, self).__init__(payload, msg_sin=msg_sin, msg_min=msg_min,
+        super(MobileOriginatedMessage, self).__init__(name=name, payload=payload, msg_sin=msg_sin, msg_min=msg_min,
                                                       data_format=data_format, **kwargs)
         self.state = None
 
@@ -3172,16 +3241,7 @@ class MobileTerminatedMessage(Message):
 
     """
 
-    class State:
-        # """State enumeration for Mobile Terminated (aka Return) messages."""
-        UNAVAILABLE = 0
-        COMPLETE = 2
-        RETRIEVED = 3
-
-        def __init__(self):
-            pass
-
-    def __init__(self, *args, **kwargs):
+    def __init__(self, name, payload, data_format, msg_num=None, priority=PRIORITY_MT, **kwargs):
         """
         Initializes Mobile Terminated (Forward) Message with state = ``UNAVAILABLE``
         Forward States enumeration (per modem documentation):
@@ -3196,9 +3256,12 @@ class MobileTerminatedMessage(Message):
         :param payload_b64:
 
         """
-        super(MobileTerminatedMessage, self).__init__(*args, **kwargs)
-        self.state = RX_COMPLETE
-        self.number = None
+        if data_format not in (FORMAT_TEXT, FORMAT_HEX, FORMAT_B64):
+            raise ValueError("Unrecognized data format: {}".format(data_format))
+        super(MobileTerminatedMessage, self).__init__(name=name, payload=payload, data_format=data_format,
+                                                      priority=priority, **kwargs)
+        self.state = RX_RETRIEVED
+        self.number = msg_num
 
 
 class Location(object):

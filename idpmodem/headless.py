@@ -32,6 +32,7 @@ def get_wrapping_log(logfile=None, file_size=5, debug=False):
                                       datefmt='%Y-%m-%dT%H:%M:%S')
     log_formatter.converter = time.gmtime
     if logfile is not None:
+        # TODO: validate that logfile is a valid path/filename
         logger = logging.getLogger(logfile)
         file_handler = RotatingFileHandler(logfile, mode='a', maxBytes=file_size * 1024 * 1024,
                                            backupCount=2, encoding=None, delay=0)
@@ -40,7 +41,7 @@ def get_wrapping_log(logfile=None, file_size=5, debug=False):
             logger.addHandler(file_handler)
     else:
         logger = logging.getLogger()
-    if debug:
+    if debug or logger.getEffectiveLevel() == logging.DEBUG:
         log_lvl = logging.DEBUG
     else:
         log_lvl = logging.INFO
@@ -82,7 +83,7 @@ class RepeatingTimer(threading.Thread):
 
         """
         threading.Thread.__init__(self)
-        self.log = get_wrapping_log(__name__)
+        self.log = get_wrapping_log()
         if name is not None:
             self.name = name
         else:

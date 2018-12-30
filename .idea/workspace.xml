@@ -3,6 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/idpmodem/headless.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/headless.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/idpmodem/idpmodem.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodem.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" afterDir="false" />
     </list>
@@ -14,11 +15,11 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file pinned="false" current-in-tab="false">
+      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="264">
-              <caret line="1533" column="46" lean-forward="true" selection-start-line="1533" selection-start-column="46" selection-end-line="1533" selection-end-column="46" />
+            <state relative-caret-position="139">
+              <caret line="3094" selection-start-line="3094" selection-end-line="3094" />
               <folding>
                 <element signature="e#1646#1662#0" expanded="true" />
                 <element signature="e#2676#3101#0" />
@@ -32,11 +33,9 @@
                 <element signature="e#5686#12851#0" />
                 <element signature="e#5798#11227#0" />
                 <element signature="e#12876#13192#0" />
-                <element signature="e#13253#14659#0" />
-                <element signature="e#14805#15086#0" />
                 <element signature="e#15034#15458#0" />
-                <element signature="e#15622#15962#0" />
                 <element signature="e#16267#16428#0" />
+                <element signature="e#16547#21711#0" />
                 <element signature="e#21768#22630#0" />
                 <element signature="e#21978#22163#0" />
                 <element signature="e#22230#23555#0" />
@@ -47,20 +46,17 @@
                 <element signature="e#26429#26593#0" />
                 <element signature="e#26629#26761#0" />
                 <element signature="e#26390#26862#0" />
+                <element signature="e#26029#26073#0" />
                 <element signature="e#26655#27130#0" />
                 <element signature="e#27198#27981#0" />
                 <element signature="e#28018#28446#0" />
                 <element signature="e#28507#29163#0" />
                 <element signature="e#29203#29772#0" />
                 <element signature="e#37446#39617#0" />
-                <element signature="e#39674#44298#0" />
                 <element signature="e#39674#40152#0" />
                 <element signature="e#39675#39727#0" />
                 <element signature="e#45168#45438#0" />
-                <element signature="e#45544#46527#0" />
                 <element signature="e#46580#48298#0" />
-                <element signature="e#48349#49956#0" />
-                <element signature="e#50028#50629#0" />
                 <element signature="e#51192#52054#0" />
                 <element signature="e#54673#56150#0" />
                 <element signature="e#49510#51852#0" />
@@ -70,12 +66,10 @@
                 <element signature="e#36714#42023#0" />
                 <element signature="e#42077#42827#0" />
                 <element signature="e#63173#63802#0" />
-                <element signature="e#61404#62697#0" />
                 <element signature="e#63240#63442#1" />
-                <element signature="e#64731#65110#0" />
-                <element signature="e#64947#65651#0" />
-                <element signature="e#63799#66435#0" />
                 <element signature="e#66725#68199#0" />
+                <element signature="e#68274#68891#0" />
+                <element signature="e#68959#70708#0" />
                 <element signature="e#72643#73126#0" />
                 <element signature="e#73213#73492#0" />
                 <element signature="e#73552#74346#0" />
@@ -114,7 +108,6 @@
                 <element signature="e#134435#134672#0" />
                 <element signature="e#132798#134568#0" />
                 <element signature="e#134608#135119#0" />
-                <element signature="e#143584#144717#0" />
               </folding>
             </state>
           </provider>
@@ -130,34 +123,12 @@
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://C:/Python27/Lib/site-packages/serial/serialwin32.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="289">
-              <caret line="17" column="40" selection-start-line="17" selection-start-column="30" selection-end-line="17" selection-end-column="40" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://C:/Python27/Lib/site-packages/serial/serialutil.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="2703">
-              <caret line="160" column="16" selection-start-line="160" selection-start-column="6" selection-end-line="160" selection-end-column="16" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="544">
-              <caret line="32" column="30" lean-forward="true" selection-start-line="32" selection-start-column="30" selection-end-line="32" selection-end-column="30" />
+            <state relative-caret-position="342">
+              <caret line="129" selection-start-line="129" selection-end-line="129" />
               <folding>
                 <element signature="e#0#15#0" expanded="true" />
-                <element signature="e#835#1032#0" />
-                <element signature="e#1009#1214#0" />
-                <element signature="e#1261#2017#0" />
-                <element signature="e#2066#2821#0" />
                 <element signature="e#633#773#0" />
               </folding>
             </state>
@@ -177,15 +148,10 @@
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/__init__.py">
-          <provider selected="true" editor-type-id="text-editor" />
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/idpmodem/headless.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="60">
-              <caret line="13" selection-start-line="13" selection-end-line="13" />
+            <state relative-caret-position="261">
+              <caret line="53" selection-start-line="53" selection-end-line="53" />
               <folding>
                 <element signature="e#110#121#0" expanded="true" />
               </folding>
@@ -213,8 +179,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>at_initialize_modem</find>
-      <find>at_init</find>
       <find>_on_at_response</find>
       <find>result_code == 0</find>
       <find>start_time</find>
@@ -243,6 +207,8 @@
       <find>_cb_get_result_code</find>
       <find>get_bitmap</find>
       <find>sat_status[</find>
+      <find>.error</find>
+      <find>.result</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -265,10 +231,10 @@
         <option value="$PROJECT_DIR$/idpmodem/tests/idpmodem_unit_tests.py" />
         <option value="$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py" />
         <option value="$PROJECT_DIR$/idpmodem/idpcodec.py" />
-        <option value="$PROJECT_DIR$/idpmodem/headless.py" />
         <option value="$PROJECT_DIR$/idpmodem/tests/context.py" />
-        <option value="$PROJECT_DIR$/idpmodem/idpmodem.py" />
+        <option value="$PROJECT_DIR$/idpmodem/headless.py" />
         <option value="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" />
+        <option value="$PROJECT_DIR$/idpmodem/idpmodem.py" />
       </list>
     </option>
   </component>
@@ -495,25 +461,33 @@
       <option name="project" value="LOCAL" />
       <updated>1545656436568</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="Bug fixes in send/retrieve messages and unittest clean-up.">
+      <created>1545682524550</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1545682524550</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="ToolWindowManager">
     <frame x="-1928" y="-188" width="1936" height="1096" extended-state="6" />
+    <editor active="true" />
     <layout>
-      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24973656" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.24973656" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
-      <window_info anchor="bottom" id="Find" order="1" sideWeight="0.4947313" weight="0.32987553" />
+      <window_info anchor="bottom" id="Find" order="1" sideWeight="0.4926238" weight="0.32987553" />
       <window_info anchor="bottom" id="Run" order="2" />
-      <window_info anchor="bottom" id="Debug" order="3" sideWeight="0.8645943" visible="true" weight="0.45435685" />
+      <window_info active="true" anchor="bottom" id="Debug" order="3" sideWeight="0.8630137" visible="true" weight="0.45435685" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="6" />
       <window_info anchor="bottom" id="Version Control" order="7" sideWeight="0.49947312" weight="0.32917964" />
       <window_info anchor="bottom" id="Terminal" order="8" />
-      <window_info anchor="bottom" id="Event Log" order="9" sideWeight="0.13540569" side_tool="true" visible="true" weight="0.45435685" />
+      <window_info anchor="bottom" id="Event Log" order="9" sideWeight="0.1369863" side_tool="true" visible="true" weight="0.45435685" />
       <window_info anchor="bottom" id="Python Console" order="10" />
       <window_info anchor="bottom" id="Messages" order="11" />
       <window_info anchor="right" id="Commander" order="0" weight="0.4" />
@@ -531,7 +505,8 @@
     <MESSAGE value="First checkin of new internal-threaded module" />
     <MESSAGE value="General tidy up." />
     <MESSAGE value="Initial clean-up started for unittest." />
-    <option name="LAST_COMMIT_MESSAGE" value="Initial clean-up started for unittest." />
+    <MESSAGE value="Bug fixes in send/retrieve messages and unittest clean-up." />
+    <option name="LAST_COMMIT_MESSAGE" value="Bug fixes in send/retrieve messages and unittest clean-up." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -551,6 +526,9 @@
     <watches-manager>
       <configuration name="PythonConfigurationType">
         <watch expression="self.log" />
+        <watch expression="self.autonomous" />
+        <watch expression="data[1:1]" />
+        <watch expression="binascii.hexlify(bytearray(arr))" />
       </configuration>
     </watches-manager>
   </component>
@@ -728,20 +706,38 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://C:/Python27/Lib/unittest/suite.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="167">
+          <caret line="57" selection-start-line="57" selection-end-line="57" />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/headless.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="60">
-          <caret line="13" selection-start-line="13" selection-end-line="13" />
+        <state relative-caret-position="261">
+          <caret line="53" selection-start-line="53" selection-end-line="53" />
           <folding>
             <element signature="e#110#121#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="342">
+          <caret line="129" selection-start-line="129" selection-end-line="129" />
+          <folding>
+            <element signature="e#0#15#0" expanded="true" />
+            <element signature="e#633#773#0" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="264">
-          <caret line="1533" column="46" lean-forward="true" selection-start-line="1533" selection-start-column="46" selection-end-line="1533" selection-end-column="46" />
+        <state relative-caret-position="139">
+          <caret line="3094" selection-start-line="3094" selection-end-line="3094" />
           <folding>
             <element signature="e#1646#1662#0" expanded="true" />
             <element signature="e#2676#3101#0" />
@@ -755,11 +751,9 @@
             <element signature="e#5686#12851#0" />
             <element signature="e#5798#11227#0" />
             <element signature="e#12876#13192#0" />
-            <element signature="e#13253#14659#0" />
-            <element signature="e#14805#15086#0" />
             <element signature="e#15034#15458#0" />
-            <element signature="e#15622#15962#0" />
             <element signature="e#16267#16428#0" />
+            <element signature="e#16547#21711#0" />
             <element signature="e#21768#22630#0" />
             <element signature="e#21978#22163#0" />
             <element signature="e#22230#23555#0" />
@@ -770,20 +764,17 @@
             <element signature="e#26429#26593#0" />
             <element signature="e#26629#26761#0" />
             <element signature="e#26390#26862#0" />
+            <element signature="e#26029#26073#0" />
             <element signature="e#26655#27130#0" />
             <element signature="e#27198#27981#0" />
             <element signature="e#28018#28446#0" />
             <element signature="e#28507#29163#0" />
             <element signature="e#29203#29772#0" />
             <element signature="e#37446#39617#0" />
-            <element signature="e#39674#44298#0" />
             <element signature="e#39674#40152#0" />
             <element signature="e#39675#39727#0" />
             <element signature="e#45168#45438#0" />
-            <element signature="e#45544#46527#0" />
             <element signature="e#46580#48298#0" />
-            <element signature="e#48349#49956#0" />
-            <element signature="e#50028#50629#0" />
             <element signature="e#51192#52054#0" />
             <element signature="e#54673#56150#0" />
             <element signature="e#49510#51852#0" />
@@ -793,12 +784,10 @@
             <element signature="e#36714#42023#0" />
             <element signature="e#42077#42827#0" />
             <element signature="e#63173#63802#0" />
-            <element signature="e#61404#62697#0" />
             <element signature="e#63240#63442#1" />
-            <element signature="e#64731#65110#0" />
-            <element signature="e#64947#65651#0" />
-            <element signature="e#63799#66435#0" />
             <element signature="e#66725#68199#0" />
+            <element signature="e#68274#68891#0" />
+            <element signature="e#68959#70708#0" />
             <element signature="e#72643#73126#0" />
             <element signature="e#73213#73492#0" />
             <element signature="e#73552#74346#0" />
@@ -837,22 +826,6 @@
             <element signature="e#134435#134672#0" />
             <element signature="e#132798#134568#0" />
             <element signature="e#134608#135119#0" />
-            <element signature="e#143584#144717#0" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="544">
-          <caret line="32" column="30" lean-forward="true" selection-start-line="32" selection-start-column="30" selection-end-line="32" selection-end-column="30" />
-          <folding>
-            <element signature="e#0#15#0" expanded="true" />
-            <element signature="e#835#1032#0" />
-            <element signature="e#1009#1214#0" />
-            <element signature="e#1261#2017#0" />
-            <element signature="e#2066#2821#0" />
-            <element signature="e#633#773#0" />
           </folding>
         </state>
       </provider>

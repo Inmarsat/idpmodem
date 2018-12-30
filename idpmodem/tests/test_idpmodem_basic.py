@@ -1,13 +1,14 @@
 import unittest
 import time
 from context import idpmodem
-from context import headless
+import inspect
 
 
 class IdpModemTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         print("Setting up test case...")
+        # TODO: Check why a "headless" log file is being created in the /tests directory
         try:
             cls.modem = idpmodem.Modem(serial_name='COM37', debug=True)
         except ValueError as e:
@@ -23,51 +24,71 @@ class IdpModemTestCase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.modem.terminate()
-        # print("**** TEST CASE {} COMPLETE ****".format(cls.test_case))
-        # time.sleep(2)
 
     def setUp(self):
         sleep_time = 5
-        self.test_case += 1
-        print("***** TEST CASE {} STARTING IN {}s *****".format(self.test_case, sleep_time))
+        print("*** NEXT TEST CASE STARTING IN {}s ***".format(sleep_time))
         time.sleep(sleep_time)
 
     def tearDown(self):
-        print("***** TEST CASE {} COMPLETE *****".format(self.test_case))
+        print("*** TEST CASE {} COMPLETE ***".format(self.test_case))
+
+    def display_tc_header(self, more_info=None):
+        calling_function = inspect.stack()[1][3]
+        func_tags = calling_function.split('_')
+        self.test_case = int(func_tags[1])
+        func_name = func_tags[2].upper()
+        if len(func_tags) > 2:
+            for i in range(3, len(func_tags)):
+                func_name += ' ' + func_tags[i].upper()
+        if more_info is not None and isinstance(more_info, dict):
+            for k, v in more_info.iteritems():
+                func_name += ' ({}={})'.format(k, v)
+        print("*** TEST CASE {} - {} ***".format(self.test_case, func_name))
+
+    def action_prompt(self, message):
+        message = '\n** ' + 'TEST CASE {} - '.format(self.test_case) + message + ' **\n'
+        wrapper = '*' * len(message.strip())
+        print('{}{}{}'.format(wrapper, message, wrapper))
 
     def test_1_connection(self):
-        self.test_case = 1
-        print("TEST CASE {} BASIC CONNECTION".format(self.test_case))
+        self.display_tc_header()
         while not self.modem.is_connected:
             pass
         self.assertTrue(self.modem.is_connected)
 
     def test_2_initialization(self):
-        self.test_case = 2
-        print("TEST CASE {} MODEM INITIALIZATION".format(self.test_case))
+        self.display_tc_header()
         while not self.modem.is_initialized:
             pass
         self.assertTrue(self.modem.is_initialized)
 
+    def test_n_at_failure_102(self):
+        # TODO: build sub-tests for each AT error
+        error_code = 102
+        self.display_tc_header(more_info={
+            'ErrorCode': error_code,
+            'ErrorDesc': self.modem.at_err_result_codes(str(error_code))
+        })
+
     def test_3_satellite_status(self):
-        self.test_case = 3
-        print("TEST CASE {} SATELLITE STATUS CHANGE (initial={})"
-              .format(self.test_case, self.modem.sat_status.ctrl_state))
+        self.display_tc_header(
+            more_info={
+                'initial': self.modem.sat_status.ctrl_state,
+            })
         ref_time = time.time()
         tick = 5
         initial_status = self.modem.sat_status.ctrl_state
         while self.modem.sat_status.ctrl_state == initial_status:
             if time.time() - ref_time >= tick:
                 ref_time = time.time()
-                wrapper = "*" * 65
-                print("{}\n TRIGGER SATELLITE STATUS CHANGE Trace Class 3 Subclass 1 Index 22 ({}) \n{}"
-                      .format(wrapper, self.modem.sat_status.ctrl_state, wrapper))
+                self.action_prompt("TRIGGER SATELLITE STATUS CHANGE (Trace Class 3 Subclass 1 Index 22 ({})"
+                                   .format(self.modem.sat_status.ctrl_state))
         self.assertFalse(self.modem.sat_status.ctrl_state == initial_status)
-        print("*** TEST CASE {} STATUS CHANGE: {}".format(self.test_case, self.modem.sat_status.ctrl_state))
+        self.action_prompt("SATELLITE STATUS CHANGED TO: {}".format(self.modem.sat_status.ctrl_state))
 
     def test_4_registration(self):
-        self.test_case = 4
-        print("TEST CASE {} MODEM REGISTRATION CALLBACK".format(self.test_case))
+        self.display_tc_header()
         success, error = self.modem.register_event_callback(event='registered', callback=self.cb_sat_status)
         if not success:
             print error
@@ -77,13 +98,12 @@ class IdpModemTestCase(unittest.TestCase):
         while self.event_callback is None:
             if time.time() - ref_time >= tick:
                 ref_time = time.time()
-                wrapper = "*" * 65
                 if self.modem.sat_status.ctrl_state == 'Active':
-                    print("{}\n REVERT STATUS FROM ACTIVE Trace Class 3 Subclass 1 Index 22 Value 10 ({}) \n{}"
-                          .format(wrapper, self.modem.sat_status.ctrl_state, wrapper))
+                    self.action_prompt("REVERT STATUS FROM ACTIVE (Trace Class 3 Subclass 1 Index 22 Value 10 ({})"
+                                       .format(self.modem.sat_status.ctrl_state))
                 else:
-                    print("{}\n TRIGGER MODEM REGISTRATION Trace Class 3 Subclass 1 Index 22 Value 10 ({}) \n{}"
-                          .format(wrapper, self.modem.sat_status.ctrl_state, wrapper))
+                    self.action_prompt("TRIGGER MODEM REGISTRATION Trace Class 3 Subclass 1 Index 22 Value 10 ({})"
+                                       .format(self.modem.sat_status.ctrl_state))
         self.assertTrue(self.event_callback is not None)
 
     def cb_sat_status(self, sat_status='Unknown'):
@@ -91,27 +111,42 @@ class IdpModemTestCase(unittest.TestCase):
         self.event_callback = sat_status
 
     def test_5_mo_message(self):
-        self.test_case = 5
-        print("TEST CASE {} SEND MOBILE-ORIGINATED MESSAGE".format(self.test_case))
+        self.display_tc_header()
         # TODO: different message types text, ascii-hex,
+        #
         payload = bytearray([16, 1, 2, 3])
         msg_sin = None
         msg_min = None
-        test_msg = idpmodem.MobileOriginatedMessage(payload=payload, msg_sin=msg_sin, msg_min=msg_min, debug=True)
+        # data_format = idpmodem.FORMAT_HEX
+        #
+        # payload = 'test'
+        # msg_sin = 128
+        # msg_min = 0
+        # data_format = idpmodem.FORMAT_TEXT
+        #
+        data_format = idpmodem.FORMAT_B64
+        #
+        name = "TEST5"
+        test_msg = idpmodem.MobileOriginatedMessage(name=name, payload=payload, msg_sin=msg_sin, msg_min=msg_min,
+                                                    data_format=data_format, debug=self.modem.debug)
         q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
         self.mo_msg_complete = False
-        self.mo_messages.append(q_name)
-        while test_msg.state < 6:
+        self.mo_messages.append(q_name)   # TODO: likely this is redundant unless tests are running in parallel
+        while not self.mo_msg_complete:
             pass
         self.assertTrue(test_msg.state >= 6)
 
-    def cb_mo_msg_complete(self, name, q_name, state, size_bytes):
-        print "TEST CASE {} MESSAGE {}({}) STATE={} ({} bytes)".format(self.test_case, name, q_name, state, size_bytes)
+    def cb_mo_msg_complete(self, success, message):
+        if success:
+            name, q_name, state, size_bytes = message
+            print "TEST CASE {} MESSAGE {}({}) STATE={} ({} bytes)"\
+                .format(self.test_case, name, q_name, state, size_bytes)
+        else:
+            print "FAILED TO SUBMIT MO MESSAGE"
         self.mo_msg_complete = True
 
     def test_6_mt_message_new(self):
-        self.test_case = 6
-        print("TEST CASE {} CHECK MOBILE-TERMINATED MESSAGES".format(self.test_case))
+        self.display_tc_header()
         success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.cb_new_mt_message)
         if not success:
             print error
@@ -121,8 +156,7 @@ class IdpModemTestCase(unittest.TestCase):
         while not self.new_mt_messages:
             if time.time() - ref_time >= tick:
                 ref_time = time.time()
-                wrapper = "*" * 65
-                print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
+                self.action_prompt("SEND MOBILE-TERMINATED MESSAGE")
         self.assertTrue(self.new_mt_messages)
 
     def cb_new_mt_message(self, messages):
@@ -132,44 +166,62 @@ class IdpModemTestCase(unittest.TestCase):
         self.new_mt_messages = True
 
     def test_7_mt_message_get(self):
-        self.test_case = 7
-        print("TEST CASE {} RETRIEVE MOBILE-TERMINATED MESSAGE".format(self.test_case))
+        self.display_tc_header()
         ref_time = time.time()
         tick = 5
         while len(self.modem.mt_msg_queue) == 0:
             if time.time() - ref_time >= tick:
                 ref_time = time.time()
-                wrapper = "*" * 65
-                print("{}\n SEND MOBILE-TERMINATED MESSAGE\n{}".format(wrapper, wrapper))
-        for msg in self.modem.mt_msg_queue:
-            if msg.sin == 128:
-                data_format = 1
-            elif msg.size <= 100:
-                data_format = 2
-            else:
-                data_format = 3
-            success, error = self.modem.get_mt_message(msg_name=msg.q_name, data_format=data_format,
-                                                       callback=self.cb_get_mt_message)
-            if not success:
-                print error
-                self.assertFalse(success)
+                self.action_prompt("SEND MOBILE-TERMINATED MESSAGE")
         while len(self.modem.mt_msg_queue) > 0:
-            pass
+            self.get_next_mt_message()
         self.assertTrue(len(self.modem.mt_msg_queue) == 0)
 
+    def get_next_mt_message(self):
+        TEXT_SIN = 128
+        MAX_HEX_SIZE = 10
+        if len(self.modem.mt_msg_queue) > 0:
+            msg = self.modem.mt_msg_queue[0]
+            if msg.q_name not in self.mt_messages:
+                self.mt_messages.append(msg.q_name)
+                if msg.sin == TEXT_SIN:
+                    data_format = idpmodem.FORMAT_TEXT
+                elif msg.size <= MAX_HEX_SIZE:
+                    data_format = idpmodem.FORMAT_HEX
+                else:
+                    data_format = idpmodem.FORMAT_B64
+                success, error = self.modem.get_mt_message(msg_name=msg.q_name, data_format=data_format,
+                                                           callback=self.cb_get_mt_message)
+                if not success:
+                    print error
+        else:
+            print("No more pending MT messages")
+
     def cb_get_mt_message(self, message):
-        print("TEST CASE {} MT message retrieved: {}".format(self.test_case, vars(message)))
-        self.mt_messages = self.modem.mt_msg_queue
-        if len(self.mt_messages) == 0:
-            self.new_mt_messages = False
+        data_format = idpmodem.FORMAT_TEXT
+        print("TEST CASE {} MT message {} retrieved ({} bytes) raw: 0x{}".format(self.test_case, message.name,
+                                                                                 message.size,
+                                                                                 message.data(data_format=data_format,
+                                                                                              include_min=True,
+                                                                                              include_sin=True)))
+        self.mt_messages.remove(message.name)
 
 
 def suite():
-    # TODO: set up test suite(s)
-    pass
+    suite = unittest.TestSuite()
+    available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
+    tests = ['test_5']
+    if len(tests) > 0:
+        for test in tests:
+            for available_test in available_tests:
+                if test in available_test:
+                    suite.addTest(IdpModemTestCase(available_test))
+    else:
+        for available_test in available_tests:
+            suite.addTest(IdpModemTestCase(available_test))
+    return suite
 
 
 if __name__ == '__main__':
-    # runner = unittest.TextTestRunner()
-    # runner.run(suite())
-    unittest.main()
+    runner = unittest.TextTestRunner()
+    runner.run(suite())
