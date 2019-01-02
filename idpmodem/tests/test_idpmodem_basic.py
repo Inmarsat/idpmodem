@@ -19,6 +19,7 @@ class IdpModemTestCase(unittest.TestCase):
         cls.mo_msg_complete = False
         cls.mt_messages = []
         cls.mo_messages = []
+        cls.location_pending = False
         cls.test_case = 0
 
     @classmethod
@@ -26,6 +27,7 @@ class IdpModemTestCase(unittest.TestCase):
         cls.modem.terminate()
 
     def setUp(self):
+        # self.modem.on_connect = self.on_connect
         sleep_time = 5
         print("*** NEXT TEST CASE STARTING IN {}s ***".format(sleep_time))
         time.sleep(sleep_time)
@@ -51,6 +53,9 @@ class IdpModemTestCase(unittest.TestCase):
         wrapper = '*' * len(message.strip())
         print('{}{}{}'.format(wrapper, message, wrapper))
 
+    def on_connect(self):
+        pass
+
     def test_1_connection(self):
         self.display_tc_header()
         while not self.modem.is_connected:
@@ -63,14 +68,14 @@ class IdpModemTestCase(unittest.TestCase):
             pass
         self.assertTrue(self.modem.is_initialized)
 
-    def test_n_at_failure_102(self):
-        # TODO: build sub-tests for each AT error
-        error_code = 102
-        self.display_tc_header(more_info={
-            'ErrorCode': error_code,
-            'ErrorDesc': self.modem.at_err_result_codes(str(error_code))
-        })
-
+    # def test_n_at_failure_102(self):
+    #     # TODO: build test cases for each AT error
+    #     error_code = 102
+    #     self.display_tc_header(more_info={
+    #         'ErrorCode': error_code,
+    #         'ErrorDesc': self.modem.at_err_result_codes(str(error_code))
+    #     })
+    #
     def test_3_satellite_status(self):
         self.display_tc_header(
             more_info={
@@ -87,7 +92,7 @@ class IdpModemTestCase(unittest.TestCase):
         self.assertFalse(self.modem.sat_status.ctrl_state == initial_status)
         self.action_prompt("SATELLITE STATUS CHANGED TO: {}".format(self.modem.sat_status.ctrl_state))
 
-    def test_4_registration(self):
+    def test_4_event_notify_network_registration(self):
         self.display_tc_header()
         success, error = self.modem.register_event_callback(event='registered', callback=self.cb_sat_status)
         if not success:
@@ -117,16 +122,16 @@ class IdpModemTestCase(unittest.TestCase):
         payload = bytearray([16, 1, 2, 3])
         msg_sin = None
         msg_min = None
-        # data_format = idpmodem.FORMAT_HEX
+        data_format = idpmodem.FORMAT_HEX
         #
         # payload = 'test'
         # msg_sin = 128
         # msg_min = 0
         # data_format = idpmodem.FORMAT_TEXT
         #
-        data_format = idpmodem.FORMAT_B64
+        # data_format = idpmodem.FORMAT_B64
         #
-        name = "TEST5"
+        name = "TESTMO"
         test_msg = idpmodem.MobileOriginatedMessage(name=name, payload=payload, msg_sin=msg_sin, msg_min=msg_min,
                                                     data_format=data_format, debug=self.modem.debug)
         q_name = self.modem.send_message(test_msg, callback=self.cb_mo_msg_complete)
@@ -145,7 +150,7 @@ class IdpModemTestCase(unittest.TestCase):
             print "FAILED TO SUBMIT MO MESSAGE"
         self.mo_msg_complete = True
 
-    def test_6_mt_message_new(self):
+    def test_6_event_notify_mt_message(self):
         self.display_tc_header()
         success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.cb_new_mt_message)
         if not success:
@@ -206,11 +211,23 @@ class IdpModemTestCase(unittest.TestCase):
                                                                                               include_sin=True)))
         self.mt_messages.remove(message.name)
 
+    def test_8_get_location(self):
+        self.display_tc_header()
+        self.location_pending = True
+        self.modem.get_location(callback=self.cb_get_location)
+        while self.location_pending:
+            pass
+        self.assertFalse(self.location_pending)
+
+    def cb_get_location(self, loc):
+        print(vars(loc))
+        self.location_pending = False
+
 
 def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
-    tests = ['test_5']
+    tests = []
     if len(tests) > 0:
         for test in tests:
             for available_test in available_tests:

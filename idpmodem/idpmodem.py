@@ -24,7 +24,6 @@ automatically try to recover based on an algorithm influenced by its *power mode
 
    * Reference contextual documentation pages for things like event notifications, low power, etc.
    * Internalize timer_threads for typical monitoring processes to callback to registered external functions
-   * Improve threading to minimize need for re-entrant locks
    * Handle unsolicited modem output.  Can this happen while awaiting AT response??
 
 """
@@ -36,6 +35,7 @@ from headless import get_wrapping_log
 from headless import RepeatingTimer
 from headless import validate_serial_port
 from headless import is_logger
+import nmea
 import time
 import datetime
 import threading
@@ -44,9 +44,8 @@ import binascii
 import base64
 import string
 import sys
-# import struct
-# import json
 
+# Message Priorities and Data Formats
 PRIORITY_MT, PRIORITY_HIGH, PRIORITY_MEDH, PRIORITY_MEDL, PRIORITY_LOW = (0, 1, 2, 3, 4)
 FORMAT_TEXT, FORMAT_HEX, FORMAT_B64 = (1, 2, 3)
 # Message States
@@ -57,6 +56,45 @@ TX_READY = 4
 TX_SENDING = 5
 TX_COMPLETE = 6
 TX_FAILED = 7
+# Wakeup Intervals
+WAKEUP_5_SEC = 0
+WAKEUP_30_SEC = 1
+WAKEUP_1_MIN = 2
+WAKEUP_3_MIN = 3
+WAKEUP_10_MIN = 4
+WAKEUP_30_MIN = 5
+WAKEUP_60_MIN = 6
+WAKEUP_2_MIN = 7
+WAKEUP_5_MIN = 8
+WAKEUP_15_MIN = 9
+WAKEUP_20_MIN = 10
+WAKEUP_INTERVALS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+# Power Mode settings (S50)
+POWER_MODE_MOBILE_POWERED = 0
+POWER_MODE_FIXED_POWERED = 1
+POWER_MODE_MOBILE_BATTERY = 2
+POWER_MODE_FIXED_BATTERY = 3
+POWER_MODE_MOBILE_MINIMAL = 4
+POWER_MODE_MOBILE_STATIONARY = 5
+POWER_MODES = (0, 1, 2, 3, 4, 5)
+# GNSS Modes
+GNSS_MODES = (0, 1, 2, 10, 11, 12)
+GNSS_MODE_GPS = 0
+GNSS_MODE_GLONASS = 1
+GNSS_MODE_BEIDOU = 2
+GNSS_MODE_GPS_GLONASS = 10
+GNSS_MODE_GPS_BEIDOU = 11
+GNSS_MODE_GLONASS_BEIDOU = 12
+# GNSS Dynamic Platform Models
+GNSS_DPM_MODES = (0, 2, 3, 4, 5, 6, 7, 8)
+GNSS_DPM_PORTABLE = 0
+GNSS_DPM_STATIONARY = 2
+GNSS_DPM_PEDESTRIAN = 3
+GNSS_DPM_AUTOMOTIVE = 4
+GNSS_DPM_SEA = 5
+GNSS_DPM_AIR_1G = 6
+GNSS_DPM_AIR_2G = 7
+GNSS_DPM_AIR_4G = 8
 
 
 class Modem(object):
@@ -69,7 +107,7 @@ class Modem(object):
     :param debug: Boolean option for verbose trace
 
     """
-    # ------------- Modem built-in Enumerated Types ----------- #
+    # ----------------------- Modem built-in Enumerated Types ------------------------------ #
     ctrl_states = (
         'Stopped',
         'Waiting for GNSS fix',
@@ -149,6 +187,7 @@ class Modem(object):
         'Air 4g': 8
     }
 
+    # ----------------------- Twinning and helper objects ----------------------------------- #
     class _AtConfiguration(object):
         """Configuration of the AT command handler (echo, crc, verbose, quiet)"""
         def __init__(self):
@@ -198,7 +237,7 @@ class Modem(object):
             ('S39', 0, False, [0, 2], 'GNSS mode', None),
             ('S40', 0, False, [0, 60], 'GNSS signal satellite detection timeout', None),
             ('S41', 180, False, [60, 1200], 'GNSS fix timeout', None),
-            ('S42', 65535, False, [0, 65535], 'GNSS augmentation systems', None),
+            ('S42', 65535, False, [0, 65535], 'GNSS augmentation systems', 'Query fails'),
             ('S50', 0, False, [0, 9], 'power mode', None),
             ('S51', 0, False, [0, 6], 'wakeup interval', None),
             ('S52', 2500, True, [0, 2500], 'reserved', 'undocumented'),
@@ -297,22 +336,13 @@ class Modem(object):
                 if reg.name == s_register:
                     return reg
 
-    events = (
-        'connect',
-        'disconnect',
-        'satellite_status_change',
-        'registered',
-        'blocked',
-        'unblocked',
-        'bb_wait',
-        'new_mt_message',
-        'mo_message_complete',
-        'wakeup_interval_change',
-        'new_gnss_fix',
-        'event_trace',
-        'unsolicited_serial',
-        )
-    
+    class _AtStatistics(object):
+        def __init__(self):
+            # 'lastResTime': 0,
+            # 'avgResTime': 0,
+            self.last_response_time = 0
+            self.avg_response_time = 0
+
     class _PendingAtCommand(object):
         """
         A private object to track the sending of AT commands and route responses to a callback
@@ -401,12 +431,10 @@ class Modem(object):
             self.state = RX_COMPLETE
             self.callback = None
 
-    class _AtStatistics(object):
-        def __init__(self):
-            # 'lastResTime': 0,
-            # 'avgResTime': 0,
-            self.last_response_time = 0
-            self.avg_response_time = 0
+    class _PendingLocation(object):
+        def __init__(self, callback):
+            self.callback = callback
+            self.location = nmea.Location()
 
     def __init__(self, serial_name='/dev/ttyUSB0', auto_monitor=True, use_crc=False, log=None, debug=False):
         """
@@ -468,6 +496,8 @@ class Modem(object):
         self.mo_msg_queue = []
         self.mt_msg_count = 0
         self.mt_msg_queue = []
+        # Location Based Service
+        self.location_pending = None
         # --- Serial processing threads ---
         self.autonomous = auto_monitor
         self._terminate = False
@@ -497,6 +527,7 @@ class Modem(object):
         self.sat_mt_message_interval = 5
         self.sat_events_interval = 1
         self.sat_mo_message_interval = 5
+        # TODO: Low Power override of the above timer intervals
         if self.autonomous:
             self.thread_sat_status = RepeatingTimer(seconds=self.sat_status_interval,
                                                     name='sat_status_monitor', callback=self._check_sat_status)
@@ -616,10 +647,11 @@ class Modem(object):
     @staticmethod
     def _init_at_stats():
         # TODO: track response times per AT command type
-        self.at_cmd_stats = {
+        at_cmd_stats = {
             'lastResTime': 0,
             'avgResTime': 0,
         }
+        return at_cmd_stats
 
     @staticmethod
     def _init_gpio():
@@ -631,7 +663,25 @@ class Modem(object):
         }
         return gpio
 
+    # ----------------------- Event Handling Setup -------------------------------------------------- #
+    events = (
+        'connect',
+        'disconnect',
+        'satellite_status_change',
+        'registered',
+        'blocked',
+        'unblocked',
+        'bb_wait',
+        'new_mt_message',
+        'mo_message_complete',
+        'wakeup_interval_change',
+        'new_gnss_fix',
+        'event_trace',
+        'unsolicited_serial',
+    )
+
     def _init_event_callbacks(self):
+        """Initializes an event callbacks list"""
         event_callbacks = {}
         for event in self.events:
             event_callbacks[event] = None
@@ -639,10 +689,16 @@ class Modem(object):
 
     def register_event_callback(self, event, callback):
         """
-        TODO: docstring
-        :param event:
+        Registers a callback function against a particular event
+        TODO: does not check for callback function validity
+
+        :param event: (string)
         :param callback:
-        :return:
+        :returns:
+
+           * (Boolean) success
+           * (string) failure reason if success=False
+
         """
         if event in self.events:
             if callback is not None:
@@ -651,25 +707,30 @@ class Modem(object):
             else:
                 return False, "No callback defined"
         else:
-            self.log.error("Invalid attempt to register callback event {}".format(event))
+            self.log.error("Invalid attempt to register callback event {}, must be in {}".format(event, self.events))
             return False, "Invalid event"
 
-    def register_mt_push(self, sin, min, data_format=FORMAT_B64, codec=None):
+    def register_mt_push(self, callback, sin, min, data_format=FORMAT_B64, codec=None):
+        """
+        Placeholder, not yet implemented.  Perhaps should go into 'idpcodec' module.
+        Intended to override generic event notification for new MT messages, retrieves and checks against list
+        of SIN/MIN pairs.
+        Should pass in a set of: callback, SIN, MIN, data_format, codec, callback
+
+        :param callback: (function) to push the decoded message to
+        :param sin: (int) Service Identifier Number to push
+        :param min: (int) Message Identified Number to push
+        :param data_format: (int) the format to use for retrieval and parsing
+        :param codec: (object) a registered codec for parsing
+        :return:
+
+           * (Boolean) success
+           * (string) reason for failure if success=False
+
+        """
         self.log.warning("register_mt_push FUNCTION NOT IMPLEMENTED")
 
-    def register_mt_notify(self, sin, min):
-        self.log.warning("register_mt_notify FUNCTION NOT IMPLEMENTED")
-
-    def _on_initialized(self):
-        if self.autonomous:
-            self.thread_sat_status.start_timer()
-            self.thread_mt_monitor.start_timer()
-            self.thread_mo_monitor.start_timer()
-            # self.thread_event_monitor.start_timer()
-        else:
-            self.log.info("Automonous mode disabled, user application must query modem actively")
-
-    # ---------------- Connection Management ------------------------- #
+    # ------------------------ Connection Management ------------------------------------------------ #
     def _com_connect(self):
         """
         Called on a repeating timer on power up or after connection is lost,
@@ -740,7 +801,7 @@ class Modem(object):
         if self.event_callbacks['disconnect'] is not None:
             self.event_callbacks['disconnect']()
 
-    # ----------------------- SERIAL PORT DATA PROCESSING --------------------- #
+    # ------------------------ SERIAL PORT DATA PROCESSING ------------------------------------------ #
     def _listen_serial(self):
         self.log.debug("Listening on serial")
         CHAR_WAIT = 0.05
@@ -888,7 +949,7 @@ class Modem(object):
     def _on_unsolicited_serial(self, read_str):
         self.event_callbacks['unsolicited_serial'](read_str)
 
-    # ---------------------- AT Command handling -------------------------------------------------- #
+    # ------------------------- AT Command handling -------------------------------------------------- #
     @staticmethod
     def get_crc(at_cmd):
         """
@@ -1136,7 +1197,7 @@ class Modem(object):
         elif 'AT%EVNT' in response.command.upper():
             self.log.debug("Event Log Get {} processed".format(response.command[9:]))
 
-    # --------------- Modem initialization & twinning ----------------------------- #
+    # ---------------------- Modem initialization & twinning ---------------------------------------- #
     def _init_modem(self, step=1):
         # TODO: optimize to a single command query/response
         self.log.debug("Initializing modem...step {}".format(step))
@@ -1160,7 +1221,18 @@ class Modem(object):
             self.submit_at_command(at_command='AT+GSN;+GMR', callback=self._cb_get_modem_info, timeout=3)
         elif step == 5:   # get key parameters from S-registers
             self.log.warning("TODO: get S-register values for notifications, wakeup, power mode, gnss")
-            # TODO: get S registers - ideally generic handling rather than individual callbacks
+            ''' Volatile Registers not returned by AT&V:
+                volatile_registers = {
+                    'S39': 'GNSS Mode',
+                    'S41': 'GNSS Fix Timeout',
+                    'S42': 'GNSS Augmentation Systems',   # returns ERROR from Modem Simulator
+                    'S51': 'Wakeup Interval',
+                    'S55': 'GNSS Continuous',
+                    'S56': 'GNSS Jamming Status',
+                    'S57': 'GNSS Jamming Indicator',
+                }
+            '''
+            self.submit_at_command(at_command='ATS39? S41? S51? S55? S56? S57?', callback=self._cb_get_volatile_sreg)
             self.get_event_notification_control(init=True)
             # self.get_wakeup_interval()
             # self.get_power_mode()
@@ -1169,10 +1241,7 @@ class Modem(object):
             # self.get_gnss_dpm()
             self._init_modem(step=6)
         elif step == 6:   # save config to NVM
-            self.submit_at_command(at_command='AT&W', callback=None, timeout=3)
-            self.log.info("Initialization complete")
-            self.is_initialized = True
-            self._on_initialized()
+            self.submit_at_command(at_command='AT&W', callback=self._cb_init_nvm, timeout=3)
         else:
             self.log.warning("Modem initialization called with invalid step {}".format(step))
 
@@ -1256,13 +1325,51 @@ class Modem(object):
             self.at_version = at_ver if at_ver != '' else 'unknown'
         self._init_modem(step=step+1) if success else self._init_modem(step=step)
 
+    def _cb_get_volatile_sreg(self, valid_response, responses, request):
+        if valid_response:
+            s_regs = request.replace('AT', '').split('?')   # Note that last list element will be '' due to last ?
+            for i in range(0, len(s_regs)-1):
+                name = s_regs[i].strip()   # remove spaces left by split
+                self.log.debug("Processing {}".format(name))
+                reg = self.s_registers.register(name)
+                value = int(responses[i])
+                if value != reg.default:
+                    self.log.warning("{} value {} does not match target {}".format(name, value, reg.default))
+                    reg.set(value)
+        else:
+            self.log.error("Failed to query volatile S-registers - {}".format(responses))
+
     def _cb_configure_crc(self, valid_response, responses, request):
-        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
+        if valid_response:
+            self.log.debug("CRC {}".format('enabled' if '=1' in request else 'disabled'))
+        else:
+            self.log.error("Error setting CRC: {}".format(responses))
 
     def _cb_configure_verbose(self, valid_response, responses, request):
-        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
+        if valid_response:
+            self.log.debug("Verbose {}".format('enabled' if '=1' in request else 'disabled'))
+        else:
+            self.log.error("Error setting Verbose: {}".format(responses))
 
-    # ----------------------- SATELLITE STATUS MONITORING ----------------------------------------- #
+    def _cb_init_nvm(self, valid_response, responses, request):
+        if valid_response:
+            self.log.info("Initialization complete")
+            self.is_initialized = True
+            self._on_initialized()
+        else:
+            self.log.error("Failed to write NVM - {}".format(responses))
+
+    def _on_initialized(self):
+        if self.autonomous:
+            self.thread_sat_status.start_timer()
+            self.thread_mt_monitor.start_timer()
+            self.thread_mo_monitor.start_timer()
+            # self.thread_event_monitor.start_timer()
+            self.log.info("Event notification monitoring not enabled")
+        else:
+            self.log.info("Automonous mode disabled, user application must query modem actively")
+
+    # ---------------------- SATELLITE STATUS MONITORING -------------------------------------------- #
     def _check_sat_status(self):
         self.log.debug("Monitoring satellite status - current status: {}".format(self.sat_status.ctrl_state))
         # S122: satellite trace status
@@ -1369,7 +1476,7 @@ class Modem(object):
             else:
                 self.log.info("No callback defined for satellite_status_change")
 
-    # --------------------- MESSAGE HANDING -------------------------------------------------------- #
+    # ---------------------- MESSAGE HANDING -------------------------------------------------------- #
     @staticmethod
     def get_msg_state(state):
         state_str = ""
@@ -1683,40 +1790,202 @@ class Modem(object):
 
     def check_events(self):
         self.log.warning("EVENT MONITOR ATS89? NOT IMPLEMENTED")
-        # self.submit_at_command('ATS89?', callback=None)
+        # self.submit_at_command('ATS89?', callback=self._cb_check_events)
 
     def _cb_check_events(self, valid_response, responses, request):
         self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
+        if valid_response:
+            self.log.warning("FUNCTION SHOULD BE TRIGGERED BY GPIO ASSERTION")
+            # TODO: parse bitmap for the various events, check against registered notifications & act
+        else:
+            self.log.error("Error checking S89 events: {}".format(responses))
 
     def _on_hw_event(self, event):
         self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
-    # --------------------- NMEA OPERATIONS --------------------------------------------------- #
-    def get_nmea(self, callback, rmc=True, gga=True, gsa=True, gsv=True, refresh=0):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+    # --------------------- NMEA/LBS OPERATIONS --------------------------------------------------- #
+    def set_gnss_mode(self, gnss_mode=GNSS_MODE_GPS):
+        if gnss_mode in GNSS_MODES:
+            if int(self.s_registers.register('S39').get()) == gnss_mode:
+                self.log.debug("GNSS mode already set to {}".format(gnss_mode))
+            else:
+                self.submit_at_command('ATS39={}'.format(gnss_mode), callback=None)
+                # TODO: some risk that write fails and twin is no longer sychronized
+                self.s_registers.register('S39').set(gnss_mode)
+        else:
+            self.log.error("Invalid GNSS mode {}".format(gnss_mode))
+
+    def get_gnss_mode(self):
+        """Gets the GNSS mode (S39, default 0) and stores in the Modem instance."""
+        return int(self.s_registers.register('S39').get())
+
+    def set_gnss_dynamic_mode(self, dpm_mode=GNSS_DPM_PORTABLE):
+        if dpm_mode in GNSS_DPM_MODES:
+            if int(self.s_registers.register('S33').get()) == dpm_mode:
+                self.log.debug("GNSS mode already set to {}".format(dpm_mode))
+            else:
+                self.submit_at_command('ATS33={}'.format(dpm_mode), callback=None)
+                # TODO: some risk that write fails and twin is no longer sychronized
+                self.s_registers.register('S33').set(dpm_mode)
+        else:
+            self.log.error("Invalid GNSS Dynamic Platform Model {}".format(dpm_mode))
+
+    def get_gnss_dynamic_model(self):
+        """Gets the GNSS Dynamic Platform Model (S33, default 0) and stores in Modem instance."""
+        return int(self.s_registers.register('S33').get())
+
+    def get_gnss_refresh_interval(self):
+        return int(self.s_registers.register('S55').get())
+
+    def set_gnss_refresh_interval(self, seconds=0):
+        if isinstance(seconds, int) and seconds in range(0, 30):
+            if int(self.s_registers.register('S55').get()) == seconds:
+                self.log.debug("GNSS refresh interval already set to {}".format(seconds))
+            else:
+                self.submit_at_command('ATS55={}'.format(seconds), callback=None)
+                # TODO: some risk that write fails and twin is no longer sychronized
+                self.s_registers.register('S55').set(seconds)
+        else:
+            self.log.error("Invalid GNSS refresh interval - must be integer in range 0..30 (seconds)")
+
+    def get_location(self, callback, fix_age=30, rmc=True, gga=True, gsa=True, gsv=True):
+        """
+        Queries GNSS NMEA strings from the modem and returns a list of sentences (assuming no fix timeout).
+
+        :param callback: the function to which location will be passed back
+        :param fix_age: (int) maximum age of GNSS fix to use
+        :param gga: essential fix data
+        :param rmc: recommended minimum
+        :param gsa: dilution of precision (DOP) and satellites
+        :param gsv: satellites in view
+
+        """
+        MIN_STALE_SECS = 1
+        MAX_STALE_SECS = 600
+        MIN_WAIT_SECS = 1
+        MAX_WAIT_SECS = 600
+
+        # TODO: get fix age from Trace Class 4 Subclass 2 Index 7
+        refresh = self.get_gnss_refresh_interval()
+        if 0 < refresh < fix_age:
+            fix_age = refresh
+        stale_secs = min(MAX_STALE_SECS, max(MIN_STALE_SECS, fix_age))
+        wait_secs = min(MAX_WAIT_SECS, max(MIN_WAIT_SECS, int(max(45, stale_secs - 1))))
+        # example sentence string: '"GGA","RMC","GSA","GSV"'
+        s_list = []
+        if gga:
+            s_list.append('"GGA"')
+        if rmc:
+            s_list.append('"RMC"')
+        if gsa and not self.mobile_id == '00000000SKYEE3D':   # Modem Simulator does not support GSA output
+            s_list.append('"GSA"')
+        if gsv:
+            s_list.append('"GSV"')
+        req_sentences = ",".join(tuple(s_list))
+        # TODO: setup PendingLocation concept
+        self.location_pending = self._PendingLocation(callback=callback)
+        self.submit_at_command(at_command='AT%GPS={},{},{}'.format(stale_secs, wait_secs, req_sentences),
+                               callback=self._cb_get_nmea, timeout=wait_secs+5)
+        self.gnss_stats['nGNSS'] += 1
+        self.gnss_stats['lastGNSSReqTime'] = int(time.time())
 
     def _cb_get_nmea(self, valid_response, responses, request):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        if valid_response:
+            # TODO: update GNSS stats
+            nmea_data_set = []
+            for nmea_sentence in responses:   # responses[0] should just be %GPS header
+                if nmea_sentence.startswith('$G'):
+                    nmea_data_set.append(nmea_sentence)
+                    # valid_sentence, nmea_data = nmea.validate_nmea_checksum(nmea_sentence)
+                    # if valid_sentence:
+                    #     # TODO: check for various $GP or $GL headers and manage
+                    #     nmea_data_set.append(nmea_data)
+                    # else:
+                    #     self.log.error("Invalid NMEA sentence {}".format(nmea_sentence))
+            if len(nmea_data_set) > 0:
+                gnss_fix_duration = int(time.time()) - self.gnss_stats['lastGNSSReqTime']
+                if self.gnss_stats['avgGNSSFixDuration'] > 0:
+                    self.gnss_stats['avgGNSSFixDuration'] = int((gnss_fix_duration +
+                                                                 self.gnss_stats['avgGNSSFixDuration']) / 2)
+                else:
+                    self.gnss_stats['avgGNSSFixDuration'] = gnss_fix_duration
+                self._process_location(nmea_data_set)
+        else:
+            self.log.error("Error getting location: {}".format(responses))
+            if 'TIMEOUT' in responses:
+                self.gnss_stats['timeouts'] += 1
+                time.sleep(5)
+                self.submit_at_command(at_command=request, callback=self._cb_get_nmea)
 
-    def get_location(self, callback):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+    def _process_location(self, nmea_data_set):
+        for sentence in nmea_data_set:
+            success, err_str = nmea.parse_nmea_to_location(sentence, self.location_pending.location)
+            if not success:
+                self.log.error(err_str)
+        if self.location_pending is not None and self.location_pending.callback is not None:
+            self.location_pending.callback(self.location_pending.location)
+        else:
+            self.log.warning("No callback defined for pending location")
+        self.location_pending = None
 
-    # --------------------- S-REGISTER OPERATIONS ---------------------------------------------- #
+    # --------------------- LOW POWER OPERATIONS ----------------------------------------------- #
+    # TODO: manage GNSS settings on entry/exit to LPM, collect garbage, etc.
+    def get_wakeup_interval(self, init=False):
+        if not init:
+            self.log.warning("S51 value twin may be out of date requiring follow-up query")
+            self.submit_at_command(at_command='ATS51?', callback=self._cb_get_wakeup_interval)
+        return self.s_registers.register('S51').get()
+
+    def _cb_get_wakeup_interval(self, valid_response, responses, request):
+        if valid_response:
+            value = int(responses[0])
+            self.log.info("Updating S51 register value: {}".format(value))
+            self.s_registers.register('S51').set(value)
+
+    def set_wakeup_interval(self, wakeup_interval=WAKEUP_5_SEC):
+        if wakeup_interval in WAKEUP_INTERVALS:
+            self.submit_at_command(at_command='ATS51={}'.format(wakeup_interval))
+            # TODO: some risk that write fails and twin is no longer synchronized
+            self.s_registers.register('S51').set(wakeup_interval)
+        else:
+            self.log.error("Invalid wakeup interval {}".format(wakeup_interval))
+
+    def set_power_mode(self, power_mode=POWER_MODE_MOBILE_POWERED):
+        if power_mode in POWER_MODES:
+            self.submit_at_command(at_command='ATS50={}'.format(power_mode))
+            # TODO: some risk that write fails and twin is no longer synchronized
+            self.s_registers.register('S51').set(power_mode)
+        else:
+            self.log.error("Invalid power mode {}".format(power_mode))
+
+    def get_power_mode(self, init=False):
+        if not init:
+            self.log.warning("S50 value twin may be out of date requiring follow-up query")
+            self.submit_at_command(at_command='ATS50?', callback=self._cb_get_power_mode)
+        return self.s_registers.register('S50').get()
+
+    def _cb_get_power_mode(self, valid_response, responses, request):
+        if valid_response:
+            value = int(responses[0])
+            self.log.info("Updating S50 register value: {}".format(value))
+            self.s_registers.register('S50').set(value)
+
+    # ---------------------- S-REGISTER OPERATIONS -------------------------------------------------- #
     def set_s_register(self, register, value, callback=None, save=False):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     def _cb_set_s_register(self, valid_response, responses, request):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     def get_s_register(self, register, callback):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     def _cb_get_s_register(self, valid_response, responses, request):
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     def _update_twin_parameters(self, register, value):
         # TODO: check which IdpModem parameters are affected by the read/write of s-Registers and update twin
-        self.log.warning("FUNCTION NOT IMPLEMENTED")
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     # --------------------- Generic functions that might be useful ----------------------------------- #
     @staticmethod
@@ -1737,1241 +2006,6 @@ class Modem(object):
     def set_bitmap(ordered_dict, key, value, binary=False):
         # TODO: accept a list of key/value pairs to cycle through and return the bitmap binary string or integer value
         pass
-
-    # --------------------- Broken functions that need update ----------------------------------- #
-    def set_wakeup_interval(self, value, callback=None, save=False):
-        """
-        Sets the wakeup interval (S51, default 0).
-
-        .. _wakeup-interval:
-
-        ``wakeup_interval`` is an enumerated type:
-
-           - ``5 seconds``: 0
-           - ``30 seconds``: 1
-           - ``1 minute``: 2
-           - ``3 minute``: 3
-           - ``10 minute``: 4
-           - ``30 minute``: 5
-           - ``60 minute``: 6
-           - ``2 minute``: 7
-           - ``5 minute``: 8
-           - ``15 minute``: 9
-           - ``20 minute``: 10
-
-        :param value: an enumerated type
-        :param save: if writing to NVM
-        :return: Boolean success
-
-        """
-        if value in self.wakeup_intervals:
-            # TODO: make sure value is of correct type (integer)
-            self.set_s_register(register='S51', value=value, callback=callback, save=save)
-        else:
-            self.log.error("Invalid value {} for S51 wakeup interval".format(value))
-
-    def get_wakeup_interval(self):
-        """Gets the wakeup interval (S51, default 0) and stores in the Modem instance."""
-        log = self.log
-        value = self._at_sreg_read(register='S51')
-        if value is not None:
-            self.wakeup_interval = value
-        else:
-            log.error("Error reading S51 wakeup interval")
-
-    def set_power_mode(self, value, save=False):
-        """
-        Sets the power mode (S50, default 0).  ``power_mode`` is an enumerated type with:
-
-           - ``Mobile Powered``: 0
-           - ``Fixed Powered``: 1
-           - ``Mobile Battery``: 2
-           - ``Fixed Battery``: 3
-           - ``Mobile Minimal``: 4
-           - ``Mobile Stationary``: 5
-
-        :param value: an enumerated type
-        :param save: if writing to NVM
-        :return: Boolean success
-
-        """
-        log = self.log
-        success = False
-        if value in self.power_modes:
-            success = self._at_sreg_write(register='S50', value=value, save=save)
-            if success:
-                self.power_mode = self.power_modes[value]
-        else:
-            log.error("Invalid value %s for S50 power mode" % value)
-        return success
-
-    def get_power_mode(self):
-        """Gets the power mode (S50, default 0) and stores in the Modem instance."""
-        log = self.log
-        value = self._at_sreg_read(register='S50')
-        if value is not None:
-            self.power_mode = value
-        else:
-            log.error("Error reading S50 power mode")
-
-    def set_gnss_continuous(self, value, save=False):
-        """
-        Sets the GNSS continuous mode refresh interval (S55, default 0).
-
-        :param value: (integer) seconds between refresh from 0..30.  0=disabled/on-demand.
-        :param save: if writing to NVM
-        :return: Boolean success
-
-        """
-        log = self.log
-        success = False
-        if 0 <= value <= 30 and isinstance(value, int):
-            success = self._at_sreg_write(register='S55', value=value, save=save)
-            if success:
-                self.gnss_continuous = value
-        else:
-            log.error("Invalid value %s for S55 GNSS continuous mode" % value)
-        return success
-
-    def get_gnss_continuous(self):
-        """Gets the GNSS continuous interval (S55, default 0) and stores in the Modem instance."""
-        log = self.log
-        value = self._at_sreg_read(register='S55')
-        if value is not None:
-            self.gnss_continuous = value
-        else:
-            log.error("Error reading S55 gnss continuous")
-
-    def set_gnss_mode(self, value, save=False):
-        """
-        Sets the GNSS mode (S39) (GPS, GLONASS, Beidou).  ``gnss_mode`` is an enumerated type:
-
-           - ``GPS``: 0
-           - ``GLONASS``: 1
-           - ``BEIDOU``: 2
-           - ``GPS+GLONASS``: 10
-           - ``GPS+BEIDOU``: 11
-           - ``GLONASS+BEIDOU``: 12
-
-        .. note::
-           Check with modem manufacturer to confirm available GNSS settings on your hardware variant.
-
-        :param value: an enumerated type
-        :param save: if writing to NVM
-        :return: Boolean success
-
-        """
-        log = self.log
-        success = False
-        if value in self.gnss_modes:
-            success = self._at_sreg_write(register='S39', value=value, save=save)
-            if success:
-                self.gnss_mode = self.gnss_modes[value]
-        else:
-            log.error("Invalid value %s for S39 GNSS mode" % value)
-        return success
-
-    def get_gnss_mode(self):
-        """Gets the GNSS mode (S39, default 0) and stores in the Modem instance."""
-        log = self.log
-        value = self._at_sreg_read(register='S39')
-        if value is not None:
-            self.gnss_mode = value
-        else:
-            log.error("Error reading S39 GNSS mode")
-
-    def at_set_gnss_dpm(self, value, save=False):
-        """
-        Sets the GNSS Dynamic Platform model (S33, default 0).  ``gnss_dpm_mode`` is an enumerated type:
-
-           - ``Portable``: 0
-           - ``Stationary``: 2
-           - ``Pedestrian``: 3
-           - ``Automotive``: 4
-           - ``Sea``: 5
-           - ``Air 1g``: 6
-           - ``Air 2g``: 7
-           - ``Air 4g``: 8
-
-        .. note::
-           Check with modem manufacturer to confirm available GNSS settings on your hardware variant.
-
-        :param value: an enumerated type
-        :param save: if writing to NVM
-        :return: Boolean success
-
-        """
-        log = self.log
-        success = False
-        if value in self.gnss_dpm_modes:
-            success = self._at_sreg_write(register='S33', value=value, save=save)
-            if success:
-                self.gnss_dpm_mode = self.gnss_dpm_modes[value]
-        else:
-            log.error("Invalid value %s for S33 GNSS DPM" % value)
-        return success
-
-    def get_gnss_dpm(self):
-        """Gets the GNSS Dynamic Platform Model (S33, default 0) and stores in Modem instance."""
-        log = self.log
-        value = self._at_sreg_read(register='S33')
-        if value is not None:
-            self.gnss_dpm_mode = value
-        else:
-            log.error("Error reading S33 GNSS DPM mode")
-
-    # ********************** TODO: DEPRECATE THESE OLD BLOCKING FUNCTIONS ****************************
-    def at_get_response(self, at_cmd, at_timeout=10):
-        """
-        Takes a single AT command, applies CRC if enabled, sends to the modem and waits for response completion.
-        Parses the response, line by line, until a result code is received or at_timeout is exceeded.
-        Assumes Quiet mode is disabled, and will not pass 'Quiet enable' (ATQ1) to the modem.
-        Sets modem object properties (Echo, CRC, Verbose, Quiet) by inference from AT response.
-
-        :param at_cmd: the AT command to send
-        :param at_timeout: the time in seconds to wait for a response
-        :return: a ``dictionary`` containing:
-
-           - ``echo`` the AT command sent (including CRC if applied) or empty string if Echo disabled
-           - ``response`` a list of (stripped) strings representing multi-line response
-           - ``result`` a string returned after the response when Quiet mode is disabled
-              'OK' or 'ERROR' if Verbose is enabled on the modem, or a numeric error code that can be looked up
-              in idpmodem.atErrorResultCodes
-           - ``checksum`` the CRC (if enabled) or None
-           - ``error`` Boolean if CRC is correct
-           - ``timeout`` Boolean if AT response timed out
-
-        """
-        ser = self.serial_port
-        log = self.log
-        debug = self.debug
-
-        CHAR_WAIT = 0.05  # time to wait, in seconds, between serial characters
-
-        at_echo = ''
-        at_response = []  # container for multi-line response
-        at_result_code = ''
-        at_res_crc = ''
-        timed_out = False
-
-        # Rejection cases.  TODO: improve error handling
-        if ";" in at_cmd:
-            log.warning("Multiple AT commands not supported: " + at_cmd)
-            return {'echo': at_echo, 'response': at_response, 'result': at_result_code}
-        if 'ATQ1' in at_cmd:
-            log.warning(at_cmd + " command rejected - quiet mode unsupported")
-            return {'echo': at_echo, 'response': at_response, 'result': at_result_code}
-
-        # Serial garbage collection
-        orphan_response = ''
-        while ser.inWaiting() > 0:
-            r_char = ser.read(1)
-            if debug:
-                if r_char == '\r':
-                    r_char = '<cr>'
-                elif r_char == '\n':
-                    r_char = '<lf>'
-            orphan_response += r_char
-        if orphan_response != '':
-            log.warning("Orphaned response: " + orphan_response.replace('\r', '<cr>').replace('\n', '<lf>'))
-            # TODO: consider passing back orphaned response for additional handling
-
-        ser.flushInput()
-        ser.flushOutput()
-
-        if self.at_config.crc:
-            to_send = at_cmd + '*' + self.get_crc(at_cmd)
-        else:
-            to_send = at_cmd
-        if "AT%CRC=1" in at_cmd.upper():
-            self.at_config.crc = True
-            log.debug("CRC enabled for next command")
-        elif "AT%CRC=0" in at_cmd.upper():
-            self.at_config.crc = False
-            log.debug("CRC disabled for next command")
-
-        log.debug("Sending:%s with timeout %d seconds", to_send, at_timeout)
-        ser.write(to_send + '\r')
-        at_send_time = time.time()
-
-        res_line = ''  # each line of response
-        raw_res_line = ''  # used for verbose debug purposes only
-        at_rx_start = False
-        at_rx_complete = False
-        at_tick = 0
-        while not at_rx_complete:
-            time.sleep(CHAR_WAIT)
-            while ser.inWaiting() > 0:
-                if not at_rx_start:
-                    at_rx_start = True
-                r_char = ser.read(1)
-                if r_char == '\r':
-                    # cases <echo><cr>
-                    # or <cr>...
-                    # or <numeric code><cr> (verbose off, no crc)
-                    res_line += r_char  # <cr> might be followed by <lf>
-                    raw_res_line += '<cr>'
-                    if at_cmd in res_line:
-                        # case <echo><cr>
-                        if at_cmd.upper() == 'ATE0':
-                            self.at_config.echo = False
-                            log.debug("ATE0 (echo disable) requested. Takes effect for next AT command.")
-                        else:
-                            self.at_config.echo = True
-                        at_echo = res_line.strip()  # copy the echo into a function return
-                        # <echo><cr> will be not be followed by <lf>
-                        # can be followed by <text><cr><lf>
-                        # or <cr><lf><text><cr><lf>
-                        # or <numeric code><cr>
-                        # or <cr><lf><verbose code><cr><lf>
-                        res_line = ''  # clear for next line of parsing
-                    elif ser.inWaiting() == 0 and res_line.strip() != '':
-                        # or <text><cr>...with delay for <lf> between multi-line responses e.g. GNSS?
-                        if self.at_config.verbose:
-                            # case <cr><lf><text><cr>...<lf>
-                            # or Quiet mode? --unsupported, suppresses result codes
-                            log.debug("Assuming delay between <cr> and <lf> of Verbose response...waiting")
-                        else:
-                            # case <numeric code><cr> since all other alternatives should have <lf> or other pending
-                            log.debug("Assuming receipt <numeric code><cr> with Verbose off: " + res_line.strip())
-                            # self.at_config.verbose = False
-                            at_result_code = res_line  # copy the result code (numeric string) into a function return
-                            at_rx_complete = True
-                            break
-                            # else keep parsing next character
-                elif r_char == '\n':
-                    # case <cr><lf>
-                    # or <text><cr><lf>
-                    # or <cr><lf><text><cr><lf>
-                    # or <cr><lf><verbose code><cr><lf>
-                    # or <*crc><cr><lf>
-                    res_line += r_char
-                    raw_res_line += '<lf>'
-                    if 'OK' in res_line or 'ERROR' in res_line:
-                        # <cr><lf><verbose code><cr><lf>
-                        at_result_code = res_line  # copy the verbose result (OK/ERROR) into a function return
-                        if ser.inWaiting() == 0:  # no checksum pending...response complete
-                            at_rx_complete = True
-                            break
-                        else:
-                            res_line = ''  # continue parsing next line
-                    elif '*' in res_line and len(res_line.strip()) == 5:
-                        # <*crc><cr><lf>
-                        self.at_config.crc = True
-                        at_res_crc = res_line.replace('*', '').strip()
-                        at_rx_complete = True
-                        break
-                    else:
-                        # case <cr><lf>
-                        # or <text><cr><lf>
-                        # or <cr><lf><text><cr><lf>
-                        if res_line.strip() == '':
-                            # <cr><lf> empty line...not done parsing yet
-                            self.at_config.verbose = True
-                        else:
-                            if res_line.strip() != '':  # don't add empty lines
-                                at_response.append(res_line)  # don't include \r\n in function return
-                            res_line = ''  # clear for next line parsing
-                else:  # a character other than \r or \n
-                    res_line += r_char
-                    raw_res_line += r_char
-
-            if at_result_code != '':
-                if self.at_timeouts > 0:
-                    log.debug("Valid AT response received - resetting AT timeout count")
-                    self.at_timeouts = 0
-                self.at_config.quiet = False
-                break
-
-            elif int(time.time()) - at_send_time > at_timeout:
-                timed_out = True
-                self.at_timeouts += 1
-                self.at_timeouts_total += 1
-                log.warning("%s command response timed out after %d seconds - %d consecutive timeouts"
-                                 % (to_send, at_timeout, self.at_timeouts))
-                break
-
-            if debug and int(time.time()) > (at_send_time + at_tick):
-                at_tick += 1
-                print("Waiting AT response. Tick=" + str(at_tick))
-
-        checksum_ok = False
-
-        if not timed_out:
-
-            if at_res_crc == '':
-                self.at_config.crc = False
-            else:
-                self.at_config.crc = True
-                if len(at_response) == 0 and at_result_code != '':
-                    str_to_validate = at_result_code
-                else:
-                    str_to_validate = ''
-                    for res_line in at_response:
-                        str_to_validate += res_line
-                    if at_result_code != '':
-                        str_to_validate += at_result_code
-                if self.get_crc(str_to_validate) == at_res_crc:
-                    checksum_ok = True
-                else:
-                    expected_checksum = self.get_crc(str_to_validate)
-                    log.error("Bad checksum received: *" + at_res_crc + " expected: *" + expected_checksum)
-
-            for i, res_line in enumerate(at_response):
-                at_response[i] = res_line.strip()
-            at_result_code = at_result_code.strip()
-
-            self._update_stats_at_response(at_send_time, at_cmd)
-
-            log.debug("Raw response: " + raw_res_line)
-
-        return {'echo': at_echo,
-                'response': at_response,
-                'result': at_result_code,
-                'checksum': at_res_crc,
-                'error': checksum_ok,
-                'timeout': timed_out}
-
-    def at_get_result_code(self, result_code):
-        """
-        Queries the details of an error response on the AT command interface.
-
-        :param result_code: the value returned by the AT command response
-        :returns:
-           - the specific error code
-           - the string description of the error code
-
-        """
-        log = self.log
-
-        error_code = -1
-        error_desc = "UNDEFINED result code: " + result_code
-        if 'OK' in result_code or result_code == '0':
-            error_code = 0
-
-        elif 'ERROR' in result_code or result_code == '':
-            with self.thread_lock:
-
-                response = self.at_get_response('ATS80?')
-
-                err_code2, err_desc2 = self.at_get_result_code(response['result'])
-                if err_code2 == 0:
-                    error_code = int(response['response'][0])
-                else:
-                    log.error("Error querying last error code from S80: " + err_desc2)
-
-        elif int(result_code) > 0:
-            error_code = int(result_code)
-
-        if str(error_code) in self.at_err_result_codes:
-            error_desc = self.at_err_result_codes[str(error_code)]
-
-        return error_code, error_desc
-
-    def at_attach(self, at_timeout=1):
-        """
-        Attempts to attach using basic AT command.
-
-        :return: Boolean success
-
-        """
-        success = False
-        with self.thread_lock:
-            response = self.at_get_response('AT', at_timeout=at_timeout)
-            if response['timeout']:
-                self.log.debug("Failed attempt to establish AT response")
-            elif response['result'] != '':
-                success = True
-                self.log.info("AT attach confirmed")
-            else:
-                self.log.warning("Unexpected response from AT command")
-        return success
-
-    def at_initialize_modem(self, use_crc=False, verbose=True):
-        """
-        Initializes the modem after new connection. Restores saved defaults, disables Quiet mode, enables Echo.
-
-        .. note::
-           CRC use is recommended when using a long cable between your controller and the satellite modem.
-
-        :param use_crc: optionally enables CRC on AT commands (e.g. if using long serial cable)
-        :param verbose: optionally use verbose mode for results (OK/ERROR)
-        :return: Boolean success
-
-        """
-        log = self.log
-        AT_WAIT = 0.1  # seconds between initialization commands
-
-        # Restore saved defaults - modem AT config will also be inferred
-        time.sleep(AT_WAIT)
-        defaults_restored = False
-        restore_attempts = 0
-        while not defaults_restored and restore_attempts < 2:
-            restore_attempts += 1
-            response = self.at_get_response('ATZ')
-            err_code, err_str = self.at_get_result_code(response['result'])
-            if err_code == 100 and modem.atConfig['CRC'] == False:
-                self.at_config.crc = True
-                log.info("ATZ CRC error; retrying with CRC enabled")
-            elif err_code != 0:
-                err_msg = "Failed to restore saved defaults - exiting (%s)" % err_str
-                log.error(err_msg)
-                return False
-            else:
-                defaults_restored = True
-                log.info("Saved defaults restored")
-
-        # Enable CRC if desired
-        if use_crc:
-            response = self.at_get_response('AT%CRC=1')
-            err_code, err_str = self.at_get_result_code(response['result'])
-            if err_code == 0:
-                log.info("CRC enabled")
-            elif err_code == 100 and self.at_config.crc:
-                log.info("Attempted to set CRC when already set")
-            else:
-                log.error("CRC enable failed (" + err_str + ")")
-        elif self.at_config.crc:
-            response = self.at_get_response('AT%CRC=0')
-            err_code, err_str = self.at_get_result_code(response['result'])
-            if err_code == 0:
-                log.info("CRC disabled")
-            else:
-                log.warning("CRC disable failed (%s)" % err_str)
-
-        # Ensure Quiet mode is disabled to receive response codes
-        time.sleep(AT_WAIT)
-        response = self.at_get_response('ATS61?')  # S61 = Quiet mode
-        err_code, err_str = self.at_get_result_code(response['result'])
-        if err_code == 0:
-            if response['response'][0] == '1':
-                response = self.at_get_response('ATQ0')
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code != 0:
-                    err_msg = "Failed to disable Quiet mode (%s)" % err_str
-                    log.error(err_msg)
-                    return False
-            log.info("Quiet mode disabled")
-        else:
-            err_msg = "Failed query of Quiet mode S-register ATS61? (" + err_str + ")"
-            log.error(err_msg)
-            sys.exit(err_msg)
-        self.at_config.quiet = False
-
-        # Enable echo to validate receipt of AT commands
-        time.sleep(AT_WAIT)
-        response = self.at_get_response('ATE1')
-        err_code, err_str = self.at_get_result_code(response['result'])
-        if err_code == 0:
-            log.info("Echo enabled")
-        else:
-            log.warning("Echo enable failed (" + err_str + ")")
-
-        # Configure verbose error code (OK / ERROR) for easier result validation
-        time.sleep(AT_WAIT)
-        if verbose:
-            response = self.at_get_response('ATV1')
-        else:
-            response = self.at_get_response('ATV0')
-        err_code, err_str = self.at_get_result_code(response['result'])
-        if err_code == 0:
-            log.info("Verbose " + ("enabled" if verbose else "disabled"))
-            self.at_config.verbose = verbose
-        else:
-            log.warning("Verbose %s failed (%s)" % ("enable" if verbose else "disable", err_str))
-
-        # Get modem ID
-        time.sleep(AT_WAIT)
-        response = self.at_get_response('AT+GSN')
-        err_code, err_str = self.at_get_result_code(response['result'])
-        if err_code == 0:
-            mobile_id = response["response"][0].lstrip('+GSN:').strip()
-            if mobile_id != '':
-                log.info("Mobile ID: %s" % mobile_id)
-                self.mobile_id = mobile_id
-            else:
-                log.warning("Mobile ID not returned")
-        else:
-            log.error("Get Mobile ID failed (%s)" % err_str)
-
-        # Get hardware and firmware versions
-        time.sleep(AT_WAIT)
-        response = self.at_get_response('AT+GMR')
-        err_code, err_str = self.at_get_result_code(response['result'])
-        if err_code == 0:
-            fw_ver, hw_ver, at_ver = response["response"][0].lstrip('+GMR:').strip().split(",")
-            log.info("Hardware: %s | Firmware: %s | AT: %s" % (hw_ver, fw_ver, at_ver))
-            self.hardware_version = hw_ver
-            self.software_version = fw_ver
-            self.at_version = at_ver
-        else:
-            log.error("Get versions failed (%s)" % err_str)
-
-        # Get relevant configuration (S-register) values
-        time.sleep(AT_WAIT)
-        self.get_event_notification_control()
-        self.get_wakeup_interval()
-        self.get_power_mode()
-        self.get_gnss_mode()
-        self.get_gnss_continuous()
-        self.get_gnss_dpm()
-
-        success = self.at_save_config()
-
-        return success
-
-    def at_check_sat_status(self):
-        """
-        Checks satellite status and updates state and statistics.
-
-        ..todo:
-           Interface with relevant callbacks
-
-        :returns: A ``dictionary`` with:
-
-           - ``success`` Boolean
-           - ``changed`` Boolean
-           - ``state`` (string from ctrl_states)
-
-        """
-        log = self.log
-        success = False
-        changed = False
-        with self.thread_lock:
-            log.debug("Checking satellite status. Last known state: {}".format(self.sat_status.ctrl_state))
-
-            # S122: satellite trace status
-            # S116: C/N0
-            response = self.at_get_response('ATS90=3 S91=1 S92=1 S122? S116?')
-
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                    old_sat_ctrl_state = self.sat_status.ctrl_state
-                    new_sat_ctrl_state = self.ctrl_states[int(response['response'][0])]
-                    if new_sat_ctrl_state != old_sat_ctrl_state:
-                        changed = True
-                        log.info("Satellite control state change: OLD={} NEW={}".format(old_sat_ctrl_state,
-                                                                                        new_sat_ctrl_state))
-                        self.sat_status.ctrl_state = new_sat_ctrl_state
-
-                        # Key events for relevant state changes and statistics tracking
-                        if new_sat_ctrl_state == 'Waiting for GNSS fix':
-                            self.system_stats['lastGNSSStartTime'] = int(time.time())
-                            self.system_stats['nGNSS'] += 1
-                        elif new_sat_ctrl_state == 'Registration in progress':
-                            self.system_stats['lastRegStartTime'] = int(time.time())
-                            self.system_stats['nRegistration'] += 1
-                        elif new_sat_ctrl_state == 'Downloading Bulletin Board':
-                            self.sat_status.bb_wait = True
-                            self.system_stats['lastBBStartTime'] = time.time()
-                            # TODO: callback for BB_WAIT
-                        elif new_sat_ctrl_state == 'Active':
-                            if self.sat_status.blocked:
-                                log.info("Blockage cleared")
-                                # TODO: callback for Unblocked
-                                blockage_duration = int(time.time() - self.system_stats['lastBlockStartTime'])
-                                if self.system_stats['avgBlockageDuration'] > 0:
-                                    self.system_stats['avgBlockageDuration'] \
-                                        = int((blockage_duration + self.system_stats['avgBlockageDuration']) / 2)
-                                else:
-                                    self.system_stats['avgBlockageDuration'] = blockage_duration
-                            self.sat_status.registered = True
-                            # TODO: callback for Registered
-                            self.sat_status.blocked = False
-                            self.sat_status.bb_wait = False
-                            if self.system_stats['lastRegStartTime'] > 0:
-                                registration_duration = int(time.time() - self.system_stats['lastRegStartTime'])
-                            else:
-                                registration_duration = 0
-                            if self.system_stats['avgRegistrationDuration'] > 0:
-                                self.system_stats['avgRegistrationDuration'] \
-                                    = int((registration_duration + self.system_stats['avgRegistrationDuration']) / 2)
-                            else:
-                                self.system_stats['avgRegistrationDuration'] = registration_duration
-                        elif new_sat_ctrl_state == 'Blocked':
-                            self.sat_status.blocked = True
-                            self.system_stats['lastBlockStartTime'] = time.time()
-                            log.info("Blockage started")
-                            # TODO: callback for Blocked
-
-                        # Other transitions for statistics tracking:
-                        if old_sat_ctrl_state == 'Waiting for GNSS fix' \
-                                and new_sat_ctrl_state != 'Stopped' and new_sat_ctrl_state != 'Blocked':
-                            gnss_duration = int(time.time() - self.system_stats['lastGNSSStartTime'])
-                            log.info("GNSS acquired in {} seconds".format(gnss_duration))
-                            # TODO: callback for NewGNSS
-                            if self.system_stats['avgGNSSFixDuration'] > 0:
-                                self.system_stats['avgGNSSFixDuration'] \
-                                    = int((gnss_duration + self.system_stats['avgGNSSFixDuration']) / 2)
-                            else:
-                                self.system_stats['avgGNSSFixDuration'] = gnss_duration
-                        if old_sat_ctrl_state == 'Downloading Bulletin Board' \
-                                and new_sat_ctrl_state != 'Stopped' and new_sat_ctrl_state != 'Blocked':
-                            bulletin_duration = int(time.time() - self.system_stats['lastBBStartTime'])
-                            log.info("Bulletin Board downloaded in {} seconds".format(bulletin_duration))
-                            if self.system_stats['avgBBReacquireDuration'] > 0:
-                                self.system_stats['avgBBReacquireDuration'] \
-                                    = int((bulletin_duration + self.system_stats['avgBBReacquireDuration']) / 2)
-                            else:
-                                self.system_stats['avgBBReacquireDuration'] = bulletin_duration
-                        if old_sat_ctrl_state == 'Active' \
-                                and new_sat_ctrl_state != 'Stopped' and new_sat_ctrl_state != 'Blocked':
-                            self.system_stats['lastRegStartTime'] = int(time.time())
-                            self.system_stats['nRegistration'] += 1
-
-                    c_n0 = int(response['response'][1]) / 100.0
-                    if self.system_stats['avgCN0'] == 0:
-                        self.system_stats['avgCN0'] = c_n0
-                    else:
-                        self.system_stats['avgCN0'] = round((self.system_stats['avgCN0'] + c_n0) / 2.0, 2)
-                else:
-                    log.error("Bad response to satellite status query ({})".format(err_str))
-            else:
-                log.warning("Timeout occurred on satellite status query")
-
-        return {'success': success, 'changed': changed, 'state': self.sat_status.ctrl_state}
-
-    def at_check_mt_messages(self):
-        """
-        Checks for Mobile-Terminated messages in modem queue and retrieves if present.
-        Logs a record of the receipt, and handles supported messages.
-
-        :returns:
-           - Calls back to a registered callback with:
-           - ``list`` of ``dictionary`` messages consisting of
-              - ``name`` used for retrieval
-              - ``priority`` 0 for mobile-terminated messages
-              - ``num`` number assigned by modem
-              - ``sin`` Service Identifier Number (decimal 0..255)
-              - ``state`` where 2 = complete and ready to retrieve
-              - ``size`` including SIN and MIN bytes
-
-        """
-        log = self.log
-        messages = []
-        with self.thread_lock:
-            log.debug("Checking for Mobile-Terminated messages")
-
-            response = self.at_get_response('AT%MGFN')
-
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    for res in response['response']:
-                        msg_pending = res.replace('%MGFN:', '').strip()
-                        if msg_pending:
-                            msg = {}
-                            msg_parms = msg_pending.split(',')
-                            msg['name'] = msg_parms[0]
-                            msg['num'] = msg_parms[1]
-                            msg['priority'] = int(msg_parms[2])
-                            msg['sin'] = int(msg_parms[3])
-                            msg['state'] = int(msg_parms[4])
-                            msg['size'] = int(msg_parms[5])
-                            if msg['state'] == 2:  # Complete and not read
-                                messages.append(msg)
-                            else:
-                                log.debug("Message %s not complete" % msg['name'])
-                else:
-                    log.error("Could not get new MT message info (%s)" % err_str)
-            else:
-                log.warning("Timeout occurred on MT message query")
-
-        # return True if len(messages) > 0 else False, messages
-        if len(messages) > 0:
-            if self.event_callbacks is not None:
-                self.event_callbacks['new_mt_message'](messages)
-            else:
-                self.log.warning("No callback registered for new MT messages")
-
-    def at_get_mt_message(self, msg_name, msg_sin, msg_size, data_type=2):
-        """
-        Retrieves a pending completed mobile-terminated message.
-
-        :param msg_name: to be retrieved
-        :param msg_sin: to be retrieved
-        :param msg_size: to be retrieved
-        :param data_type: 1 = Text, 2 = Hex, 3 = base64
-        :returns:
-           - Boolean success
-           - ``dictionary`` message consisting of:
-              - ``sin`` Service Identifier Number
-              - ``min`` Message Identifier Number
-              - ``payload`` including MIN byte, structure depends on data_type (text, hex, base64)
-              - ``size`` total in bytes including SIN, MIN
-
-        """
-        log = self.log
-        msg_retrieved = False
-        message = {}
-        if 1 <= data_type <= 3:
-            with self.thread_lock:
-                response = self.at_get_response('AT%MGFG=' + msg_name + "," + str(data_type))
-                if not response['timeout']:
-                    err_code, err_str = self.at_get_result_code(response['result'])
-                    if err_code == 0:
-                        msg_retrieved = True
-                        self.mt_msg_count += 1
-                        message['sin'] = msg_sin
-                        msg_envelope = response['response'][0].replace('%MGFG:', '').strip().split(',')
-                        msg_content = msg_envelope[7]
-                        msg_content_str = ''
-                        if data_type == 1:      # text
-                            message['min'] = int(msg_content.replace('"', '')[1:3], 16)
-                            msg_content_str = msg_content.replace('"', '')[3:]
-                            message['payload'] = msg_content_str
-                            message['size'] = len(msg_content_str) + 2
-                        elif data_type == 2:      # hex-string
-                            message['min'] = int(msg_content[0:2], 16)
-                            msg_content_str = '0x' + str(msg_content)
-                            message['payload'] = bytearray(msg_content.decode("hex"))
-                            message['size'] = len(message['payload']) + 1
-                        elif data_type == 3:      # base64-string
-                            msg_content_bytes = bytearray(binascii.a2b_base64(msg_content))
-                            message['min'] = int(msg_content_bytes[0])
-                            msg_content_str = str(msg_content)
-                            message['payload'] = msg_content_bytes
-                            message['size'] = len(msg_content_bytes) + 1
-                        log.info("Mobile Terminated %d-byte message received (SIN=%d MIN=%d) rawpayload:%s"
-                                 % (message['size'], message['sin'], message['min'], msg_content_str))
-                        if message['size'] != msg_size:
-                            log.warning("Error calculating message size (got %d expected %d)"
-                                        % (message['size'], msg_size))
-                        if self.system_stats['avgMTMsgSize'] == 0:
-                            self.system_stats['avgMTMsgSize'] = message['size']
-                        else:
-                            self.system_stats['avgMTMsgSize'] \
-                                = int((self.system_stats['avgMTMsgSize'] + message['size']) / 2)
-                    else:
-                        log.error("Could not get MT message (%s)" % err_str)
-        else:
-            log.error("Invalid data_type passed (%d)" % data_type)
-
-        return msg_retrieved, message
-
-    def at_submit_message(self, data_string, data_format=1, msg_sin=128, msg_min=1, priority=4):
-        """
-        Transmits a Mobile-Originated message. If ASCII-Hex format is used, 0-pads to nearest byte boundary.
-
-        :param data_string: data to be transmitted
-        :param data_format: 1=Text (default), 2=ASCII-Hex, 3=base64
-        :param msg_sin: first byte of message (default 128 "user")
-        :param msg_min: second byte of message (default 1 "user")
-        :param priority: 1(high) through 4(low, default)
-        :return:
-
-           * Boolean result
-           * String message name
-           * Integer submit time
-
-        """
-        log = self.log
-        self.mo_msg_count += 1
-        mo_msg_name = str(int(time.time()))[:8]
-        mo_msg_priority = priority
-        mo_msg_sin = msg_sin
-        mo_msg_min = msg_min
-        mo_msg_format = data_format
-        msg_submitted = False
-        if data_format == 1:
-            mo_msg_content = '"' + data_string + '"'
-        else:
-            mo_msg_content = data_string
-            if data_format == 2 and len(data_string) % 2 > 0:
-                mo_msg_content += '0'  # insert 0 padding to byte boundary
-        with self.thread_lock:
-            response = self.at_get_response(
-                'AT%MGRT="' + mo_msg_name + '",' + str(mo_msg_priority) + ',' + str(mo_msg_sin) + '.' + str(
-                    mo_msg_min) + ',' + str(mo_msg_format) + ',' + mo_msg_content)
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                mo_submit_time = time.time()
-                if err_code == 0:
-                    msg_submitted = True
-                    # TODO: convert to a thread with callback on completion
-                    '''
-                    status_poll_count = 0
-                    msg_complete = False
-                    while not msg_complete:
-                        time.sleep(1)
-                        status_poll_count += 1
-                        log.debug("MGRS queries: {count}".format(count=status_poll_count))
-                        success, msg_complete = self.at_check_mo_status(mo_msg_name)
-                    '''
-                    '''
-                    response1 = self.at_get_response('AT%MGRS="' + mo_msg_name + '"')
-                    if not response1['timeout']:
-                        err_code1, err_str1 = self.at_get_result_code(response['result'])
-                        if err_code1 == 0:
-                            res_param = response1['response'][0].split(',')
-                            res_header = res_param[0]
-                            res_msg_no = res_param[1]
-                            res_priority = int(res_param[2])
-                            res_sin = int(res_param[3])
-                            res_state = int(res_param[4])
-                            res_size = int(res_param[5])
-                            res_sent = int(res_param[6])
-                            if res_state > 5:
-                                msg_submitted = True
-                                if res_state == 6:
-                                    msg_latency = int(time.time() - mo_submit_time)
-                                    log.info("MO message SIN=%d MIN=%d (%d bytes) completed in %d seconds"
-                                             % (mo_msg_sin, mo_msg_min, res_size, msg_latency))
-                                    if self.system_stats['avgMOMsgSize'] == 0:
-                                        self.system_stats['avgMOMsgSize'] = res_size
-                                    else:
-                                        self.system_stats['avgMOMsgSize'] = int(
-                                            (self.system_stats['avgMOMsgSize'] + res_size) / 2)
-                                    if self.system_stats['avgMOMsgLatency_s'] == 0:
-                                        self.system_stats['avgMOMsgLatency_s'] = msg_latency
-                                    else:
-                                        self.system_stats['avgMOMsgLatency_s'] = int(
-                                            (self.system_stats['avgMOMsgLatency_s'] + msg_latency) / 2)
-                                else:
-                                    log.info("MO message (%d bytes) failed after %d seconds"
-                                             % (res_size, int(time.time() - mo_submit_time)))
-                        elif err_code == 109:
-                            log.debug("Message complete, Unavailable")
-                            break
-                        else:
-                            log.error("Error getting message state (%s)" % err_str1)
-                    else:
-                        log.error("Message status check timed out")
-                        break
-                    '''
-                else:
-                    log.error("Message submit error (%s)" % err_str)
-            else:
-                log.warning("Timeout attempting to submit MO message")
-
-        return msg_submitted, mo_msg_name, mo_submit_time
-
-    def at_check_mo_status(self, mo_msg_name, mo_submit_time=None):
-        """
-        TODO: docstring
-
-        :param mo_msg_name:
-        :param mo_submit_time:
-        :return:
-
-           * Boolean success of operation
-           * Boolean message complete
-
-        """
-        log = self.log
-        success = False
-        msg_complete = False
-        with self.thread_lock:
-            # pending_mo_message['status_poll_count'] += 1
-            # status_poll_count = pending_mo_message['status_poll_count']
-            # mo_msg_sin = pending_mo_message['mo_msg_sin']
-            # mo_msg_min = pending_mo_message['mo_msg_min']
-            # log.debug("MGRS queries: %d" % status_poll_count)
-            response = self.at_get_response('AT%MGRS="' + mo_msg_name + '"')
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                    res_param = response['response'][0].split(',')
-                    res_header = res_param[0]
-                    res_msg_no = res_param[1]
-                    res_priority = int(res_param[2])
-                    res_sin = int(res_param[3])
-                    res_state = int(res_param[4])
-                    res_size = int(res_param[5])
-                    res_sent = int(res_param[6])
-                    if res_state > 5:
-                        msg_complete = True
-                        if mo_submit_time is not None:
-                            msg_latency = int(time.time() - mo_submit_time)
-                        else:
-                            msg_latency = "??"
-                        msg_min = "??"
-                        if res_state == 6:
-                            log.info("MO message SIN={sin} MIN={min} ({size} bytes) "
-                                     "completed in {time} seconds".format(sin=res_sin, min=msg_min, size=res_size,
-                                                                          time=msg_latency))
-                            if self.system_stats['avgMOMsgSize'] == 0:
-                                self.system_stats['avgMOMsgSize'] = res_size
-                            else:
-                                self.system_stats['avgMOMsgSize'] = int(
-                                    (self.system_stats['avgMOMsgSize'] + res_size) / 2)
-                            if self.system_stats['avgMOMsgLatency_s'] == 0:
-                                self.system_stats['avgMOMsgLatency_s'] = msg_latency
-                            else:
-                                self.system_stats['avgMOMsgLatency_s'] = int(
-                                    (self.system_stats['avgMOMsgLatency_s'] + msg_latency) / 2)
-                        else:
-                            log.warning("MO message SIN={sin} MIN={min} ({size} bytes) "
-                                        "failed after {time} seconds".format(sin=res_sin, min=msg_min, size=res_size,
-                                                                             time=msg_latency))
-                elif err_code == 109:
-                    success = True
-                    log.debug("Message complete, Unavailable")
-                    # TODO: is this the right place for this?
-                    # self.pending_mo_messages.remove(pending_mo_message)
-                    msg_complete = True
-                else:
-                    log.error("Error getting message state: {err}".format(err=err_str))
-                    # TODO: this may require the message to be "parked" rather than stay pending
-            else:
-                log.error("Message status check timed out")
-        return success, msg_complete
-
-    def at_get_nmea(self, rmc=True, gga=True, gsa=True, gsv=True, refresh=0):
-        """
-        Queries GNSS NMEA strings from the modem and returns an array.
-
-        :param gga: essential fix data
-        :param rmc: recommended minimum
-        :param gsa: dilution of precision (DOP) and satellites
-        :param gsv: satellites in view
-        :param refresh: the update rate being used, in seconds
-        :returns:
-           - Boolean success
-           - ``list`` of NMEA sentences requested
-        """
-        log = self.log
-
-        MIN_STALE_SECS = 1
-        MAX_STALE_SECS = 600
-        MIN_WAIT_SECS = 1
-        MAX_WAIT_SECS = 600
-
-        # TODO: Enable or disable AT%TRK tracking mode based on update interval, to improve fix times
-        stale_secs = min(MAX_STALE_SECS, max(MIN_STALE_SECS, int(refresh / 2)))
-        wait_secs = min(MAX_WAIT_SECS, max(MIN_WAIT_SECS, int(max(45, stale_secs - 1))))
-        # example sentence string: '"GGA","RMC","GSA","GSV"'
-        s_list = []
-        if gga:
-            s_list.append('"GGA"')
-        if rmc:
-            s_list.append('"RMC"')
-        if gsa and not self.mobile_id == '00000000SKYEE3D':
-            s_list.append('"GSA"')
-        if gsv:
-            s_list.append('"GSV"')
-        req_sentences = ",".join(tuple(s_list))
-        resp_sentences = []
-        success = False
-        timeout = False
-        with self.thread_lock:
-            log.debug("requesting location to send")
-            self.gnss_stats['nGNSS'] += 1
-            self.gnss_stats['lastGNSSReqTime'] = int(time.time())
-            response = self.at_get_response('AT%GPS=' + str(stale_secs) + ',' + str(wait_secs) + ',' + req_sentences,
-                                            at_timeout=wait_secs + 5)
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                    gnss_fix_duration = int(time.time()) - self.gnss_stats['lastGNSSReqTime']
-                    log.debug("GNSS response time [s]: " + str(gnss_fix_duration))
-                    if self.gnss_stats['avgGNSSFixDuration'] > 0:
-                        self.gnss_stats['avgGNSSFixDuration'] = int((gnss_fix_duration +
-                                                                     self.gnss_stats['avgGNSSFixDuration']) / 2)
-                    else:
-                        self.gnss_stats['avgGNSSFixDuration'] = gnss_fix_duration
-                    for res in response['response']:
-                        if res == response['response'][0]:
-                            res = res.replace('%GPS:', '').strip()
-                        if res.startswith('$GP') or res.startswith('$GL'):  # TODO: Galileo/Beidou?
-                            resp_sentences.append(res)
-                elif err_code == 108:
-                    log.warning("ERROR 108 - Timed out GNSS query")
-                    self.gnss_stats['timeouts'] += 1
-                else:
-                    log.error("Unable to get GNSS (%s)" % err_str)
-            else:
-                log.warning("Timeout occurred on GNSS query")
-                timeout = True
-
-        return success, resp_sentences
-
-    def at_save_config(self):
-        """Store the current configuration including all S registers."""
-        log = self.log
-        success = False
-        with self.thread_lock:
-            response = self.at_get_response('AT&W')
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                else:
-                    log.error("Save configuration failed (%s)" % err_str)
-        return success
-
-    def at_get_event_notify_control_bitmap(self):
-        """
-        Returns the Event Notification Control (S88) bitmap as an integer value,
-        and updates the hw_event_notifications attribute of the Modem instance.
-
-        Event Notifications:
-
-           - ``newGnssFix`` (bit 0) the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)
-           - ``newMtMsg`` (bit 1) a new Mobile-Terminated (aka Forward) message has been received over-the-air
-           - ``moMsgComplete`` (bit 2) a Mobile-Originated (aka Return) message has completed sending over-the-air
-           - ``modemRegistered`` (bit 3) the modem has registered on the satellite network
-           - ``modemReset`` (bit 4) the modem has just reset
-           - ``jamCutState`` (bit 5) the modem has detected antenna cut or GNSS signal jamming
-           - ``modemResetPending`` (bit 6) a modem reset has been requested (typically received over-the-air)
-           - ``lowPowerChange`` (bit 7) the modem's low power wakeup interval has been changed
-           - ``utcUpdate`` (bit 8) the modem has received a system time update/correction
-           - ``fixTimeout`` (bit 9) the latest GNSS location request has timed out (unable to acquire GNSS/location)
-           - ``eventCached`` (bit 10) a requested event has been cached for retrieval using capture trace S-registers
-
-        :return: (integer) event notification bitmap (e.g. 139 = newGnssFix, newMtMsg, modemRegistered, lowPowerChange)
-
-        """
-        log = self.log
-        binary = '0b'
-        for event in reversed(self.hw_event_notifications):
-            binary += '1' if self.hw_event_notifications[event] else '0'
-        value = int(binary, 2)
-        with self.thread_lock:
-            response = self.at_get_response('ATS88?')
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    register_value = int(response['response'][0])
-                    if value != register_value:
-                        log.warning("S88 register value mismatch")
-                        self._update_event_notifications(register_value)
-                else:
-                    log.error("Error querying S88")
-        return register_value
-
-    def at_set_event_notification_control_bitmap(self, value, save=False):
-        """
-        Sets the :py:func:`event notifications bitmap <at_get_event_notify_control_bitmap>` using an integer mask.
-        Truncates the bitmap if too large.
-
-        :param value: integer to set the S88 register bitmap
-        :param save: Boolean whether to write to Non-Volatile Memory
-        :return: Boolean result
-
-        """
-        log = self.log
-        success = False
-        with self.thread_lock:
-            response = self.at_get_response('ATS88=' + str(value))
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                    self._update_event_notifications(value)
-                    if save:
-                        self.at_save_config()
-                else:
-                    log.error("Write %d to S88 failed (%s)" % (value, err_str))
-
-        return success
-
-    def at_get_event_notify_assert_bitmap(self):
-        """
-        Returns the Event Notification Assert Status (S89) bitmap as an integer value.
-        See :py:func:`event notification bitmap <at_get_event_notify_control_bitmap>`
-
-        .. note::
-           This operation clears the S89 register upon reading.
-
-        :return: (integer) event notification assert status (e.g. 2 = new Mobile Terminated Message received)
-
-        """
-        log = self.log
-        with self.thread_lock:
-            response = self.at_get_response('ATS89?')
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    register_value = int(response['response'][0])
-                else:
-                    log.error("Error querying S89")
-        return register_value
-
-    def get_event_notification_assertions(self):
-        """
-        Returns a ``dictionary`` with the events that triggered the notification assert pin, by calling
-        :py:func:`at_get_event_notify_assert_bitmap <at_get_event_notify_assert_bitmap>`.
-
-        .. note::
-           This function is meant to be called only after the physical modem has asserted its notification output.
-           Calling this function clears all status conditions upon reading.
-
-        .. todo::
-           Testing incomplete.
-
-        :return: an ``OrderedDict`` with Boolean values against event keys
-
-           - ``newGnssFix`` the modem has acquired new time/position from GNSS (e.g. GPS, GLONASS)
-           - ``newMtMsg`` a new Mobile-Terminated (aka Forward) message has been received over-the-air
-           - ``moMsgComplete`` a Mobile-Originated (aka Return) message has completed sending over-the-air
-           - ``modemRegistered`` the modem has registered on the satellite network
-           - ``modemReset`` the modem has just reset
-           - ``jamCutState`` the modem has detected antenna cut or GNSS signal jamming
-           - ``modemResetPending`` a modem reset has been requested (typically received over-the-air)
-           - ``lowPowerChange`` the modem's low power wakeup interval has been changed
-           - ``utcUpdate`` the modem has received a system time update/correction
-           - ``fixTimeout`` the latest GNSS location request has timed out (unable to acquire GNSS/location)
-           - ``eventCached`` a requested event has been cached for retrieval using capture trace S-registers
-
-        """
-        register_value = self.at_get_event_notify_assert_bitmap()
-        event_dict = self.hw_event_notifications
-        format_str = '{0:' + str(len(event_dict)) + 'b}'
-        bitmap = format_str.format(register_value)
-        index = 0
-        for event in reversed(event_dict):
-            event_dict[event] = True if bitmap[index] == '1' else False
-            index += 1
-        return event_dict
-
-    def _at_sreg_write(self, register, value, save=False):
-        """
-        Writes a pre-validated value to an s-register.
-
-        :param register: string value e.g. 'S50'
-        :param value: (integer) to write
-        :param save: (Boolean) store to NVM
-        :return: Boolean success
-
-        """
-        log = self.log
-        success = False
-        with self.thread_lock:
-            response = self.at_get_response('AT' + register + '=' + str(value))
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0:
-                    success = True
-                    if save:
-                        self.at_save_config()
-                else:
-                    log.error("Write %d to %s failed (%s)" % (value, register, err_str))
-        return success
-
-    def _at_sreg_read(self, register):
-        """
-        Writes a pre-validated value to an s-register.
-
-        :param register: string value e.g. 'S50'
-        :return: integer value held in the requested S-register
-
-        """
-        log = self.log
-        value = None
-        with self.thread_lock:
-            response = self.at_get_response('AT' + register + '?')
-            if not response['timeout']:
-                err_code, err_str = self.at_get_result_code(response['result'])
-                if err_code == 0 and len(response['response']) > 0:
-                    value = int(response['response'][0])
-                else:
-                    log.error("Read %s failed (%s)" % (register, err_str))
-        return value
 
     # --------------------- Logging operations ---------------------------------------------- #
     def log_at_config(self):
@@ -3061,7 +2095,7 @@ def _b64_to_bytearray(b):
 
 class Message(object):
     """
-    Class intended for abstracting message characteristics.
+    Class intended for abstracting message attributes.
 
     :param payload: one of the following:
 
@@ -3073,7 +2107,7 @@ class Message(object):
     :param name: (string) optional up to 8 characters. A message name will be generated if not supplied
     :param msg_sin: integer (0..255)
     :param msg_min: integer (0..255)
-    :param priority: (1=high, 4=low)
+    :param priority: (1=high, 4=low, 0=mobile-terminated)
     :param data_format: (optional) 1=FORMAT_TEXT, 2=FORMAT_HEX, 3=FORMAT_B64
     :param log: (optional) logger object
     :param debug: (optional) sets logging level to DEBUG
@@ -3153,12 +2187,22 @@ class Message(object):
                 self.raw_payload = bytearray([self.min]) + self.raw_payload
             if self.sin is not None:
                 self.raw_payload = bytearray([self.sin]) + self.raw_payload
-            self.size = len(self.raw_payload)
+        self.size = len(self.raw_payload)
+        if size is not None and size != self.size:
+            self.log.warning("Size {} passed during init does not match derived size {}".format(size, self.size))
         self.priority = priority
         self.data_format = data_format
         # self.log.debug("New message created: {}".format(vars(self)))
 
     def data(self, data_format=FORMAT_HEX, include_min=True, include_sin=False):
+        """
+        Returns the data of the message, typically for use when sending MO messages
+
+        :param data_format: (int) 1=FORMAT_TEXT, 2=FORMAT_HEX (default), 3=FORMAT_B64
+        :param include_min: (boolean) whether to include MIN byte in the data (used when not specifying MIN explicitly)
+        :param include_sin: (boolean) whether to include SIN byte (not part of data for MO messages)
+        :return:
+        """
         if len(self.raw_payload) > 0:
             if include_sin:
                 if not include_min:
@@ -3181,8 +2225,8 @@ class Message(object):
 
 class MobileOriginatedMessage(Message):
     """
-    Class containing Mobile Originated (aka Return) message properties.
-    Mobile-Originated states enumeration (per modem documentation):
+    Subclass of Message containing Mobile Originated (aka Return) message properties.
+    Mobile-Originated state (starting=None) is represented as an attribute:
 
        - ``UNAVAILABLE``: 0
        - ``TX_READY``: 4
@@ -3190,20 +2234,24 @@ class MobileOriginatedMessage(Message):
        - ``TX_COMPLETE``: 6
        - ``TX_FAILED``: 7
 
-    :param name: identifier for the message (tbd limitations)
+    :param name: (string) user identifier for the message
+    :param payload: follows the structure of the Message superclass
+    :param data_format: follows the structure of the Message superclass
     :param msg_sin: Service Identification Number (1st byte of payload)
     :param msg_min: Message Identification Number (2nd byte of payload)
-    :param payload_b64: (optional) base64 encoded payload (not including SIN/MIN)
+    :param kwargs: follows the structure of the Message superclass
 
     """
 
     def __init__(self, name, payload, data_format=FORMAT_HEX, msg_sin=None, msg_min=None, **kwargs):
         """
 
-        :param name: identifier for the message (tbd limitations)
+        :param name: (string) user identifier for the message
+        :param payload: follows the structure of the Message superclass
+        :param data_format: follows the structure of the Message superclass
         :param msg_sin: Service Identification Number (1st byte of payload)
         :param msg_min: Message Identification Number (2nd byte of payload)
-        :param payload_b64: (optional) base64 encoded payload (not including SIN/MIN)
+        :param **kwargs: follows the structure of the Message superclass
 
         """
         if isinstance(payload, str):
@@ -3226,34 +2274,32 @@ class MobileOriginatedMessage(Message):
 
 class MobileTerminatedMessage(Message):
     """
-    Class containing Mobile Terminated (aka Forward) message properties.
-    Initializes Mobile Terminated (Forward) Message with state = ``UNAVAILABLE``
-    Forward States enumeration (per modem documentation):
+    Subclass of Message containing Mobile-Terminated (MT aka Forward) message properties.
+    Initializes MT message with state = ``RX_RETRIEVED``
+    MT message state represented as an attribute:
 
        - ``UNAVAILABLE``: 0
        - ``COMPLETE``: 2
        -  ``RETRIEVED``: 3
 
-    :param name:
-    :param msg_sin:
-    :param msg_min:
-    :param payload_b64:
+    :param name: (string) name assigned by the modem
+    :param payload: follows the structure of the Message superclass
+    :param data_format: follows the structure of the Message superclass
+    :param msg_num: (string) message number assigned by the modem (unused)
+    :param priority: (int) always 0 for MT messages
+    :param kwargs: follows the structure of the Message superclass
 
     """
 
     def __init__(self, name, payload, data_format, msg_num=None, priority=PRIORITY_MT, **kwargs):
         """
-        Initializes Mobile Terminated (Forward) Message with state = ``UNAVAILABLE``
-        Forward States enumeration (per modem documentation):
 
-           - ``UNAVAILABLE``: 0
-           - ``COMPLETE``: 2
-           -  ``RETRIEVED``: 3
-
-        :param name:
-        :param msg_sin:
-        :param msg_min:
-        :param payload_b64:
+        :param name: (string) name assigned by the modem
+        :param payload: follows the structure of the Message superclass
+        :param data_format: follows the structure of the Message superclass
+        :param msg_num: (string) message number assigned by the modem (unused)
+        :param priority: (int) always 0 for MT messages
+        :param kwargs: follows the structure of the Message superclass
 
         """
         if data_format not in (FORMAT_TEXT, FORMAT_HEX, FORMAT_B64):
