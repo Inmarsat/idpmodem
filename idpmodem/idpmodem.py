@@ -31,7 +31,8 @@ __version__ = "2.0.0"
 
 import crcxmodem
 from collections import OrderedDict
-from headless import get_wrapping_log
+from headless import get_caller_name
+from headless import get_wrapping_logger
 from headless import RepeatingTimer
 from headless import validate_serial_port
 from headless import is_logger
@@ -300,7 +301,7 @@ class Modem(object):
                 self.default = default
                 self.value = default
                 self.read_only = read_only
-                self.rng = range(low, high)
+                self.rng = range(low, high+1)
                 self.description = description
                 self.note = note
 
@@ -342,6 +343,7 @@ class Modem(object):
             # 'avgResTime': 0,
             self.last_response_time = 0
             self.avg_response_time = 0
+            self.total_timeouts = 0
 
     class _PendingAtCommand(object):
         """
@@ -432,11 +434,13 @@ class Modem(object):
             self.callback = None
 
     class _PendingLocation(object):
-        def __init__(self, callback):
+        def __init__(self, name, callback):
+            self.name = name
             self.callback = callback
             self.location = nmea.Location()
 
-    def __init__(self, serial_name='/dev/ttyUSB0', auto_monitor=True, use_crc=False, log=None, debug=False):
+    def __init__(self, serial_name='/dev/ttyUSB0', use_crc=False, auto_monitor=True,
+                 log=None, logfile=False, debug=False):
         """
         Initializes attributes and pointers used by Modem class methods.
 
@@ -444,6 +448,7 @@ class Modem(object):
         :param auto_monitor: (boolean) enables automatic monitoring of satellite events
         :param use_crc: (Boolean) to use CRC for long cable length
         :param log: (logging.Logger) an optional logger, preferably writing to a wrapping file
+        :param logfile: (Boolean) save log to file
         :param debug: (Boolean) option for verbose trace
 
         """
@@ -451,7 +456,9 @@ class Modem(object):
         if is_logger(log):
             self.log = log
         else:
-            self.log = get_wrapping_log(logfile=log, debug=debug)
+            log_name = get_caller_name(depth=1)
+            log_file_name = (log_name + '.log') if logfile else None
+            self.log = get_wrapping_logger(name=log_name, filename=log_file_name, debug=debug)
         self.debug = debug
         # serial and connectivity configuration and statistics
         self.serial_port = self._init_serial(serial_name)
@@ -487,17 +494,22 @@ class Modem(object):
         self.gnss_stats = self._init_gnss_stats()
         self.gpio = self._init_gpio()
         self.event_callbacks = self._init_event_callbacks()
-        # AT command queue
+        # AT command queue ---------------------------------
         self.at_commands_pending = []
         self.at_command_active = None
         self.at_command_parked = None
-        # Message queues
+        # Message queues -----------------------------------
         self.mo_msg_count = 0
         self.mo_msg_queue = []
         self.mt_msg_count = 0
         self.mt_msg_queue = []
-        # Location Based Service
-        self.location_pending = None
+        self.on_mt_message = None
+        self._mt_message_callbacks = []   # (sin, min, callback)
+        # Location Based Service ---------------------------
+        self.location_pending = None        # active _PendingLocation
+        # self.locations_pending = []         # future queue
+        self.on_location = None             # calls back with nmea.Location
+        self.tracking_interval = 0
         # --- Serial processing threads ---
         self.autonomous = auto_monitor
         self._terminate = False
@@ -535,12 +547,15 @@ class Modem(object):
             self.thread_mt_monitor = RepeatingTimer(seconds=self.sat_mt_message_interval,
                                                     name='sat_mt_message_monitor', callback=self.check_mt_messages)
             self.timer_threads.append(self.thread_mt_monitor.name)
-            self.thread_event_monitor = RepeatingTimer(seconds=self.sat_events_interval,
-                                                       name='sat_events_monitor', callback=self.check_events)
-            self.timer_threads.append(self.thread_event_monitor.name)
             self.thread_mo_monitor = RepeatingTimer(seconds=self.sat_mo_message_interval,
                                                     name='sat_mo_message_monitor', callback=self.check_mo_messages)
             self.timer_threads.append(self.thread_mo_monitor.name)
+            self.thread_event_monitor = RepeatingTimer(seconds=self.sat_events_interval,
+                                                       name='sat_events_monitor', callback=self.check_events)
+            self.timer_threads.append(self.thread_event_monitor.name)
+            self.thread_tracking = RepeatingTimer(seconds=self.tracking_interval, defer=False,
+                                                  name='tracking', callback=self._tracking)
+            self.timer_threads.append(self.thread_tracking.name)
 
     def terminate(self):
         self.log.debug("Terminated by external call {}".format(sys._getframe(1).f_code.co_name))
@@ -702,6 +717,9 @@ class Modem(object):
         """
         if event in self.events:
             if callback is not None:
+                if self.event_callbacks[event] is not None:
+                    self.log.warning("{} event callback overwritten - old:{} new{}"
+                                     .format(event, self.event_callbacks[event].__name__, callback.__name__))
                 self.event_callbacks[event] = callback
                 return True, None
             else:
@@ -710,25 +728,8 @@ class Modem(object):
             self.log.error("Invalid attempt to register callback event {}, must be in {}".format(event, self.events))
             return False, "Invalid event"
 
-    def register_mt_push(self, callback, sin, min, data_format=FORMAT_B64, codec=None):
-        """
-        Placeholder, not yet implemented.  Perhaps should go into 'idpcodec' module.
-        Intended to override generic event notification for new MT messages, retrieves and checks against list
-        of SIN/MIN pairs.
-        Should pass in a set of: callback, SIN, MIN, data_format, codec, callback
-
-        :param callback: (function) to push the decoded message to
-        :param sin: (int) Service Identifier Number to push
-        :param min: (int) Message Identified Number to push
-        :param data_format: (int) the format to use for retrieval and parsing
-        :param codec: (object) a registered codec for parsing
-        :return:
-
-           * (Boolean) success
-           * (string) reason for failure if success=False
-
-        """
-        self.log.warning("register_mt_push FUNCTION NOT IMPLEMENTED")
+    def _on_event(self):
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     # ------------------------ Connection Management ------------------------------------------------ #
     def _com_connect(self):
@@ -792,10 +793,12 @@ class Modem(object):
         Calls back the disconnect event.
         """
         if self.autonomous:
+            # TODO: optimize this to allow for new threads
             self.thread_com_monitor.stop_timer()
             self.thread_sat_status.stop_timer()
             self.thread_mt_monitor.stop_timer()
             self.thread_event_monitor.stop_timer()
+            self.thread_tracking.stop_timer()
             self.thread_com_connect.start_timer()
         self.is_initialized = False
         if self.event_callbacks['disconnect'] is not None:
@@ -844,9 +847,9 @@ class Modem(object):
                     parsing_unsolicited = True
                     read_str, complete = self._parse_unsolicited(read_str, c)
                     if complete:
+                        self._on_unsolicited_serial(read_str)
                         parsing_unsolicited = False
                         read_str = ""
-                        self._on_unsolicited_serial(read_str)
 
     def _parse_at_response(self, read_str, c):
         """
@@ -947,7 +950,10 @@ class Modem(object):
         return read_str, unsolicited_complete
 
     def _on_unsolicited_serial(self, read_str):
-        self.event_callbacks['unsolicited_serial'](read_str)
+        if self.event_callbacks['unsolicited_serial'] is not None:
+            self.event_callbacks['unsolicited_serial'](read_str)
+        else:
+            self.log.warning("No callback defined for unsolicited serial: {}".format(read_str))
 
     # ------------------------- AT Command handling -------------------------------------------------- #
     @staticmethod
@@ -1364,6 +1370,9 @@ class Modem(object):
             self.thread_sat_status.start_timer()
             self.thread_mt_monitor.start_timer()
             self.thread_mo_monitor.start_timer()
+            self.thread_tracking.start_timer()
+            if self.tracking_interval > 0:
+                self.tracking_setup(interval=self.tracking_interval, on_location=self.on_location)
             # self.thread_event_monitor.start_timer()
             self.log.info("Event notification monitoring not enabled")
         else:
@@ -1645,24 +1654,28 @@ class Modem(object):
                                 self.event_callbacks['new_mt_message'](self.mt_msg_queue)
                             else:
                                 self.log.warning("No callback registered for new MT messages")
+                            filtered_callback = False
+                            if len(self._mt_message_callbacks) > 0:
+                                for tup in self._mt_message_callbacks:
+                                    if tup[0] == sin:
+                                        filtered_callback = True
+                                        self.get_mt_message(name=name, callback=tup[1])
+                            if self.on_mt_message is not None and not filtered_callback:
+                                self.log.debug("Retrieving message for generic callback")
+                                self.get_mt_message(name=name, callback=self.on_mt_message)
                     else:
                         self.log.debug("Message {} not complete ({}/{} bytes)".format(name, bytes_read, size))
-            # if len(self.mt_msg_queue) > 0:
-            #     if self.event_callbacks['new_mt_message'] is not None:
-            #         self.event_callbacks['new_mt_message'](self.mt_msg_queue)
-            #     else:
-            #         self.log.warning("No callback registered for new MT messages")
 
-    def get_mt_message(self, msg_name, callback, data_format=None):
+    def get_mt_message(self, name, callback, data_format=None):
         found = False
         for m in self.mt_msg_queue:
-            if m.q_name == msg_name:
+            if m.q_name == name:
                 found = True
                 m.callback = callback
                 if data_format is None:
                     data_format = FORMAT_HEX if m.size <= 100 else FORMAT_B64
-                self.log.debug("Retrieving MT message {}".format(msg_name))
-                self.submit_at_command(at_command='AT%MGFG=\"{}\",{}'.format(msg_name, data_format),
+                self.log.debug("Retrieving MT message {}".format(name))
+                self.submit_at_command(at_command='AT%MGFG=\"{}\",{}'.format(name, data_format),
                                        callback=self._cb_get_mt_message)
                 break
         return found, "Message not found in MT queue" if not found else None
@@ -1693,7 +1706,7 @@ class Modem(object):
                     payload = text
             elif data_format == FORMAT_HEX:
                 payload = _hex_to_bytearray(data)
-            elif data_format == FORMAT_B64:
+            else:
                 payload = _b64_to_bytearray(b'{}'.format(data))
             mt_msg = MobileTerminatedMessage(payload=payload, name=q_name, msg_sin=sin, msg_min=msg_min,
                                              msg_num=msg_num, priority=PRIORITY_MT, data_format=data_format, size=size,
@@ -1710,7 +1723,31 @@ class Modem(object):
         else:
             self.log.error("Invalid response ({})".format(responses))
 
+    def mt_message_callback_add(self, sin, callback):
+        """
+        Intended to override generic event notification for new MT messages, retrieves and checks against list
+        of SIN.
+        Should pass in a set of: callback, SIN, MIN, data_format, codec, callback
+        ..todo::
+           Allow for filtering beyond SIN byte (processed after retrieval from modem queue)
+
+        :param callback: (function) will be called back with callback(sin, message)
+        :param sin: (int) Service Identifier Number
+
+        """
+        if isinstance(sin, int) and sin in range(0, 255+1):
+            self._mt_message_callbacks.append((sin, callback))
+        else:
+            self.log.error("SIN must be integer in range 0..255")
+
+    def mt_message_callback_remove(self, sin):
+        """Removes the specified SIN from the callback list"""
+        for tup in self._mt_message_callbacks:
+            if tup[0] == sin:
+                self._mt_message_callbacks.remove(tup)
+
     # ----------------------- HARDWARE EVENT NOTIFICATIONS ----------------------------------------- #
+    # TODO: %EVMON, %EVNT, %EVSTR, %EXIT, %SYSL
     def get_event_notification_control(self, init=False):
         """
         Updates the ``hw_event_notifications`` attribute
@@ -1804,6 +1841,7 @@ class Modem(object):
         self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
 
     # --------------------- NMEA/LBS OPERATIONS --------------------------------------------------- #
+    # TODO: set up periodic tracking pushed with callbacks, and using %TRK
     def set_gnss_mode(self, gnss_mode=GNSS_MODE_GPS):
         if gnss_mode in GNSS_MODES:
             if int(self.s_registers.register('S39').get()) == gnss_mode:
@@ -1837,22 +1875,28 @@ class Modem(object):
     def get_gnss_refresh_interval(self):
         return int(self.s_registers.register('S55').get())
 
-    def set_gnss_refresh_interval(self, seconds=0):
-        if isinstance(seconds, int) and seconds in range(0, 30):
-            if int(self.s_registers.register('S55').get()) == seconds:
-                self.log.debug("GNSS refresh interval already set to {}".format(seconds))
+    def set_gnss_refresh_interval(self, seconds, doppler=None):
+        if doppler is None:
+            if isinstance(seconds, int) and seconds in range(0, 30+1):
+                if doppler is None:
+                    if int(self.s_registers.register('S55').get()) == seconds:
+                        self.log.debug("GNSS refresh interval already set to {}".format(seconds))
+                    else:
+                        self.submit_at_command('ATS55={}'.format(seconds), callback=None)
+                        # TODO: some risk that write fails and twin is no longer sychronized
+                        self.s_registers.register('S55').set(seconds)
+                elif isinstance(doppler, bool):
+                    self.submit_at_command(at_command='AT%TRK={},{}'.format(seconds, 1 if doppler else 0),
+                                           callback=None)
             else:
-                self.submit_at_command('ATS55={}'.format(seconds), callback=None)
-                # TODO: some risk that write fails and twin is no longer sychronized
-                self.s_registers.register('S55').set(seconds)
-        else:
-            self.log.error("Invalid GNSS refresh interval - must be integer in range 0..30 (seconds)")
+                self.log.error("Invalid GNSS refresh interval - must be integer in range 0..30 (seconds)")
 
-    def get_location(self, callback, fix_age=30, rmc=True, gga=True, gsa=True, gsv=True):
+    def get_location(self, callback, name=None, fix_age=30, rmc=True, gga=True, gsa=True, gsv=True):
         """
         Queries GNSS NMEA strings from the modem and returns a list of sentences (assuming no fix timeout).
 
         :param callback: the function to which location will be passed back
+        :param name: (optional) identifier string or None
         :param fix_age: (int) maximum age of GNSS fix to use
         :param gga: essential fix data
         :param rmc: recommended minimum
@@ -1877,31 +1921,30 @@ class Modem(object):
             s_list.append('"GGA"')
         if rmc:
             s_list.append('"RMC"')
-        if gsa and not self.mobile_id == '00000000SKYEE3D':   # Modem Simulator does not support GSA output
+        if gsa:
             s_list.append('"GSA"')
         if gsv:
             s_list.append('"GSV"')
         req_sentences = ",".join(tuple(s_list))
-        # TODO: setup PendingLocation concept
-        self.location_pending = self._PendingLocation(callback=callback)
-        self.submit_at_command(at_command='AT%GPS={},{},{}'.format(stale_secs, wait_secs, req_sentences),
-                               callback=self._cb_get_nmea, timeout=wait_secs+5)
-        self.gnss_stats['nGNSS'] += 1
-        self.gnss_stats['lastGNSSReqTime'] = int(time.time())
+        # TODO: manage multiple _PendingLocation using a queue
+        if self.location_pending is None:
+            self.log.debug("New Location request pending")
+            self.location_pending = self._PendingLocation(name=name, callback=callback)
+            self.submit_at_command(at_command='AT%GPS={},{},{}'.format(stale_secs, wait_secs, req_sentences),
+                                   callback=self._cb_get_nmea, timeout=wait_secs+5)
+            self.gnss_stats['nGNSS'] += 1
+            self.gnss_stats['lastGNSSReqTime'] = int(time.time())
+        else:
+            self.log.warning("Another location request is pending, try again later")
 
     def _cb_get_nmea(self, valid_response, responses, request):
         if valid_response:
             # TODO: update GNSS stats
             nmea_data_set = []
             for nmea_sentence in responses:   # responses[0] should just be %GPS header
+                nmea_sentence = nmea_sentence.replace('%GPS:', '').strip()
                 if nmea_sentence.startswith('$G'):
                     nmea_data_set.append(nmea_sentence)
-                    # valid_sentence, nmea_data = nmea.validate_nmea_checksum(nmea_sentence)
-                    # if valid_sentence:
-                    #     # TODO: check for various $GP or $GL headers and manage
-                    #     nmea_data_set.append(nmea_data)
-                    # else:
-                    #     self.log.error("Invalid NMEA sentence {}".format(nmea_sentence))
             if len(nmea_data_set) > 0:
                 gnss_fix_duration = int(time.time()) - self.gnss_stats['lastGNSSReqTime']
                 if self.gnss_stats['avgGNSSFixDuration'] > 0:
@@ -1909,24 +1952,51 @@ class Modem(object):
                                                                  self.gnss_stats['avgGNSSFixDuration']) / 2)
                 else:
                     self.gnss_stats['avgGNSSFixDuration'] = gnss_fix_duration
-                self._process_location(nmea_data_set)
+                success, errors = nmea.parse_nmea_to_location(nmea_data_set=nmea_data_set,
+                                                              loc=self.location_pending.location)
+                if success:
+                    if self.location_pending is not None and self.location_pending.callback is not None:
+                        self.location_pending.callback(self.location_pending.location)
+                    else:
+                        self.log.warning("No callback defined for pending location")
+                    self.location_pending = None
+                else:
+                    self.log.error(errors)
         else:
             self.log.error("Error getting location: {}".format(responses))
             if 'TIMEOUT' in responses:
+                # TODO: set up heuristic/backoff on timed out responses
                 self.gnss_stats['timeouts'] += 1
                 time.sleep(5)
                 self.submit_at_command(at_command=request, callback=self._cb_get_nmea)
 
-    def _process_location(self, nmea_data_set):
-        for sentence in nmea_data_set:
-            success, err_str = nmea.parse_nmea_to_location(sentence, self.location_pending.location)
-            if not success:
-                self.log.error(err_str)
-        if self.location_pending is not None and self.location_pending.callback is not None:
-            self.location_pending.callback(self.location_pending.location)
+    def tracking_setup(self, interval=0, on_location=None):
+        if on_location is not None:
+            self.on_location = on_location
+        if isinstance(interval, int) and interval in range(0, 86400*7+1):
+            if interval == 0:
+                self.log.info("Tracking disabled")
+                self.thread_tracking.stop_timer()
+                self.tracking_interval = 0
+                self.set_gnss_refresh_interval(seconds=0)
+            else:
+                if interval <= 30:
+                    refresh = int(interval/2)
+                    self.log.debug("Setting GNSS continuous mode at {} seconds refresh".format(refresh))
+                    self.set_gnss_refresh_interval(seconds=refresh)
+                self.log.info("Tracking interval set to {} seconds".format(interval))
+                self.thread_tracking.change_interval(interval)
+
+    def _tracking(self):
+        self.get_location(callback=self._cb_tracking, name='tracking', fix_age=self.tracking_interval)
+
+    def _cb_tracking(self, loc):
+        self.log.warning("{} FUNCTION NOT IMPLEMENTED".format(sys._getframe().f_code.co_name))
+        if self.on_location is not None:
+            self.log.debug("Tracking calling back to {} with Location".format(self.on_location.__name__))
+            self.on_location(loc)
         else:
-            self.log.warning("No callback defined for pending location")
-        self.location_pending = None
+            self.log.warning("No on_location callback defined")
 
     # --------------------- LOW POWER OPERATIONS ----------------------------------------------- #
     # TODO: manage GNSS settings on entry/exit to LPM, collect garbage, etc.
@@ -2121,7 +2191,7 @@ class Message(object):
         if is_logger(log):
             self.log = log
         else:
-            self.log = get_wrapping_log(logfile=log, debug=debug)
+            self.log = get_wrapping_logger(debug=debug)
         if name is not None:
             self.name = name
         else:
@@ -2129,7 +2199,7 @@ class Message(object):
         if msg_min is not None:
             if msg_sin is None:
                 raise ValueError("SIN must be specified if MIN is specified")
-            elif isinstance(msg_min, int) and msg_min in range(0, 255):
+            elif isinstance(msg_min, int) and msg_min in range(0, 255+1):
                 self.min = msg_min
                 # assume that payload does not also include MIN
             else:
@@ -2142,7 +2212,7 @@ class Message(object):
         else:
             raise ValueError("Payload cannot be None if MIN is not specified")
         if msg_sin is not None:
-            if isinstance(msg_sin, int) and msg_sin in range(16, 255):
+            if isinstance(msg_sin, int) and msg_sin in range(16, 256):
                 self.sin = msg_sin
             else:
                 raise ValueError("Invalid SIN value {}, must be integer in range 16..255".format(msg_sin))
@@ -2178,11 +2248,11 @@ class Message(object):
                         raise ValueError("Function call with base64 string payload must include SIN and MIN")
                 else:
                     raise ValueError("Unrecognized data_format: {}".format(data_format))
-            elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255)) for i in payload):
+            elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255+1)) for i in payload):
                 payload = bytearray(payload)
             elif not isinstance(payload, bytearray):
                 raise ValueError("Invalid payload type, must be text or hex string, integer list or bytearray")
-            self.raw_payload = payload
+            self.raw_payload = bytearray(payload)
             if msg_min is not None:
                 self.raw_payload = bytearray([self.min]) + self.raw_payload
             if self.sin is not None:
@@ -2263,7 +2333,7 @@ class MobileOriginatedMessage(Message):
                         payload = bytearray(payload)
                 else:
                     raise ValueError("Function call with text string payload must include SIN and MIN")
-        elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255)) for i in payload):
+        elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255+1)) for i in payload):
             payload = bytearray(payload)
         elif not isinstance(payload, bytearray):
             raise ValueError("Invalid payload type, must be text or hex string, integer list or bytearray")

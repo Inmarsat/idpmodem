@@ -4,6 +4,7 @@ Functions and classes useful for operating a headless device e.g. Raspberry Pi
 """
 
 import time
+import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 import threading
@@ -14,13 +15,51 @@ def is_logger(log):
     return isinstance(log, logging.Logger)
 
 
-def get_wrapping_log(logfile=None, file_size=5, debug=False):
+def is_log_handler(logger, handler):
+    found = False
+    for h in logger.handlers:
+        if h.name == handler.name:
+            found = True
+            break
+    return found
+
+
+def get_caller_name(depth=2, mod=True, cls=False, mth=False):
+    """
+
+    :param depth:
+    :param mod:
+    :param cls:
+    :param mth:
+    :return: (string) including module[.class][.method]
+    """
+    stack = inspect.stack()
+    start = 0 + depth
+    if len(stack) < start + 1:
+        return ''
+    parent_frame = stack[start][0]
+    name = []
+    module = inspect.getmodule(parent_frame)
+    if module and mod:
+        name.append(module.__name__)
+    if cls and 'self' in parent_frame.f_locals:
+        name.append(parent_frame.f_locals['self'].__class__.__name__)
+    if mth:
+        codename = parent_frame.f_code.co_name
+        if codename != '<module>':
+            name.append(codename)
+    del parent_frame, stack
+    return '.'.join(name)
+
+
+def get_wrapping_logger(name=None, filename=None, file_size=5, debug=False):
     """
     Initializes logging to console, and optionally a wrapping CSV formatted file of defined size.
     Default logging level is INFO.
     Timestamps are GMT/Zulu.
 
-    :param logfile: the name of the file
+    :param name: name of the logger (if None, will use name of calling module)
+    :param filename: the name of the file if writing to a file
     :param file_size: the max size of the file in megabytes, before wrapping occurs
     :param debug: Boolean to enable tick_log DEBUG logging (default INFO)
     :return: ``log`` object
@@ -31,26 +70,34 @@ def get_wrapping_log(logfile=None, file_size=5, debug=False):
     log_formatter = logging.Formatter(fmt=FORMAT,
                                       datefmt='%Y-%m-%dT%H:%M:%S')
     log_formatter.converter = time.gmtime
-    if logfile is not None:
-        # TODO: validate that logfile is a valid path/filename
-        logger = logging.getLogger(logfile)
-        file_handler = RotatingFileHandler(logfile, mode='a', maxBytes=file_size * 1024 * 1024,
-                                           backupCount=2, encoding=None, delay=0)
-        file_handler.setFormatter(log_formatter)
-        if not logger.handlers:
-            logger.addHandler(file_handler)
-    else:
-        logger = logging.getLogger()
+
+    if name is None:
+        name = get_caller_name()
+    logger = logging.getLogger(name)
+
     if debug or logger.getEffectiveLevel() == logging.DEBUG:
         log_lvl = logging.DEBUG
     else:
         log_lvl = logging.INFO
     logger.setLevel(log_lvl)
+
+    if filename is not None:
+        # TODO: validate that logfile is a valid path/filename
+        file_handler = RotatingFileHandler(filename=filename, mode='a', maxBytes=file_size * 1024 * 1024,
+                                           backupCount=2, encoding=None, delay=0)
+        file_handler.name = name + '_file_handler'
+        file_handler.setFormatter(log_formatter)
+        file_handler.setLevel(log_lvl)
+        if not is_log_handler(logger, file_handler):
+            logger.addHandler(file_handler)
+
     console_handler = logging.StreamHandler()
+    console_handler.name = name + '_console_handler'
     console_handler.setFormatter(log_formatter)
     console_handler.setLevel(log_lvl)
-    if not logger.handlers:
+    if not is_log_handler(logger, console_handler):
         logger.addHandler(console_handler)
+
     return logger
 
 
@@ -83,7 +130,7 @@ class RepeatingTimer(threading.Thread):
 
         """
         threading.Thread.__init__(self)
-        self.log = get_wrapping_log()
+        self.log = get_wrapping_logger(get_caller_name())
         if name is not None:
             self.name = name
         else:
@@ -106,8 +153,6 @@ class RepeatingTimer(threading.Thread):
 
     def run(self):
         """Counts down the interval, checking every ``sleep_chunk`` the desired state."""
-        if not self.defer:
-            self.callback(*self.callback_args, **self.callback_kwargs)
         while not self.terminate_event.is_set():
             while self.count > 0 and self.start_event.is_set() and self.interval > 0:
                 if self.tick_log:
@@ -124,36 +169,41 @@ class RepeatingTimer(threading.Thread):
 
     def start_timer(self):
         """Initially start the repeating timer."""
-        self.start_event.set()
         self.log.info("{} timer started ({} seconds)".format(self.name, self.interval))
+        if not self.defer and self.interval > 0:
+            self.callback(*self.callback_args, **self.callback_kwargs)
+        self.start_event.set()
 
     def stop_timer(self):
         """Stop the repeating timer."""
+        self.log.info("{} timer stopped ({} seconds)".format(self.name, self.interval))
         self.start_event.clear()
         self.count = self.interval / self.sleep_chunk
-        self.log.info("{} timer stopped ({} seconds)".format(self.name, self.interval))
 
     def restart_timer(self):
         """Restart the repeating timer (after an interval change)."""
+        self.log.info("{} timer restarted ({} seconds)".format(self.name, self.interval))
+        if not self.defer and self.interval > 0:
+            self.callback(*self.callback_args, **self.callback_kwargs)
         if self.start_event.is_set():
             self.reset_event.set()
         else:
             self.start_event.set()
-        self.log.info("{} timer restarted ({} seconds)".format(self.name, self.interval))
 
     def change_interval(self, seconds):
         """Change the timer interval and restart it."""
         if isinstance(seconds, int) and seconds > 0:
-            self.log.info("{} timer interval changed ({} seconds)".format(self.name, self.interval))
+            self.log.info("{} timer interval changed (old:{} s new:{} s)".format(self.name, self.interval, seconds))
             self.interval = seconds
+            self.count = self.interval / self.sleep_chunk
             self.restart_timer()
         else:
             self.log.error("Invalid interval requested...must be integer > 0")
 
     def terminate(self):
         """Terminate the timer. (Cannot be restarted)"""
-        self.terminate_event.set()
         self.log.info(self.name + " timer terminated")
+        self.terminate_event.set()
 
 
 def validate_serial_port(target):
