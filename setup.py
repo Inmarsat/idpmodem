@@ -16,9 +16,6 @@ setup(name='idpmodem',
       license='Apache',
       packages=[
           'idpmodem',
-          'crcxmodem',
-          'nmea',
-          'idpcodec'
       ],
       install_requires=[
           'pyserial>=3.4',
