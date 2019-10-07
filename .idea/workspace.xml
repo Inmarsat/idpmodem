@@ -1,12 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="Updated setup.py with classifiers (begin port to Python 3)">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/idpmodem.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodem.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" afterDir="false" />
-    </list>
+    <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -470,7 +465,14 @@
       <option name="project" value="LOCAL" />
       <updated>1559998366052</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="Updated setup.py with classifiers (begin port to Python 3)">
+      <created>1570471871897</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1570471871898</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="ToolWindowManager">
