@@ -188,6 +188,9 @@ class Modem(object):
         'Air 4g': 8
     }
 
+    # ----------------------- Modem Simulator Constants ------------------------------------- #
+    MODEM_SIMULATOR_ID = '00000000SKYEE3D'
+
     # ----------------------- Twinning and helper objects ----------------------------------- #
     class _AtConfiguration(object):
         """Configuration of the AT command handler (echo, crc, verbose, quiet)"""
@@ -217,6 +220,14 @@ class Modem(object):
             self.ctrl_state = 'Stopped'
 
     class _SRegisters(object):
+        """
+        A private class to manage twin of the modem's S registers
+        
+        :param object: [description]
+        :type object: [type]
+        :return: [description]
+        :rtype: [type]
+        """
         # Tuples: (name[0], default[1], read-only[2], range[3], description[4], note[5])
         register_definitions = [
             ('S0', 0, True, [0, 255], 'auto answer', 'unused'),
@@ -296,7 +307,21 @@ class Modem(object):
         ]
 
         class SRegister(object):
+            """
+            Twin of a modem S register
+            """
             def __init__(self, name, default, read_only, low, high, description, note=None):
+                """
+                Initializes an S register twin
+                
+                :param name: (string) name of the S register e.g. 'S50'
+                :param default: (int) default value of the register
+                :param read_only: (Boolean)
+                :param low: (int) lowest value allowed
+                :param high: (int) highest value allowed
+                :param description: (string)
+                :param note: (string), defaults to None
+                """
                 self.name = name
                 self.default = default
                 self.value = default
@@ -332,9 +357,16 @@ class Modem(object):
                                      description=tup[4], note=tup[5])
                 self.s_registers.append(reg)
 
-        def register(self, s_register):
+        def register(self, name):
+            """
+            Returns the register object based on its name
+            
+            :param name: (string) name of the register e.g. 'S50'
+            :return: the register object
+            :rtype: (SRegister)
+            """
             for reg in self.s_registers:
-                if reg.name == s_register:
+                if reg.name == name:
                     return reg
 
     class _AtStatistics(object):
@@ -1891,7 +1923,7 @@ class Modem(object):
             else:
                 self.log.error("Invalid GNSS refresh interval - must be integer in range 0..30 (seconds)")
 
-    def get_location(self, callback, name=None, fix_age=30, rmc=True, gga=True, gsa=True, gsv=True):
+    def get_location(self, callback, name=None, fix_age=30, nmea=['RMC', 'GGA', 'GSA', 'GSV']):
         """
         Queries GNSS NMEA strings from the modem and returns a list of sentences (assuming no fix timeout).
 
@@ -1908,6 +1940,7 @@ class Modem(object):
         MAX_STALE_SECS = 600
         MIN_WAIT_SECS = 1
         MAX_WAIT_SECS = 600
+        NMEA_SUPPORTED = ['RMC', 'GGA', 'GSA', 'GSV']
 
         # TODO: get fix age from Trace Class 4 Subclass 2 Index 7
         refresh = self.get_gnss_refresh_interval()
@@ -1916,16 +1949,15 @@ class Modem(object):
         stale_secs = min(MAX_STALE_SECS, max(MIN_STALE_SECS, fix_age))
         wait_secs = min(MAX_WAIT_SECS, max(MIN_WAIT_SECS, int(max(45, stale_secs - 1))))
         # example sentence string: '"GGA","RMC","GSA","GSV"'
-        s_list = []
-        if gga:
-            s_list.append('"GGA"')
-        if rmc:
-            s_list.append('"RMC"')
-        if gsa:
-            s_list.append('"GSA"')
-        if gsv:
-            s_list.append('"GSV"')
-        req_sentences = ",".join(tuple(s_list))
+        req_sentences = ''
+        for sentence in nmea:
+            sentence = sentence.upper()
+            if sentence in NMEA_SUPPORTED:
+                if len(req_sentences) > 0:
+                    req_sentences += ','
+                req_sentences += '"{}"'.format(sentence)
+            else:
+                self.log.error("Unsupported NMEA sentence: {}".format(sentence))
         # TODO: manage multiple _PendingLocation using a queue
         if self.location_pending is None:
             self.log.debug("New Location request pending")
@@ -1983,7 +2015,10 @@ class Modem(object):
                 if interval <= 30:
                     refresh = int(interval/2)
                     self.log.debug("Setting GNSS continuous mode at {} seconds refresh".format(refresh))
-                    self.set_gnss_refresh_interval(seconds=refresh)
+                else:
+                    refresh = 0
+                    self.log.debug("Disabling GNSS continuous mode for interval {}s".format(interval))
+                self.set_gnss_refresh_interval(seconds=refresh)
                 self.log.info("Tracking interval set to {} seconds".format(interval))
                 self.thread_tracking.change_interval(interval)
 
@@ -2014,19 +2049,31 @@ class Modem(object):
 
     def set_wakeup_interval(self, wakeup_interval=WAKEUP_5_SEC):
         if wakeup_interval in WAKEUP_INTERVALS:
-            self.submit_at_command(at_command='ATS51={}'.format(wakeup_interval))
+            self.submit_at_command(at_command='ATS51={}'.format(wakeup_interval), callback=self._cb_set_wakeup_interval)
             # TODO: some risk that write fails and twin is no longer synchronized
             self.s_registers.register('S51').set(wakeup_interval)
         else:
             self.log.error("Invalid wakeup interval {}".format(wakeup_interval))
+        
+    def _cb_set_wakeup_interval(self, valid_response, responses, request):
+        if valid_response:
+            value = int(request.replace('ATS51=', ''))
+            self.log.info("Updating S51 register value: {}".format(value))
+            self.s_registers.register('S51').set(value)
 
     def set_power_mode(self, power_mode=POWER_MODE_MOBILE_POWERED):
         if power_mode in POWER_MODES:
-            self.submit_at_command(at_command='ATS50={}'.format(power_mode))
+            self.submit_at_command(at_command='ATS50={}'.format(power_mode), callback=self._cb_set_power_mode)
             # TODO: some risk that write fails and twin is no longer synchronized
-            self.s_registers.register('S51').set(power_mode)
+            self.s_registers.register('S50').set(power_mode)
         else:
             self.log.error("Invalid power mode {}".format(power_mode))
+
+    def _cb_set_power_mode(self, valid_response, responses, request):
+        if valid_response:
+            value = int(request.replace('ATS50=', ''))
+            self.log.info("Updating S50 register value: {}".format(value))
+            self.s_registers.register('S50').set(value)
 
     def get_power_mode(self, init=False):
         if not init:
@@ -2391,7 +2438,7 @@ class Location(object):
 
 
 if __name__ == "__main__":
-    modem = Modem(serial_port=None, debug=True)
+    modem = Modem(serial_name=None, debug=True)
     modem.log_at_config()
     modem.log_sat_status()
     modem.log_statistics()

@@ -264,7 +264,9 @@ class IdpModemTestCase(unittest.TestCase):
 def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
-    tests = ['_11_']
+    tests = [
+        # Add test cases above as strings or leave empty to test all cases
+    ]
     if len(tests) > 0:
         for test in tests:
             for available_test in available_tests:

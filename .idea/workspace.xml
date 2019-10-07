@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="">
+    <list default="true" id="859a449a-30eb-4255-8e1b-85f45a8e6c71" name="Default Changelist" comment="Updated setup.py with classifiers (begin port to Python 3)">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/idpmodem/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/idpmodem/idpmodem.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/idpmodem.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/idpmodem/nmea.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/nmea.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" beforeDir="false" afterPath="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -16,110 +16,10 @@
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/idpmodemsample.py">
+        <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="5355">
-              <caret line="327" column="47" selection-start-line="327" selection-start-column="39" selection-end-line="327" selection-end-column="47" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="330">
-              <caret line="159" lean-forward="true" selection-start-line="159" selection-end-line="159" />
-              <folding>
-                <element signature="e#1646#1662#0" expanded="true" />
-                <element signature="e#4010#4435#0" />
-                <element signature="e#4473#5035#0" />
-                <element signature="e#5060#5328#0" />
-                <element signature="e#5348#5529#0" />
-                <element signature="e#5548#5809#0" />
-                <element signature="e#5832#6017#0" />
-                <element signature="e#6159#6597#0" />
-                <element signature="e#6637#7075#0" />
-                <element signature="e#7116#14278#0" />
-                <element signature="e#14005#14166#0" />
-                <element signature="e#14325#15803#0" />
-                <element signature="e#15850#16510#0" />
-                <element signature="e#16557#17297#0" />
-                <element signature="e#23169#24031#0" />
-                <element signature="e#24081#24266#0" />
-                <element signature="e#24333#25626#0" />
-                <element signature="e#25694#26183#0" />
-                <element signature="e#26256#26887#0" />
-                <element signature="e#26971#27143#0" />
-                <element signature="e#27197#27367#0" />
-                <element signature="e#27417#27581#0" />
-                <element signature="e#27695#28011#0" />
-                <element signature="e#28064#28241#0" />
-                <element signature="e#28307#29012#0" />
-                <element signature="e#29110#29935#0" />
-                <element signature="e#30521#30996#0" />
-                <element signature="e#31073#31856#0" />
-                <element signature="e#31893#32321#0" />
-                <element signature="e#32382#33038#0" />
-                <element signature="e#33078#33647#0" />
-                <element signature="e#33791#35962#0" />
-                <element signature="e#36019#40643#0" />
-                <element signature="e#40700#41178#0" />
-                <element signature="e#41236#41288#0" />
-                <element signature="e#41446#41716#0" />
-                <element signature="e#42922#44640#0" />
-                <element signature="e#44691#46777#0" />
-                <element signature="e#46858#47671#0" />
-                <element signature="e#47721#48583#0" />
-                <element signature="e#48633#48920#0" />
-                <element signature="e#48969#49245#0" />
-                <element signature="e#49294#49570#0" />
-                <element signature="e#49620#50040#0" />
-                <element signature="e#50101#53179#0" />
-                <element signature="e#53240#54717#0" />
-                <element signature="e#57699#60408#0" />
-                <element signature="e#60488#61625#0" />
-                <element signature="e#61708#62407#0" />
-                <element signature="e#62486#62678#0" />
-                <element signature="e#62761#62961#0" />
-                <element signature="e#63035#63267#0" />
-                <element signature="e#62563#62966#0" />
-                <element signature="e#63414#63677#0" />
-                <element signature="e#63785#69299#0" />
-                <element signature="e#69353#70103#0" />
-                <element signature="e#70265#70906#0" />
-                <element signature="e#70986#72663#0" />
-                <element signature="e#72741#73318#0" />
-                <element signature="e#73396#74100#0" />
-                <element signature="e#74183#77335#0" />
-                <element signature="e#77398#77551#0" />
-                <element signature="e#77634#79868#0" />
-                <element signature="e#79946#80566#0" />
-                <element signature="e#80646#82916#0" />
-                <element signature="e#83087#83570#0" />
-                <element signature="e#83657#83936#0" />
-                <element signature="e#83996#84790#0" />
-                <element signature="e#84858#86441#0" />
-                <element signature="e#86528#86780#0" />
-                <element signature="e#86818#86949#0" />
-                <element signature="e#87027#87413#0" />
-                <element signature="e#87458#87544#0" />
-                <element signature="e#87710#88224#0" />
-                <element signature="e#88263#88397#0" />
-                <element signature="e#88171#88685#0" />
-                <element signature="e#89444#89592#0" />
-                <element signature="e#89755#90336#0" />
-                <element signature="e#150088#151858#0" />
-                <element signature="e#151898#152437#0" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/nmea.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="209">
-              <caret line="83" selection-start-line="83" selection-end-line="83" />
+            <state relative-caret-position="5560">
+              <caret line="281" selection-start-line="279" selection-end-line="281" />
               <folding>
                 <element signature="e#0#15#0" expanded="true" />
               </folding>
@@ -128,57 +28,57 @@
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/idpcodec.py">
+        <entry file="file://$PROJECT_DIR$/idpmodem/tests/__init__.py">
+          <provider selected="true" editor-type-id="text-editor" />
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/idpmodem/__init__.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="527">
-              <caret line="31" column="31" selection-start-line="31" selection-start-column="31" selection-end-line="31" selection-end-column="31" />
+            <state relative-caret-position="20">
+              <caret line="1" selection-start-line="1" selection-end-line="1" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/MANIFEST.in">
+          <provider selected="true" editor-type-id="text-editor">
+            <state>
+              <caret column="18" selection-start-column="18" selection-end-column="18" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/setup.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="360">
+              <caret line="18" selection-start-line="18" selection-end-line="18" />
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
+        <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="136">
-              <caret line="229" column="13" selection-start-line="229" selection-start-column="13" selection-end-line="229" selection-end-column="13" />
+            <state relative-caret-position="-9620">
+              <caret line="59" column="18" selection-start-line="59" selection-start-column="18" selection-end-line="59" selection-end-column="18" />
               <folding>
-                <element signature="e#0#15#0" expanded="true" />
+                <element signature="e#1585#1601#0" expanded="true" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/tests/context.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="51">
-              <caret line="4" selection-start-line="4" selection-end-line="4" />
-              <folding>
-                <element signature="e#0#9#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
+        <entry file="file://$PROJECT_DIR$/docs/index.rst">
+          <provider selected="true" editor-type-id="restructured-text-editor" />
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/headless.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="833">
-              <caret line="53" selection-start-line="53" selection-end-line="53" />
-              <folding>
-                <element signature="e#110#121#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/idpmodem/crcxmodem.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="731">
-              <caret line="43" selection-start-line="43" selection-end-line="43" />
-            </state>
-          </provider>
+        <entry file="file://$PROJECT_DIR$/README.rst">
+          <provider selected="true" editor-type-id="restructured-text-editor" />
         </entry>
       </file>
     </leaf>
@@ -192,24 +92,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>not response.crc_ok</find>
-      <find>_event</find>
-      <find>_is_response</find>
-      <find>is_at_command_pending</find>
-      <find>self.at_config</find>
-      <find>self.at_config[</find>
-      <find>_get_crc</find>
-      <find>self.auto</find>
-      <find>self._compl</find>
-      <find>set_event_notification_control</find>
-      <find>get_odict_value</find>
-      <find>set_bitmap</find>
-      <find>EIGHT</find>
-      <find>EIGHTBITS</find>
-      <find>super</find>
-      <find>SerialBase</find>
-      <find>Message()</find>
-      <find>at_sub</find>
       <find>_PendingMtMessage</find>
       <find>get_wakeup_interval</find>
       <find>get_event_notification_control</find>
@@ -222,6 +104,24 @@
       <find>MobileTerminat</find>
       <find>check_events</find>
       <find>get_event_</find>
+      <find>is_in</find>
+      <find>get_wrapping_log</find>
+      <find>logfile</find>
+      <find>name=</find>
+      <find>logger(name=</find>
+      <find>self._mt_message_callback</find>
+      <find>, 255</find>
+      <find>No callback</find>
+      <find>get_location</find>
+      <find>new_mt_messages</find>
+      <find>register_event</find>
+      <find>_tracking</find>
+      <find>tracking_setup</find>
+      <find>%TRK</find>
+      <find>range(0,</find>
+      <find>terminate</find>
+      <find>get_wrapping_logger</find>
+      <find>RepeatingTimer</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -232,10 +132,12 @@
       </map>
     </option>
   </component>
+  <component name="GithubDefaultAccount">
+    <option name="defaultAccountId" value="a3f288b9-4711-4287-8d22-ce1e30b1d6b7" />
+  </component>
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py" />
         <option value="$PROJECT_DIR$/docs/conf.py" />
         <option value="$PROJECT_DIR$/docs/index.rst" />
         <option value="$PROJECT_DIR$/../automagic/docs/conf.py" />
@@ -243,26 +145,34 @@
         <option value="$PROJECT_DIR$/idpmodem/tests/idpmodem_unit_tests.py" />
         <option value="$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py" />
         <option value="$PROJECT_DIR$/idpmodem/idpcodec.py" />
-        <option value="$PROJECT_DIR$/idpmodem/tests/context.py" />
-        <option value="$PROJECT_DIR$/idpmodem/headless.py" />
         <option value="$PROJECT_DIR$/idpmodem/nmea.py" />
+        <option value="$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py" />
+        <option value="$PROJECT_DIR$/idpmodem/tests/context.py" />
+        <option value="$PROJECT_DIR$/idpmodem/tests/nz-power-poc.py" />
+        <option value="$PROJECT_DIR$/idpmodem/tests/taranaki.py" />
+        <option value="$PROJECT_DIR$/idpmodem/taranaki.py" />
+        <option value="$PROJECT_DIR$/idpmodem/headless.py" />
         <option value="$PROJECT_DIR$/idpmodem/idpmodem.py" />
         <option value="$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py" />
+        <option value="$PROJECT_DIR$/README.rst" />
+        <option value="$PROJECT_DIR$/.gitignore" />
+        <option value="$PROJECT_DIR$/idpmodem/__init__.py" />
+        <option value="$PROJECT_DIR$/MANIFEST.in" />
+        <option value="$PROJECT_DIR$/setup.py" />
       </list>
     </option>
   </component>
   <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="-8" />
-    <option name="y" value="-8" />
-    <option name="width" value="1616" />
-    <option name="height" value="916" />
+    <option name="x" value="-1724" />
+    <option name="y" value="-151" />
+    <option name="width" value="1200" />
+    <option name="height" value="646" />
   </component>
   <component name="ProjectView">
     <navigator proportions="" version="1">
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
-      <pane id="Scope" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -286,22 +196,21 @@
               <item name="idpmodem" type="462c0819:PsiDirectoryNode" />
               <item name="tests" type="462c0819:PsiDirectoryNode" />
             </path>
-            <path>
-              <item name="idpmodem" type="b2602c69:ProjectViewProjectNode" />
-              <item name="idpmodem" type="462c0819:PsiDirectoryNode" />
-              <item name="lora" type="462c0819:PsiDirectoryNode" />
-            </path>
           </expand>
           <select />
         </subPane>
       </pane>
+      <pane id="Scope" />
     </panes>
   </component>
   <component name="PropertiesComponent">
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="settings.editor.selected.configurable" value="settings.github" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\geoffbp\workspace\idpmodem\idpmodem\tests" />
       <recent name="C:\Users\geoffbp\workspace\idpmodem\idpmodem" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
@@ -321,7 +230,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Python.test_idpmodem_basic">
+  <component name="RunManager" selected="Python docs.sphinx task in idpmodem/docs">
     <configuration name="idpmodemsample - Copy" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="idpmodem" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -334,7 +243,7 @@
       <option name="IS_MODULE_SDK" value="true" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py" />
+      <option name="SCRIPT_NAME" value="C:\Users\geoffbp\workspace\idpmodem\idpmodem\tests\idpmodemsample.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
@@ -364,6 +273,27 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="taranaki" type="PythonConfigurationType" factoryName="Python" temporary="true">
+      <module name="idpmodem" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/idpmodem/tests" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="C:\Users\geoffbp\workspace\idpmodem\idpmodem\taranaki.py" />
+      <option name="PARAMETERS" value="-p COM38" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="test_idpmodem_basic" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <module name="idpmodem" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -385,9 +315,33 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="sphinx task in idpmodem/docs" type="docs" factoryName="Sphinx task">
+      <module name="idpmodem" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="C:\Python27\python.exe" />
+      <option name="WORKING_DIRECTORY" value="" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="docutils_input_file" value="C:\Users\geoffbp\workspace\idpmodem\docs" />
+      <option name="docutils_output_file" value="C:\Users\geoffbp\workspace\idpmodem\docs\_build\html" />
+      <option name="docutils_params" value="" />
+      <option name="docutils_task" value="html" />
+      <option name="docutils_open_in_browser" value="false" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Python.idpmodemsample - Copy" />
+      <item itemvalue="Python.idpmodemsample" />
+      <item itemvalue="Python.taranaki" />
+      <item itemvalue="Python.test_idpmodem_basic" />
+      <item itemvalue="Python docs.sphinx task in idpmodem/docs" />
+    </list>
     <recent_temporary>
       <list>
         <item itemvalue="Python.test_idpmodem_basic" />
+        <item itemvalue="Python.taranaki" />
         <item itemvalue="Python.idpmodemsample - Copy" />
         <item itemvalue="Python.idpmodemsample" />
       </list>
@@ -488,31 +442,80 @@
       <option name="project" value="LOCAL" />
       <updated>1546195656848</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="Added and tested Location/NMEA.">
+      <created>1546397048688</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1546397048691</updated>
+    </task>
+    <task id="LOCAL-00014" summary="Various bug fixes after testing and function refactoring.">
+      <created>1547592156311</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1547592156311</updated>
+    </task>
+    <task id="LOCAL-00015" summary="Updated setup.py with classifiers (begin port to Python 3)">
+      <created>1559997988453</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1559997988453</updated>
+    </task>
+    <task id="LOCAL-00016" summary="Updated setup.py with classifiers (begin port to Python 3)">
+      <created>1559998366052</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1559998366052</updated>
+    </task>
+    <option name="localTasksCounter" value="17" />
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1616" height="876" extended-state="6" />
+    <frame x="-1928" y="-188" width="1936" height="1096" extended-state="6" />
     <layout>
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.24973656" />
+      <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
+      <window_info id="Favorites" order="2" side_tool="true" />
+      <window_info anchor="bottom" id="Message" order="0" />
+      <window_info anchor="bottom" id="Find" order="1" sideWeight="0.4926238" weight="0.32883817" />
+      <window_info anchor="bottom" id="Run" order="2" />
+      <window_info anchor="bottom" id="Debug" order="3" sideWeight="0.86185044" weight="0.41758242" />
+      <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="6" />
+      <window_info anchor="bottom" id="Version Control" order="7" sideWeight="0.49947312" weight="0.25311205" />
+      <window_info anchor="bottom" id="Terminal" order="8" />
+      <window_info anchor="bottom" id="Event Log" order="9" sideWeight="0.13814956" side_tool="true" weight="0.19623657" />
+      <window_info anchor="bottom" id="Python Console" order="10" />
+      <window_info anchor="bottom" id="Messages" order="11" />
+      <window_info anchor="bottom" id="Pylint" order="12" visible="true" weight="0.4273859" />
+      <window_info anchor="right" id="Commander" order="0" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+    </layout>
+    <layout-to-restore>
       <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.30038023" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" sideWeight="0.4926238" weight="0.32987553" />
       <window_info anchor="bottom" id="Run" order="2" />
-      <window_info anchor="bottom" id="Debug" order="3" sideWeight="0.86185044" visible="true" weight="0.36424732" />
+      <window_info anchor="bottom" id="Debug" order="3" sideWeight="0.86185044" weight="0.36424732" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
       <window_info anchor="bottom" id="TODO" order="6" />
       <window_info anchor="bottom" id="Version Control" order="7" sideWeight="0.49947312" weight="0.32917964" />
       <window_info anchor="bottom" id="Terminal" order="8" />
-      <window_info anchor="bottom" id="Event Log" order="9" sideWeight="0.13814956" side_tool="true" visible="true" weight="0.36424732" />
+      <window_info anchor="bottom" id="Event Log" order="9" sideWeight="0.13814956" side_tool="true" visible="true" weight="0.19623657" />
       <window_info anchor="bottom" id="Python Console" order="10" />
       <window_info anchor="bottom" id="Messages" order="11" />
       <window_info anchor="right" id="Commander" order="0" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
-    </layout>
+    </layout-to-restore>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Directory restructure" />
@@ -526,18 +529,21 @@
     <MESSAGE value="Initial clean-up started for unittest." />
     <MESSAGE value="Bug fixes in send/retrieve messages and unittest clean-up." />
     <MESSAGE value="Various bug fixes for send/receive messages and AT error handling. Enhancements to test suites for flexibility." />
-    <option name="LAST_COMMIT_MESSAGE" value="Various bug fixes for send/receive messages and AT error handling. Enhancements to test suites for flexibility." />
+    <MESSAGE value="Added and tested Location/NMEA." />
+    <MESSAGE value="Various bug fixes after testing and function refactoring." />
+    <MESSAGE value="Updated setup.py with classifiers (begin port to Python 3)" />
+    <option name="LAST_COMMIT_MESSAGE" value="Updated setup.py with classifiers (begin port to Python 3)" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py</url>
+          <url>file://$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py</url>
           <line>693</line>
           <option name="timeStamp" value="31" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py</url>
+          <url>file://$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py</url>
           <line>692</line>
           <option name="timeStamp" value="32" />
         </line-breakpoint>
@@ -560,13 +566,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/docs/conf.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="748">
-          <caret line="45" selection-start-line="41" selection-end-line="45" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/../automagic/docs/conf.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="1326">
@@ -577,19 +576,7 @@
     <entry file="file://$PROJECT_DIR$/idpmodem/idpwindows.py">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
-    <entry file="file://$PROJECT_DIR$/../modbus_sim/modbus_sim/headless.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1547">
-          <caret line="91" column="40" selection-start-line="91" selection-start-column="40" selection-end-line="91" selection-end-column="40" />
-          <folding>
-            <element signature="e#110#121#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/docs/index.rst">
-      <provider selected="true" editor-type-id="restructured-text-editor" />
-    </entry>
+    <entry file="file://$PROJECT_DIR$/../modbus_sim/modbus_sim/headless.py" />
     <entry file="file://$PROJECT_DIR$/idpmodem/tests/idpwindows.py">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
@@ -656,13 +643,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/idpmodemsample - Copy.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="11526">
-          <caret line="690" column="29" selection-start-line="690" selection-start-column="29" selection-end-line="690" selection-end-column="29" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://C:/Python27/Lib/site-packages/serial/serialwin32.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="289">
@@ -677,9 +657,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/__init__.py">
-      <provider selected="true" editor-type-id="text-editor" />
-    </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/tests/headless" />
     <entry file="file://C:/Python27/Lib/unittest/suite.py">
       <provider selected="true" editor-type-id="text-editor">
@@ -690,8 +667,28 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/idpmodemsample.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="5355">
-          <caret line="327" column="47" selection-start-line="327" selection-start-column="39" selection-end-line="327" selection-end-column="47" />
+        <state relative-caret-position="278">
+          <caret line="313" column="24" selection-start-line="313" selection-start-column="24" selection-end-line="313" selection-end-column="24" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/tests/idpmodemsample.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="391">
+          <caret line="23" column="20" selection-start-line="23" selection-start-column="20" selection-end-line="23" selection-end-column="20" />
+          <folding>
+            <element signature="e#1173#1184#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/nmea.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="2074">
+          <caret line="122" column="26" selection-start-line="122" selection-start-column="26" selection-end-line="122" selection-end-column="26" />
+          <folding>
+            <element signature="e#0#15#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -704,8 +701,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/tests/context.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="51">
-          <caret line="4" selection-start-line="4" selection-end-line="4" />
+        <state relative-caret-position="85">
+          <caret line="5" column="7" selection-start-line="5" selection-start-column="7" selection-end-line="5" selection-end-column="7" />
           <folding>
             <element signature="e#0#9#0" expanded="true" />
           </folding>
@@ -714,10 +711,37 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/headless.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="833">
-          <caret line="53" selection-start-line="53" selection-end-line="53" />
+        <state relative-caret-position="3502">
+          <caret line="206" selection-start-line="153" selection-end-line="206" />
           <folding>
             <element signature="e#110#121#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/docs/index.html">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="34">
+          <caret line="2" column="71" selection-start-line="2" selection-end-line="2" selection-end-column="71" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/docs/.nojekyll">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/docs/conf.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="544">
+          <caret line="45" selection-start-line="41" selection-end-line="45" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/taranaki.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="544">
+          <caret line="34" column="12" selection-start-line="34" selection-start-column="12" selection-end-line="34" selection-end-column="12" />
+          <folding>
+            <element signature="e#23#38#0" expanded="true" />
           </folding>
         </state>
       </provider>
@@ -729,111 +753,63 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/nmea.py">
+    <entry file="file://$PROJECT_DIR$/.gitignore">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="209">
-          <caret line="83" selection-start-line="83" selection-end-line="83" />
+        <state relative-caret-position="5560">
+          <caret line="281" selection-start-line="279" selection-end-line="281" />
           <folding>
             <element signature="e#0#15#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/tests/__init__.py">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/idpmodem/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="20">
+          <caret line="1" selection-start-line="1" selection-end-line="1" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/MANIFEST.in">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <caret column="18" selection-start-column="18" selection-end-column="18" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/setup.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="360">
+          <caret line="18" selection-start-line="18" selection-end-line="18" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/docs/index.rst">
+      <provider selected="true" editor-type-id="restructured-text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/README.rst">
+      <provider selected="true" editor-type-id="restructured-text-editor" />
+      <provider editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+        <state split_layout="SPLIT">
+          <first_editor relative-caret-position="119">
+            <caret line="7" column="6" lean-forward="true" selection-start-line="7" selection-start-column="6" selection-end-line="7" selection-end-column="6" />
+          </first_editor>
+          <second_editor />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/idpmodem/idpmodem.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="330">
-          <caret line="159" lean-forward="true" selection-start-line="159" selection-end-line="159" />
+        <state relative-caret-position="-9620">
+          <caret line="59" column="18" selection-start-line="59" selection-start-column="18" selection-end-line="59" selection-end-column="18" />
           <folding>
-            <element signature="e#1646#1662#0" expanded="true" />
-            <element signature="e#4010#4435#0" />
-            <element signature="e#4473#5035#0" />
-            <element signature="e#5060#5328#0" />
-            <element signature="e#5348#5529#0" />
-            <element signature="e#5548#5809#0" />
-            <element signature="e#5832#6017#0" />
-            <element signature="e#6159#6597#0" />
-            <element signature="e#6637#7075#0" />
-            <element signature="e#7116#14278#0" />
-            <element signature="e#14005#14166#0" />
-            <element signature="e#14325#15803#0" />
-            <element signature="e#15850#16510#0" />
-            <element signature="e#16557#17297#0" />
-            <element signature="e#23169#24031#0" />
-            <element signature="e#24081#24266#0" />
-            <element signature="e#24333#25626#0" />
-            <element signature="e#25694#26183#0" />
-            <element signature="e#26256#26887#0" />
-            <element signature="e#26971#27143#0" />
-            <element signature="e#27197#27367#0" />
-            <element signature="e#27417#27581#0" />
-            <element signature="e#27695#28011#0" />
-            <element signature="e#28064#28241#0" />
-            <element signature="e#28307#29012#0" />
-            <element signature="e#29110#29935#0" />
-            <element signature="e#30521#30996#0" />
-            <element signature="e#31073#31856#0" />
-            <element signature="e#31893#32321#0" />
-            <element signature="e#32382#33038#0" />
-            <element signature="e#33078#33647#0" />
-            <element signature="e#33791#35962#0" />
-            <element signature="e#36019#40643#0" />
-            <element signature="e#40700#41178#0" />
-            <element signature="e#41236#41288#0" />
-            <element signature="e#41446#41716#0" />
-            <element signature="e#42922#44640#0" />
-            <element signature="e#44691#46777#0" />
-            <element signature="e#46858#47671#0" />
-            <element signature="e#47721#48583#0" />
-            <element signature="e#48633#48920#0" />
-            <element signature="e#48969#49245#0" />
-            <element signature="e#49294#49570#0" />
-            <element signature="e#49620#50040#0" />
-            <element signature="e#50101#53179#0" />
-            <element signature="e#53240#54717#0" />
-            <element signature="e#57699#60408#0" />
-            <element signature="e#60488#61625#0" />
-            <element signature="e#61708#62407#0" />
-            <element signature="e#62486#62678#0" />
-            <element signature="e#62761#62961#0" />
-            <element signature="e#63035#63267#0" />
-            <element signature="e#62563#62966#0" />
-            <element signature="e#63414#63677#0" />
-            <element signature="e#63785#69299#0" />
-            <element signature="e#69353#70103#0" />
-            <element signature="e#70265#70906#0" />
-            <element signature="e#70986#72663#0" />
-            <element signature="e#72741#73318#0" />
-            <element signature="e#73396#74100#0" />
-            <element signature="e#74183#77335#0" />
-            <element signature="e#77398#77551#0" />
-            <element signature="e#77634#79868#0" />
-            <element signature="e#79946#80566#0" />
-            <element signature="e#80646#82916#0" />
-            <element signature="e#83087#83570#0" />
-            <element signature="e#83657#83936#0" />
-            <element signature="e#83996#84790#0" />
-            <element signature="e#84858#86441#0" />
-            <element signature="e#86528#86780#0" />
-            <element signature="e#86818#86949#0" />
-            <element signature="e#87027#87413#0" />
-            <element signature="e#87458#87544#0" />
-            <element signature="e#87710#88224#0" />
-            <element signature="e#88263#88397#0" />
-            <element signature="e#88171#88685#0" />
-            <element signature="e#89444#89592#0" />
-            <element signature="e#89755#90336#0" />
-            <element signature="e#150088#151858#0" />
-            <element signature="e#151898#152437#0" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/idpmodem/tests/test_idpmodem_basic.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="136">
-          <caret line="229" column="13" selection-start-line="229" selection-start-column="13" selection-end-line="229" selection-end-column="13" />
-          <folding>
-            <element signature="e#0#15#0" expanded="true" />
+            <element signature="e#1585#1601#0" expanded="true" />
           </folding>
         </state>
       </provider>
