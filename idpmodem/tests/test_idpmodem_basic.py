@@ -1,7 +1,10 @@
 import unittest
 import time
-from context import idpmodem
+from .. import idpmodem
 import inspect
+
+
+SERIAL_PORT = '/dev/ttyUSB1'
 
 
 class IdpModemTestCase(unittest.TestCase):
@@ -10,7 +13,7 @@ class IdpModemTestCase(unittest.TestCase):
         print("Setting up test case...")
         # TODO: Check why a "headless" log file is being created in the /tests directory
         try:
-            cls.modem = idpmodem.Modem(serial_name='COM37', debug=True)
+            cls.modem = idpmodem.Modem(serial_name='SERIAL_PORT', debug=True)
         except ValueError as e:
             print("Error trying COM38: {}".format(e))
             cls.modem = idpmodem.Modem(serial_name='COM38', debug=True)
@@ -96,7 +99,7 @@ class IdpModemTestCase(unittest.TestCase):
         self.display_tc_header()
         success, error = self.modem.register_event_callback(event='registered', callback=self.cb_sat_status)
         if not success:
-            print error
+            print(error)
             self.assertFalse(success)
         ref_time = time.time()
         while self.event_callback != 'registered':
@@ -111,7 +114,7 @@ class IdpModemTestCase(unittest.TestCase):
         self.assertTrue(self.event_callback == 'registered')
 
     def cb_sat_status(self, sat_status='Unknown'):
-        print "TEST CASE {} CALLBACK FROM SATELLITE STATUS RECEIVED: {}".format(self.test_case, sat_status)
+        print("TEST CASE {} CALLBACK FROM SATELLITE STATUS RECEIVED: {}".format(self.test_case, sat_status))
         self.event_callback = sat_status
 
     def test_05_mo_message(self):
@@ -143,17 +146,17 @@ class IdpModemTestCase(unittest.TestCase):
     def cb_mo_msg_complete(self, success, message):
         if success:
             name, q_name, state, size_bytes = message
-            print "TEST CASE {} MESSAGE {}({}) STATE={} ({} bytes)"\
-                .format(self.test_case, name, q_name, state, size_bytes)
+            print("TEST CASE {} MESSAGE {}({}) STATE={} ({} bytes)"\
+                .format(self.test_case, name, q_name, state, size_bytes))
         else:
-            print "FAILED TO SUBMIT MO MESSAGE"
+            print("FAILED TO SUBMIT MO MESSAGE")
         self.mo_msg_complete = True
 
     def test_06_event_notify_mt_message(self):
         self.display_tc_header()
         success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.cb_new_mt_message)
         if not success:
-            print error
+            print(error)
             self.assertFalse(success)
         ref_time = time.time()
         while not self.new_mt_messages:
@@ -169,7 +172,7 @@ class IdpModemTestCase(unittest.TestCase):
         self.display_tc_header()
         success, error = self.modem.register_event_callback(event='new_mt_message', callback=self.get_next_mt_message)
         if not success:
-            print error
+            print(error)
             self.assertFalse(success)
         ref_time = time.time()
         while len(self.mt_messages) == 0:
@@ -194,7 +197,7 @@ class IdpModemTestCase(unittest.TestCase):
                 success, error = self.modem.get_mt_message(name=msg.q_name, data_format=data_format,
                                                            callback=self.cb_get_mt_message)
                 if not success:
-                    print error
+                    print(error)
         else:
             print("No pending MT messages in modem queue")
 

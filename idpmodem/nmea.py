@@ -1,6 +1,7 @@
 import operator
 import time
 import datetime
+from functools import reduce
 
 
 class Location(object):

@@ -1,9 +1,10 @@
 """
 Encode and Decode functions useful for IDP messages
 """
+import struct
 
 
-class SkywaveCommonMessageFormat(object):
+class CommonMessageFormat(object):
 
     data_types = (
         'bool',
@@ -46,10 +47,10 @@ class SkywaveCommonMessageFormat(object):
     class Field(object):
         def __init__(self, name, data_type, value, bit_size):
             self.name = name
-            if data_type in SkywaveCommonMessageFormat.data_types:
+            if data_type in CommonMessageFormat.data_types:
                 self.data_type = data_type
             else:
-                raise ValueError("Invalid data type, must be in: ({})".format(SkywaveCommonMessageFormat.data_types))
+                raise ValueError("Invalid data type, must be in: ({})".format(CommonMessageFormat.data_types))
             self.value = value
             self.bit_size = bit_size
 
