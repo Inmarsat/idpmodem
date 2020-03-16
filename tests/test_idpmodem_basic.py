@@ -1,6 +1,6 @@
 import unittest
 import time
-from .. import idpmodem
+from idpmodem import idpmodem
 import inspect
 
 

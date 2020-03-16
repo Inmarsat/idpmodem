@@ -141,8 +141,8 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 else:
                     # TODO: log this case; should be limited to GPS simulation in Modem Simulator (3 satellites)
                     pass
-                loc.alt = float(gga_altitude)
-                loc.hdop = max(float(gga_hdop), 32.0)
+                loc.alt = float(gga_altitude) if gga_altitude != '' else 0.0
+                loc.hdop = max(float(gga_hdop), 32.0) if gga_hdop != '' else 32.0
 
             elif sentence_type == 'RMC':          # RMC Recommended Minimum is used for most location information
                 rmc = nmea_data.split(',')        # $GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
@@ -167,14 +167,15 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 dt = datetime.datetime(year, month, day, hour, minute, second)
                 loc.timestamp = int(time.mktime(dt.timetuple()))
                 # Convert to decimal degrees lat/lng
-                loc.lat = round(float(rmc_latitude_dms[0:2]) + float(rmc_latitude_dms[2:]) / 60.0, degrees_resolution)
-                if rmc_latitude_ns == 'S':
-                    loc.lat *= -1
-                loc.lng = round(float(rmc_longitude_dms[0:3]) + float(rmc_longitude_dms[3:]) / 60.0, degrees_resolution)
-                if rmc_longitude_ew == 'W':
-                    loc.lng *= -1
-                loc.speed = float(rmc_speed_knots)   # multiply by 1.852 for kph
-                loc.heading = float(rmc_heading_deg_true)
+                if rmc_longitude_dms != '' and rmc_longitude_dms != '':
+                    loc.lat = round(float(rmc_latitude_dms[0:2]) + float(rmc_latitude_dms[2:]) / 60.0, degrees_resolution)
+                    if rmc_latitude_ns == 'S':
+                        loc.lat *= -1
+                    loc.lng = round(float(rmc_longitude_dms[0:3]) + float(rmc_longitude_dms[3:]) / 60.0, degrees_resolution)
+                    if rmc_longitude_ew == 'W':
+                        loc.lng *= -1
+                loc.speed = float(rmc_speed_knots) if rmc_speed_knots != '' else 0.0  # multiply by 1.852 for kph
+                loc.heading = float(rmc_heading_deg_true) if rmc_heading_deg_true != '' else 0.0
                 # Update human-readable attributes
                 loc.time_readable = datetime.datetime.utcfromtimestamp(loc.timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -190,13 +191,13 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 gsa_prns = []                               # PRNs of satellites used for fix (space for 12)
                 for prn in range(1, 12):
                     gsa_prns.append(gsa[prn+2])             # offset of prns in the split array is [3]
-                gsa_pdop = gsa[15]                          # Probability dilution of precision (DOP)
+                gsa_pdop = gsa[15]                          # Probability dilution of precision (DOP), above 20 is bad
                 gsa_hdop = gsa[16]                          # Horizontal DOP
                 gsa_vdop = gsa[17]                          # Vertical DOP
-                loc.fix_type = int(gsa_fix_type)
-                loc.pdop = max(float(gsa_pdop), 32.0)       # values above 20 are bad; cap at 5-bit representation
-                # loc.hdop = max(float(GSAhdop), 32.0)        # HDOP is derived from GGA
-                loc.vdop = max(float(gsa_vdop), 32.0)
+                # Use GSA for fix_type, PDOP, VDOP (HDOP comes from GGA)
+                loc.fix_type = int(gsa_fix_type) if gsa_fix_type != '' else 0
+                loc.pdop = max(float(gsa_pdop), 32.0) if gsa_pdop != '' else 32.0
+                loc.vdop = max(float(gsa_vdop), 32.0) if gsa_vdop != '' else 32.0
 
             elif sentence_type == 'GSV':         # Satellites in View
                 gsv = nmea_data.split(',')       # $GPGSV,2,1,08,01,40,083,46,02,17,308,41,12,07,344,39,14,22,228,45*75
@@ -205,15 +206,18 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 gsv_satellites = gsv[3]          # Number of satellites in view
                 # following supports up to 4 satellites per sentence
                 satellites_info = []
-                num_satellites_in_sentence = (len(gsv)-4)/4
+                if (len(gsv) - 4) % 4 > 0:
+                    # TODO: warn/log this case of extra GSV data in sentence
+                    pass
+                num_satellites_in_sentence = int((len(gsv)-4)/4)
                 for i in range(1, num_satellites_in_sentence+1):
-                    prn = int(gsv[i*4])                  # satellite PRN number
-                    elevation = int(gsv[i*4+1])          # Elevation in degrees
-                    azimuth = int(gsv[i*4+2])            # Azimuth in degrees
-                    snr = int(gsv[i*4+3])                # Signal to Noise Ratio
+                    prn = int(gsv[i*4]) if gsv[i*4] != '' else 0             # satellite PRN number
+                    elevation = int(gsv[i*4+1]) if gsv[i*4+1] != '' else 0   # Elevation in degrees
+                    azimuth = int(gsv[i*4+2]) if gsv[i*4+2] != '' else 0     # Azimuth in degrees
+                    snr = int(gsv[i*4+3]) if gsv[i*4+3] != '' else 0         # Signal to Noise Ratio
                     satellites_info.append(Location.GnssSatelliteInfo(prn, elevation, azimuth, snr))
                 loc.update_satellites_info(satellites_info)
-                satellites = int(gsv_satellites)
+                satellites = int(gsv_satellites) if gsv_satellites != '' else 0
                 if loc.satellites < satellites:
                     loc.satellites = satellites
                 else:
@@ -224,5 +228,6 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 err_str += "{}{} NMEA sentence type not recognized".format(';' if err_str != '' else '', sentence[0:3])
         else:
             err_str = "{}Invalid NMEA checksum on {}".format(';' if err_str != '' else '', sentence[0:3])
-
+    if loc.lat == 90.0 and loc.lng == 180.0:
+        err_str += 'Unable to get valid location from NMEA'
     return err_str == '', err_str

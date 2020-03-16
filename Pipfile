@@ -5,6 +5,8 @@ verify_ssl = true
 
 [dev-packages]
 pylint = "*"
+salt = "*"
+autopep8 = "*"
 
 [packages]
 pyserial = "*"
