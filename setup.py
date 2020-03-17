@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 
 def readme():
@@ -14,19 +14,9 @@ setup(name='idpmodem',
       author='G Bruce Payne',
       author_email='geoff.bruce-payne@inmarsat.com',
       license='Apache',
-      packages=[
-          'idpmodem',
-      ],
+      packages=find_packages(),
       install_requires=[
           'pyserial>=3.4',
-          'headless',
       ],
       include_package_data=True,
-      classifiers=[
-          'Programming Language :: Python :: 2 :: Only',
-          'Intended Audience :: Developers',
-          'Operating System :: Microsoft :: Windows',
-          'Operating System :: POSIX',
-          'Environment :: Console',
-      ],
       zip_safe=False)

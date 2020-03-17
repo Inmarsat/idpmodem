@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (**IDP**) modem using AT commands.
 
@@ -29,22 +31,30 @@ automatically try to recover based on an algorithm influenced by its *power mode
 """
 
 from __future__ import absolute_import
-import crcxmodem
-from collections import OrderedDict
-from headless import get_caller_name
-from headless import get_wrapping_logger
-from headless import RepeatingTimer
-from headless import validate_serial_port
-from headless import is_logger
-import nmea
-import time
-import datetime
-import threading
-import serial
-import binascii
+
 import base64
-import string
+import binascii
+from collections import OrderedDict
+import datetime
+from string import printable
 import sys
+import threading
+import time
+
+import serial
+
+try:
+    from headless import get_caller_name, get_wrapping_logger, is_logger
+    from headless import RepeatingTimer
+    from headless import validate_serial_port
+    import crcxmodem
+    import nmea
+except ImportError:    
+    from idpmodem.headless import get_caller_name, get_wrapping_logger, is_logger
+    from idpmodem.headless import RepeatingTimer
+    from idpmodem.headless import validate_serial_port
+    import idpmodem.crcxmodem as crcxmodem
+    import idpmodem.nmea as nmea
 
 __version__ = "2.0.0"
 
@@ -2504,7 +2514,7 @@ def _is_hex_string(s):
 def _bytearray_to_str(arr):
     s = ''
     for b in bytearray(arr):
-        if chr(b) in string.printable:
+        if chr(b) in printable:
             s += chr(b)
         else:
             s += '{0:#04x}'.format(b).replace('0x', '\\')

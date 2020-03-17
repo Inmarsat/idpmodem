@@ -10,6 +10,7 @@ autopep8 = "*"
 
 [packages]
 pyserial = "*"
+idpmodem = {editable = true,version = "*"}
 
 [requires]
 python_version = "3.8"

@@ -1,7 +1,9 @@
-import unittest
-import time
-from idpmodem import idpmodem
+#!/usr/bin/env python
 import inspect
+import time
+import unittest
+
+from idpmodem import idpmodem
 
 
 SERIAL_PORT = '/dev/ttyUSB1'
@@ -13,7 +15,7 @@ class IdpModemTestCase(unittest.TestCase):
         print("Setting up test case...")
         # TODO: Check why a "headless" log file is being created in the /tests directory
         try:
-            cls.modem = idpmodem.Modem(serial_name='SERIAL_PORT', debug=True)
+            cls.modem = idpmodem.Modem(serial_name=SERIAL_PORT, debug=True)
         except ValueError as e:
             print("Error trying COM38: {}".format(e))
             cls.modem = idpmodem.Modem(serial_name='COM38', debug=True)

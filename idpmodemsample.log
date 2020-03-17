@@ -1,0 +1,103 @@
+2020-03-17T03:47:49.927Z,[ERROR],(MainThread),idpmodemsample.main:197,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 182, in main
+    modem = idpmodem.Modem(serial_name=serial_name, log=log)
+AttributeError: module 'idpmodem' has no attribute 'Modem'
+
+2020-03-17T03:48:39.232Z,[ERROR],(MainThread),idpmodemsample.main:197,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 182, in main
+    modem = idpmodem.Modem(serial_name=serial_name, log=log)
+NameError: name 'idpmodem' is not defined
+
+2020-03-17T04:08:31.640Z,[INFO],(MainThread),idpmodem._init_serial:665,Connected to Serial FTDI FT232 (RS485/RS422/RS232) on /dev/ttyUSB0 at 9600 baud
+2020-03-17T04:08:33.155Z,[INFO],(MainThread),idpmodem.tracking_setup:2314,Tracking interval set to 900 seconds
+2020-03-17T04:08:33.170Z,[ERROR],(MainThread),idpmodemsample.main:197,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 186, in main
+    modem.tracking_setup(interval=tracking_interval,
+  File "/home/gbp/projects/idpmodem/idpmodem/idpmodem.py", line 2316, in tracking_setup
+    self.thread_tracking.change_interval(interval)
+  File "/home/gbp/projects/idpmodem/idpmodem/headless.py", line 199, in change_interval
+    self.restart_timer()
+  File "/home/gbp/projects/idpmodem/idpmodem/headless.py", line 187, in restart_timer
+    self.callback(*self.callback_args, **self.callback_kwargs)
+  File "/home/gbp/projects/idpmodem/idpmodem/idpmodem.py", line 2319, in _tracking
+    self.get_location(callback=self._cb_tracking,
+  File "/home/gbp/projects/idpmodem/idpmodem/idpmodem.py", line 2244, in get_location
+    self.location_pending = self._PendingLocation(
+  File "/home/gbp/projects/idpmodem/idpmodem/idpmodem.py", line 495, in __init__
+    self.location = nmea.Location()
+NameError: name 'nmea' is not defined
+
+2020-03-17T04:08:33.171Z,[INFO],(MainThread),idpmodemsample.main:203,*** Statistics from 2020-03-17 04:08:31.581811 to 2020-03-17 04:08:33.171437 ***
+2020-03-17T04:08:33.172Z,[INFO],(MainThread),idpmodem.log_statistics:2487,************************** IDP MODEM STATISTICS **************************
+2020-03-17T04:08:33.183Z,[INFO],(MainThread),idpmodem.log_statistics:2488,* Mobile ID: unknown
+2020-03-17T04:08:33.184Z,[INFO],(MainThread),idpmodem.log_statistics:2489,* Hardware version: unknown
+2020-03-17T04:08:33.250Z,[INFO],(MainThread),idpmodem.log_statistics:2490,* Firmware version: unknown
+2020-03-17T04:08:33.251Z,[INFO],(MainThread),idpmodem.log_statistics:2491,* AT version: unknown
+2020-03-17T04:08:33.392Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS control (network) fixes: 0
+2020-03-17T04:08:33.894Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average GNSS (network) time to fix [s]: 0
+2020-03-17T04:08:33.900Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Registrations: 0
+2020-03-17T04:08:33.932Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Registration time [s]: 0
+2020-03-17T04:08:34.102Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* BB acquisitions: 0
+2020-03-17T04:08:34.431Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average BB acquisition time [s]: 0
+2020-03-17T04:08:34.432Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Blockages: 0
+2020-03-17T04:08:34.562Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Blockage duration [s]: 0
+2020-03-17T04:08:34.731Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS application fixes: 0
+2020-03-17T04:08:34.738Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average GNSS (application) time to fix [s]: 0
+2020-03-17T04:08:34.744Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS request timeouts: 0
+2020-03-17T04:08:34.760Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average AT response time [ms]: 0
+2020-03-17T04:08:35.085Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total AT non-responses: 0
+2020-03-17T04:08:35.091Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total Mobile-Originated messages: 0
+2020-03-17T04:08:35.291Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Originated message size [bytes]: 0
+2020-03-17T04:08:35.302Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Originated message latency [s]: 0
+2020-03-17T04:08:35.308Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total Mobile-Terminated messages: 0
+2020-03-17T04:08:35.391Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Terminated message size [bytes]: 0
+2020-03-17T04:08:35.397Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average C/N0 [dB]: 0.0
+2020-03-17T04:08:35.404Z,[INFO],(MainThread),idpmodem.log_statistics:2494,***************************************************************************
+2020-03-17T04:08:37.230Z,[INFO],(MainThread),idpmodem.terminate:640,*** Statistics from 2020-03-17 04:08:31.581922 to 2020-03-17 04:08:35.415317 ***
+2020-03-17T04:08:37.231Z,[INFO],(MainThread),idpmodem.log_statistics:2487,************************** IDP MODEM STATISTICS **************************
+2020-03-17T04:08:37.232Z,[INFO],(MainThread),idpmodem.log_statistics:2488,* Mobile ID: unknown
+2020-03-17T04:08:37.232Z,[INFO],(MainThread),idpmodem.log_statistics:2489,* Hardware version: unknown
+2020-03-17T04:08:37.233Z,[INFO],(MainThread),idpmodem.log_statistics:2490,* Firmware version: unknown
+2020-03-17T04:08:37.233Z,[INFO],(MainThread),idpmodem.log_statistics:2491,* AT version: unknown
+2020-03-17T04:08:37.234Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS control (network) fixes: 0
+2020-03-17T04:08:37.235Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average GNSS (network) time to fix [s]: 0
+2020-03-17T04:08:37.236Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Registrations: 0
+2020-03-17T04:08:37.236Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Registration time [s]: 0
+2020-03-17T04:08:37.237Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* BB acquisitions: 0
+2020-03-17T04:08:37.238Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average BB acquisition time [s]: 0
+2020-03-17T04:08:37.238Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Blockages: 0
+2020-03-17T04:08:37.239Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Blockage duration [s]: 0
+2020-03-17T04:08:37.239Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS application fixes: 0
+2020-03-17T04:08:37.240Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average GNSS (application) time to fix [s]: 0
+2020-03-17T04:08:37.241Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* GNSS request timeouts: 0
+2020-03-17T04:08:37.241Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average AT response time [ms]: 0
+2020-03-17T04:08:37.242Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total AT non-responses: 0
+2020-03-17T04:08:37.243Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total Mobile-Originated messages: 0
+2020-03-17T04:08:37.243Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Originated message size [bytes]: 0
+2020-03-17T04:08:37.244Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Originated message latency [s]: 0
+2020-03-17T04:08:37.245Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Total Mobile-Terminated messages: 0
+2020-03-17T04:08:37.247Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average Mobile-Terminated message size [bytes]: 0
+2020-03-17T04:08:37.248Z,[INFO],(MainThread),idpmodem.log_statistics:2493,* Average C/N0 [dB]: 0.0
+2020-03-17T04:08:37.248Z,[INFO],(MainThread),idpmodem.log_statistics:2494,***************************************************************************
+2020-03-17T04:15:16.056Z,[ERROR],(MainThread),idpmodemsample.main:197,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 182, in main
+    modem = idpmodem.Modem(serial_name=serial_name, log=log)
+AttributeError: module 'idpmodem' has no attribute 'Modem'
+
+2020-03-17T04:16:24.101Z,[ERROR],(MainThread),idpmodemsample.main:197,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 182, in main
+    modem = idpmodem.Modem(serial_name=serial_name, log=log)
+AttributeError: module 'idpmodem' has no attribute 'Modem'
+
+2020-03-17T04:20:54.495Z,[ERROR],(MainThread),idpmodemsample.main:199,Exception in user code:----------------------------------------
+Traceback (most recent call last):
+  File "/home/gbp/projects/idpmodem/examples/idpmodemsample.py", line 184, in main
+    modem = idpmodem.Modem(serial_name=serial_name, log=log)
+AttributeError: module 'idpmodem' has no attribute 'Modem'
+
+2020-03-17T11:50:46.353Z,[INFO],(MainThread),idpmodem._init_serial:677,Connected to Serial FTDI FT232 (RS485/RS422/RS232) on /dev/ttyUSB0 at 9600 baud
