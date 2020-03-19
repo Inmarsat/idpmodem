@@ -141,3 +141,4 @@ dmypy.json
 *.log
 Makefile
 make.bat
+.idea
