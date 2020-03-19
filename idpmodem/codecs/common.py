@@ -140,10 +140,10 @@ class CommonMessageFormat(object):
         :param name: of field (string)
 
         """
-        success = False
+        # success = False
         for i, field in enumerate(self.fields):
             if field.name == name:
-                success = True
+                # success = True
                 del self.fields[i]
                 break
 
