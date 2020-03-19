@@ -22,14 +22,27 @@ import datetime
 import sys
 import traceback
 
-from idpmodem import idpmodem, idpcodec, headless
-from idpmodem.headless import get_wrapping_logger
+from idpmodem import idpmodem, utils #, idpcodec
+from idpmodem.codecs import common as idpcodec
+from idpmodem.utils import get_wrapping_logger
+from idpmodem.idpmodem import FORMAT_TEXT, FORMAT_HEX, FORMAT_B64
 
 __version__ = "1.1.0"
 
 global log                  
 global modem                # the instance of IDP modem class
 global tracking_interval    # minutes
+
+
+def handle_mt_messages(message_queue):
+    for msg in message_queue:
+        if msg.sin == 255:
+            '''
+            modem.mt_message_get(msg.q_name,
+                                 callback=handle_mt_tracking_command,
+                                 data_format=FORMAT_HEX)
+            '''
+            pass
 
 
 def handle_mt_tracking_command(message):
@@ -49,11 +62,11 @@ def handle_mt_tracking_command(message):
     global modem
     global tracking_interval
 
-    if (message['sin'] == 255 
-        and message['min'] == 1 
-        and message['data_format'] == 2):
+    if (message.sin == 255 
+        and message.min == 1 
+        and message.data_format == FORMAT_HEX):
         # Format: <SIN><MIN><tracking_interval> where tracking_interval is a 2-byte value in minutes
-        payload = binascii.hexlify(bytearray(message['payload']))
+        payload = binascii.hexlify(bytearray(message.payload))
         new_interval_minutes = int(payload[2:], 16)
         if (0 <= new_interval_minutes <= 1440
             and new_interval_minutes * 60 != tracking_interval):
@@ -69,7 +82,7 @@ def handle_mt_tracking_command(message):
             # TODO: send an error response indicating 'invalid interval' over the air
     else:
         log.warning("Unsupported command SIN={} MIN={}"
-                    .format(message['sin'], message['min']))
+                    .format(message.sin, message.min))
 
 
 def send_idp_location(loc):
@@ -83,25 +96,32 @@ def send_idp_location(loc):
     global modem
     msg_sin = 255
     msg_min = 255
+    lat_milliminutes = int(loc.latitude * 60000)
+    lng_milliminutes = int(loc.longitude * 60000)
+    alt_m = int(loc.altitude)
+    spd_kph = int(loc.speed * 1.852)
+    hdg = int(loc.heading)
+    pdop = int(loc.pdop)
+    data_format = FORMAT_B64
     payload = idpcodec.CommonMessageFormat(msg_sin=msg_sin, 
                                            msg_min=msg_min, 
                                            name='location')
-    payload.add_field('timestamp', 'uint_32', loc.timestamp, '031b')
-    payload.add_field('latitude', 'int_32', loc.latitude, '024b')
-    payload.add_field('longitude', 'int_32', loc.longitude, '025b')
-    payload.add_field('speed', 'int_16', loc.speed, '08b')
-    payload.add_field('heading', 'int_16', loc.heading, '09b')
-    payload.add_field('satellites', 'int_8', loc.satellites, '04b')
-    payload.add_field('fixtype', 'int_8', loc.fixtype, '02b')
-    payload.add_field('pdop', 'int_8', loc.PDOP, '04b')
+    payload.add_field('timestamp', 'uint_32', loc.timestamp, bits=31)
+    payload.add_field('latitude', 'int_32', lat_milliminutes, bits=24)
+    payload.add_field('longitude', 'int_32', lng_milliminutes, bits=25)
+    payload.add_field('speed', 'int_16', spd_kph, bits=8)
+    payload.add_field('heading', 'int_16', hdg, bits=9)
+    payload.add_field('satellites', 'int_8', loc.satellites, bits=4)
+    payload.add_field('fixtype', 'int_8', loc.fix_type, bits=2)
+    payload.add_field('pdop', 'int_8', pdop, bits=4)
     payload.delete_field('pdop')
-    data_str = payload.encode_idp(data_format=3)
+    data_str = payload.encode_idp(data_format=data_format)
     # message_name = 'LOC'
     message = idpmodem.MobileOriginatedMessage(payload=data_str, 
-                                               data_format=3, 
+                                               data_format=data_format, 
                                                msg_sin=msg_sin, 
                                                msg_min=msg_min)
-    modem.send_message(message)
+    modem.mo_message_send(message)
 
 
 def parse_args(argv):
@@ -129,7 +149,7 @@ def parse_args(argv):
     parser.add_argument('-t', '--track', dest='tracking', type=int, default=15,
                         help="location reporting interval in minutes (0..1440, default = 15, 0 = disabled)")
 
-    parser.add_argument('-p', '--port', dest='port', type=str, default='/dev/ttyUSB0',
+    parser.add_argument('-p', '--port', dest='port', type=str, default='/dev/ttyUSB1',
                         help="the serial port of the IDP modem")
 
     return vars(parser.parse_args(args=argv[1:]))
@@ -146,12 +166,7 @@ def main():
     global modem
     global tracking_interval
 
-    SERIAL_BAUD = 9600
     modem = None
-
-    # Timer intervals (seconds)
-    SAT_STATUS_INTERVAL = 5
-    MT_MESSAGE_CHECK_INTERVAL = 15
 
     # Derive run options from command line
     user_options = parse_args(sys.argv)
@@ -160,7 +175,6 @@ def main():
         logfile = user_options['logfile'] + '.log'
     else:
         logfile = user_options['logfile']
-    log_size = user_options['log_size']
     debug = user_options['debug']
     if 0 <= user_options['tracking'] <= 1440:
         tracking_interval = int(user_options['tracking'] * 60)
@@ -168,20 +182,26 @@ def main():
         sys.exit("Invalid tracking interval, must be in range 0..1440")
 
     # Set up log file
-    log = get_wrapping_logger(filename=logfile)
+    log = get_wrapping_logger(filename=logfile, debug=True)
     sys.stdout.flush()
 
     # log.debug("**** PROGRAM STARTING ****")
 
-    ever_connected = False
     start_time = str(datetime.datetime.utcnow())
     try:
         modem = idpmodem.Modem(serial_name=serial_name, log=log)
+        while not modem.is_initialized:
+            pass
+        '''
         success, error = modem.register_event_callback(event='new_mt_message',
-            callback=handle_mt_tracking_command)
+                                                    callback=handle_mt_messages)
+        if not success:
+            raise Exception(error)
+        '''
+        modem.mt_message_callback_add(255, handle_mt_tracking_command)
         # TODO: modem.register_event_callback(event='blocked', callback=tbd)
         modem.tracking_setup(interval=tracking_interval, 
-            on_location=send_idp_location)
+                             on_location=send_idp_location)
         while True:
             pass
 
@@ -192,13 +212,12 @@ def main():
         err_str = "Exception in user code:" + '-' * 40 + '\n' + traceback.format_exc()
         # err_str = "Error on line {}:".format(sys.exc_info()[-1].tb_lineno) + ',' + str(type(e)) + ',' + str(e)
         log.error(err_str)
-        raise
 
     finally:
         end_time = str(datetime.datetime.utcnow())
         if modem is not None:
             log.info("*** Statistics from %s to %s ***" % (start_time, end_time))
-            modem.log_statistics()
+            # modem.log_statistics()
             modem.terminate()
         log.debug("\n\n*** END PROGRAM ***\n\n")
 

@@ -1,20 +1,25 @@
+#!/usr/bin/env python
+"""
+Utilities for parsing NMEA data into a location object
+"""
+
+from datetime import datetime
+from functools import reduce
 import operator
 import time
-import datetime
-from functools import reduce
 
 
 class Location(object):
     """
     A class containing a specific set of location-based information for a given point in time.
-    Uses 90.0/180.0 if lat/lng are unknown
+    Uses 90.0/180.0 if latitude/longitude are unknown
 
     ..todo::
        Implement logging
 
-    :param lat: decimal degrees
-    :param lng: decimal degrees
-    :param alt: in metres
+    :param latitude: decimal degrees
+    :param longitude: decimal degrees
+    :param altitude: in metres
     :param speed: in knots
     :param heading: in degrees
     :param timestamp: in seconds since 1970-01-01T00:00:00Z
@@ -23,14 +28,14 @@ class Location(object):
 
     """
 
-    def __init__(self, lat=90.0, lng=180.0, alt=0.0,
+    def __init__(self, latitude=90.0, longitude=180.0, altitude=0.0,
                  speed=0.0, heading=0.0, timestamp=0, satellites=0, fix_type=1):
         """
-        Creates a Location instance with default lat/lng 91/181 *unknown*
+        Creates a Location instance with default latitude/longitude 91/181 *unknown*
 
-        :param lat: decimal degrees
-        :param lng: decimal degrees
-        :param alt: in metres
+        :param latitude: decimal degrees
+        :param longitude: decimal degrees
+        :param altitude: in metres
         :param speed: in knots
         :param heading: in degrees
         :param timestamp: in seconds since 1970-01-01T00:00:00Z
@@ -38,10 +43,10 @@ class Location(object):
         :param fix_type: 1=None, 2=2D or 3=3D
 
         """
-        self.lat = lat
-        self.lng = lng
+        self.latitude = latitude
+        self.longitude = longitude
         self.resolution = 6
-        self.alt = alt  # metres
+        self.altitude = altitude  # metres
         self.speed = speed  # knots
         self.heading = heading  # degrees
         self.timestamp = timestamp  # seconds since 1/1/1970 unix epoch
@@ -50,7 +55,8 @@ class Location(object):
         self.pdop = 99.9
         self.hdop = 99.9
         self.vdop = 99.9
-        self.time_readable = datetime.datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+        self.time_readable = datetime.utcfromtimestamp(timestamp).strftime(
+                                '%Y-%m-%d %H:%M:%S')
         self.satellites_info = []
 
     class GnssSatelliteInfo(object):
@@ -97,7 +103,7 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
 
     :param nmea_data_set: list of NMEA sentences (including prefix and suffix)
     :param loc: the Location object to be populated
-    :param degrees_resolution: (int) the number of decimal places to use for lat/lng
+    :param degrees_resolution: (int) the number of decimal places to use for latitude/longitude
     :returns:
        - Boolean success of operation
        - error string if not successful
@@ -141,7 +147,7 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 else:
                     # TODO: log this case; should be limited to GPS simulation in Modem Simulator (3 satellites)
                     pass
-                loc.alt = float(gga_altitude) if gga_altitude != '' else 0.0
+                loc.altitude = float(gga_altitude) if gga_altitude != '' else 0.0
                 loc.hdop = max(float(gga_hdop), 32.0) if gga_hdop != '' else 32.0
 
             elif sentence_type == 'RMC':          # RMC Recommended Minimum is used for most location information
@@ -164,20 +170,20 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 hour = int(rmc_fixtime_utc_hhmmss[0:2])
                 minute = int(rmc_fixtime_utc_hhmmss[2:4])
                 second = int(rmc_fixtime_utc_hhmmss[4:6])
-                dt = datetime.datetime(year, month, day, hour, minute, second)
+                dt = datetime(year, month, day, hour, minute, second)
                 loc.timestamp = int(time.mktime(dt.timetuple()))
-                # Convert to decimal degrees lat/lng
+                # Convert to decimal degrees latitude/longitude
                 if rmc_longitude_dms != '' and rmc_longitude_dms != '':
-                    loc.lat = round(float(rmc_latitude_dms[0:2]) + float(rmc_latitude_dms[2:]) / 60.0, degrees_resolution)
+                    loc.latitude = round(float(rmc_latitude_dms[0:2]) + float(rmc_latitude_dms[2:]) / 60.0, degrees_resolution)
                     if rmc_latitude_ns == 'S':
-                        loc.lat *= -1
-                    loc.lng = round(float(rmc_longitude_dms[0:3]) + float(rmc_longitude_dms[3:]) / 60.0, degrees_resolution)
+                        loc.latitude *= -1
+                    loc.longitude = round(float(rmc_longitude_dms[0:3]) + float(rmc_longitude_dms[3:]) / 60.0, degrees_resolution)
                     if rmc_longitude_ew == 'W':
-                        loc.lng *= -1
+                        loc.longitude *= -1
                 loc.speed = float(rmc_speed_knots) if rmc_speed_knots != '' else 0.0  # multiply by 1.852 for kph
                 loc.heading = float(rmc_heading_deg_true) if rmc_heading_deg_true != '' else 0.0
                 # Update human-readable attributes
-                loc.time_readable = datetime.datetime.utcfromtimestamp(loc.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                loc.time_readable = datetime.utcfromtimestamp(loc.timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
             elif sentence_type == 'GSA':                    # GSA is used for DOP and active satellites
                 gsa = nmea_data.split(',')                  # $GPGSA,A,3,04,05,,09,12,,,24,,,,,2.5,1.3,2.1*39
@@ -228,6 +234,6 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
                 err_str += "{}{} NMEA sentence type not recognized".format(';' if err_str != '' else '', sentence[0:3])
         else:
             err_str = "{}Invalid NMEA checksum on {}".format(';' if err_str != '' else '', sentence[0:3])
-    if loc.lat == 90.0 and loc.lng == 180.0:
+    if loc.latitude == 90.0 and loc.longitude == 180.0:
         err_str += 'Unable to get valid location from NMEA'
     return err_str == '', err_str

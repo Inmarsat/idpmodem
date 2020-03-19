@@ -33,11 +33,11 @@ class CommonMessageFormat(object):
     def __init__(self, msg_sin, msg_min, name=None, description=None):
         self.name = name
         self.description = description
-        if isinstance(msg_sin, int) and msg_sin in range(16, 255):
+        if isinstance(msg_sin, int) and msg_sin in range(16, 256):
             self.sin = msg_sin
         else:
             raise ValueError("Invalid SIN ({}) must be in range 16..255".format(msg_sin))
-        if isinstance(msg_min, int) and msg_min in range (0, 255):
+        if isinstance(msg_min, int) and msg_min in range (0, 256):
             self.min = msg_min
         else:
             raise ValueError("Invalid MIN ({}) must be integer type in range 0..255".format(msg_min))

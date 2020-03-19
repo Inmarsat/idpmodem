@@ -1,7 +1,11 @@
+#!/usr/bin/env python
 """
 | Calculates CRC-16-CCITT checksum for xmodem, intended for use with SkyWave/ORBCOMM IDP modem.
 | Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation.
 """
+
+from builtins import input
+
 __version__ = "1.0.1"
 
 POLYNOMIAL = 0x1021
@@ -61,7 +65,7 @@ def crc_bytes(*i):
 
 
 def main():
-    s = raw_input('Enter string: ')
+    s = input('Enter string: ')
     print('0x{:04X}'.format(crc(s, 0xffff)))
 
 

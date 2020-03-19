@@ -1,24 +1,24 @@
 #!/usr/bin/env python
+import argparse
 import inspect
+import sys
 import time
 import unittest
 
 from idpmodem import idpmodem
 
 
-SERIAL_PORT = '/dev/ttyUSB1'
+DEFAULT_PORT = '/dev/ttyUSB1'
 
 
 class IdpModemTestCase(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
-        print("Setting up test case...")
-        # TODO: Check why a "headless" log file is being created in the /tests directory
-        try:
-            cls.modem = idpmodem.Modem(serial_name=SERIAL_PORT, debug=True)
-        except ValueError as e:
-            print("Error trying COM38: {}".format(e))
-            cls.modem = idpmodem.Modem(serial_name='COM38', debug=True)
+        user_options = parse_args(sys.argv)
+        port = user_options['port']
+        print("Setting up modem for test cases...")
+        cls.modem = idpmodem.Modem(serial_name=port, debug=True)
         cls.event_callback = None
         cls.new_mt_messages = False
         cls.mt_message_being_retrieved = None
@@ -35,7 +35,6 @@ class IdpModemTestCase(unittest.TestCase):
         cls.modem.terminate()
 
     def setUp(self):
-        # self.modem.on_connect = self.on_connect
         sleep_time = 5
         print("*** NEXT TEST CASE STARTING IN {}s ***".format(sleep_time))
         time.sleep(sleep_time)
@@ -196,10 +195,10 @@ class IdpModemTestCase(unittest.TestCase):
                     data_format = idpmodem.FORMAT_HEX
                 else:
                     data_format = idpmodem.FORMAT_B64
-                success, error = self.modem.get_mt_message(name=msg.q_name, data_format=data_format,
-                                                           callback=self.cb_get_mt_message)
-                if not success:
-                    print(error)
+                success, err = self.modem.get_message(name=msg.q_name,
+                                                      data_format=data_format,
+                                                      callback=self.cb_get_mt_message)
+                if not success: print(err)
         else:
             print("No pending MT messages in modem queue")
 
@@ -266,10 +265,27 @@ class IdpModemTestCase(unittest.TestCase):
         print("{} Location updates received - latest: {}".format(self.tracking_count, vars(loc)))
 
 
+def parse_args(argv):
+    """
+    Parses the command line arguments.
+
+    :param argv: An array containing the command line arguments
+    :returns: A dictionary containing the command line arguments and their values
+
+    """
+    parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
+
+    parser.add_argument('-p', '--port', dest='port', type=str, default=DEFAULT_PORT,
+                        help="the serial port of the IDP modem")
+
+    return vars(parser.parse_args(args=argv[1:]))
+
+
 def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
+        'test_01_connection',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

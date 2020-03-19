@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Local Test",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/idpmodem/tests/*.py",
+            "console": "integratedTerminal",
+            "args": ["--port", "/dev/ttyUSB1"]
+        },
+        {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
