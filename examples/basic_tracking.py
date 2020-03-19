@@ -134,7 +134,7 @@ def parse_args(argv):
     """
     parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
 
-    parser.add_argument('-l', '--log', dest='logfile', type=str, default='idpmodemsample',
+    parser.add_argument('-l', '--log', dest='logfile', type=str, default='basictracking',
                         help="the log file name with optional extension (default extension .log)")
 
     parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
