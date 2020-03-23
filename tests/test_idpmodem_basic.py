@@ -36,11 +36,11 @@ class IdpModemTestCase(unittest.TestCase):
 
     def setUp(self):
         sleep_time = 5
-        print("*** NEXT TEST CASE STARTING IN {}s ***".format(sleep_time))
+        print("*** NEXT TEST CASE STARTING IN {}s ***\n".format(sleep_time))
         time.sleep(sleep_time)
 
     def tearDown(self):
-        print("*** TEST CASE {} COMPLETE ***".format(self.test_case))
+        print("*** TEST CASE {} COMPLETE ***\n".format(self.test_case))
 
     def display_tc_header(self, more_info=None):
         calling_function = inspect.stack()[1][3]

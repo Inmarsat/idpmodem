@@ -582,10 +582,11 @@ class Modem(object):
         self._mt_message_callbacks = []   # (sin, min, callback)
         # Location Based Service ---------------------------
         self.location_pending = None        # active _PendingLocation
-        # self.locations_pending = []         # future queue
         self.on_location = None             # calls back with nmea.Location
         self.tracking_interval = 0
-        # --- Serial processing threads ---
+        # Satellite Status/Quality --------------------------
+        self.sat_status_pending_callback = None
+        # --- Serial processing threads ---------------------
         self.autonomous = auto_monitor
         self._terminate = False
         self.daemon_threads = []
@@ -969,8 +970,9 @@ class Modem(object):
                     if not parsing_unsolicited:
                         self.log.debug('AT command queue depth {}'.format(
                                         len(self.at_commands_pending)))
-                        self.log.debug('Active command: {}'.format(
-                                        self.at_command_active.command))
+                        if self.at_command_active is not None:
+                            self.log.debug('Active command: {}'.format(
+                                            self.at_command_active.command))
                         self.log.warning(
                             'No AT command pending - parsing unsolicited')
                         parsing_unsolicited = True
@@ -1731,6 +1733,26 @@ class Modem(object):
             else:
                 self.log.info(
                     "No callback defined for satellite_status_change")
+
+    def get_sat_status(self, callback):
+        # TODO: validate callback is a function
+        self.log.info("User queried Satellite Status")
+        if self.sat_status_pending_callback is not None:
+            self.log.warning("Overwriting pending status")
+        self.sat_status_pending_callback = callback
+        self.submit_at_command(
+            'ATS90=3 S91=1 S92=1 S122? S116?', callback=self._cb_get_sat_status)
+    
+    def _cb_get_sat_status(self, valid_response, responses, request):
+        if valid_response:
+            ctrl_state = self.ctrl_states[int(responses[0])]
+            snr = round(int(responses[1]) / 100.0, 2)
+            self.log.debug("Calling back to {}".format(
+                            self.sat_status_pending_callback))
+            self.sat_status_pending_callback(ctrl_state, snr)
+            self.sat_status_pending_callback = None
+        else:
+            self.log.error("Invalid response to get_sat_status")
 
     # ---------------------- MESSAGE HANDING -------------------------------------------------------- #
     # TODO: delete MT messages, cancel MO message(s)

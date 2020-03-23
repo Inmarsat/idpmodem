@@ -22,7 +22,7 @@ import datetime
 import sys
 import traceback
 
-from idpmodem import idpmodem, utils #, idpcodec
+from idpmodem import idpmodem
 from idpmodem.codecs import common as idpcodec
 from idpmodem.utils import get_wrapping_logger
 from idpmodem.idpmodem import FORMAT_TEXT, FORMAT_HEX, FORMAT_B64
@@ -37,12 +37,9 @@ global tracking_interval    # minutes
 def handle_mt_messages(message_queue):
     for msg in message_queue:
         if msg.sin == 255:
-            '''
             modem.mt_message_get(msg.q_name,
                                  callback=handle_mt_tracking_command,
                                  data_format=FORMAT_HEX)
-            '''
-            pass
 
 
 def handle_mt_tracking_command(message):
@@ -57,7 +54,6 @@ def handle_mt_tracking_command(message):
        - ``payload`` (including MIN byte)
        - ``size`` in bytes including SIN, MIN
     """
-    # TODO: Additional testing
     global log
     global modem
     global tracking_interval
@@ -94,6 +90,7 @@ def send_idp_location(loc):
     :return: Boolean success
     """
     global modem
+    # Prepare data content
     msg_sin = 255
     msg_min = 255
     lat_milliminutes = int(loc.latitude * 60000)
@@ -103,6 +100,7 @@ def send_idp_location(loc):
     hdg = int(loc.heading)
     pdop = int(loc.pdop)
     data_format = FORMAT_B64
+    # Build message bit-optimized
     payload = idpcodec.CommonMessageFormat(msg_sin=msg_sin, 
                                            msg_min=msg_min, 
                                            name='location')
@@ -115,8 +113,9 @@ def send_idp_location(loc):
     payload.add_field('fixtype', 'int_8', loc.fix_type, bits=2)
     payload.add_field('pdop', 'int_8', pdop, bits=4)
     payload.delete_field('pdop')
+    # Get binary string payload to send
     data_str = payload.encode_idp(data_format=data_format)
-    # message_name = 'LOC'
+    # Create message wrapper with SIN/MIN
     message = idpmodem.MobileOriginatedMessage(payload=data_str, 
                                                data_format=data_format, 
                                                msg_sin=msg_sin, 
@@ -185,21 +184,20 @@ def main():
     log = get_wrapping_logger(filename=logfile, debug=True)
     sys.stdout.flush()
 
-    # log.debug("**** PROGRAM STARTING ****")
-
     start_time = str(datetime.datetime.utcnow())
     try:
         modem = idpmodem.Modem(serial_name=serial_name, log=log)
         while not modem.is_initialized:
             pass
-        '''
+        '''  Comment this line to process all incoming messages
         success, error = modem.register_event_callback(event='new_mt_message',
                                                     callback=handle_mt_messages)
         if not success:
             raise Exception(error)
-        '''
+        # '''
+        # ''' Uncomment this line to process only SIN 255 incoming
         modem.mt_message_callback_add(255, handle_mt_tracking_command)
-        # TODO: modem.register_event_callback(event='blocked', callback=tbd)
+        # '''
         modem.tracking_setup(interval=tracking_interval, 
                              on_location=send_idp_location)
         while True:
@@ -217,7 +215,6 @@ def main():
         end_time = str(datetime.datetime.utcnow())
         if modem is not None:
             log.info("*** Statistics from %s to %s ***" % (start_time, end_time))
-            # modem.log_statistics()
             modem.terminate()
         log.debug("\n\n*** END PROGRAM ***\n\n")
 
