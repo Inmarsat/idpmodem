@@ -7,10 +7,14 @@ verify_ssl = true
 pylint = "*"
 salt = "*"
 autopep8 = "*"
+asyncio = "*"
 
 [packages]
 pyserial = "*"
 idpmodem = {editable = true,version = "*"}
+tox = "*"
+tox-pipenv = "*"
+pyserial-asyncio = "*"
 
 [requires]
 python_version = "3.8"

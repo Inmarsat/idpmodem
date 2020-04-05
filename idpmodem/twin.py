@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (**IDP**) modem using AT commands.
 
@@ -40,25 +38,32 @@ from string import printable
 import sys
 import threading
 import time
+from typing import Callable
+
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 import serial
 
 try:
+    from at_protocol import ByteReaderThread, IdpModem
+    from at_protocol import AtQueueFull, AtCrcConfigError, AtCrcError
     from utils import get_caller_name, get_wrapping_logger, is_logger
     from utils import RepeatingTimer
     from utils import validate_serial_port
     import crcxmodem
     import nmea
 except ImportError:    
+    from idpmodem.at_protocol import ByteReaderThread, IdpModem
     from idpmodem.utils import get_caller_name, get_wrapping_logger, is_logger
     from idpmodem.utils import RepeatingTimer
     from idpmodem.utils import validate_serial_port
     import idpmodem.crcxmodem as crcxmodem
     import idpmodem.nmea as nmea
 
-
 __version__ = "2.0.0"
-
 
 # Message Priorities and Data Formats
 PRIORITY_MT, PRIORITY_HIGH, PRIORITY_MEDH, PRIORITY_MEDL, PRIORITY_LOW = (
@@ -114,28 +119,14 @@ GNSS_DPM_AIR_4G = 8
 
 
 class Modem(object):
-    """Creates a twin of the IDP modem with common methods.
-    
-    Attributes:
-        serial_port: The name of the serial port e.g. /dev/ttyUSB0
-        mobile_id: The unique serial number e.g. 00000000SKYEE3B
-        initialized: Boolean configuration status
-        hardware_version:
-        firmware_version:
-        registered:
-        blocked:
-        snr:
-        wakeup_period:
-        power_mode:
-        gnss_mode:
-        gnss_refresh_seconds:
-        message_queue_mt:
-        message_queue_mo:
-        event_callbacks:
-        crc:
-        s_registers:
-        antenna_cut:
-        gnss_jamming:
+    """
+    Abstracts attributes and statistics related to an IDP modem
+
+    :param serial_name: (string) the name of the serial port to use
+    :param use_crc: (Boolean) to use CRC for long cable length
+    :param log: an optional logger (preferably writing to a wrapping file)
+    :param debug: Boolean option for verbose trace
+
     """
     # ----------------------- Modem built-in Enumerated Types ------------------------------ #
     ctrl_states = (
@@ -235,9 +226,17 @@ class Modem(object):
             self.quiet = False
 
     class _SatStatus(object):
-        """
-        Tracks the key operating parameters of the modem: registered, blocked, receive-only, waiting on Bulletin Board
-        Tracks the current Satellite Control State represented in Trace Class 3, Subclass 1 index 23
+        """Key operating parameters of the modem.
+        
+        Based on Satellite Control State in Trace Class 3, Subclass 1 Index 23
+        
+        Attributes:
+            registered: Registered on satellite/beam
+            blocked: Unable to see satellite
+            rx_only: Receive-only
+            bb_wait: Waiting on Bulletin Board
+            ctrl_state: (str) defaults to 'Stopped'
+        
         """
 
         def __init__(self):
@@ -248,136 +247,142 @@ class Modem(object):
             self.ctrl_state = 'Stopped'
 
     class _SRegisters(object):
-        """
-        A private class to manage twin of the modem's S registers
+        """A private class to twin the modem's S registers
 
-        :param object: [description]
-        :type object: [type]
-        :return: [description]
-        :rtype: [type]
+        Attributes:
+            parent: The parent object (modem twin)
+            log: A logger object inherited from the parent
+            s_registers: List of S-registers (children)
+
         """
-        # Tuples: (name[0], default[1], read-only[2], range[3], description[4], note[5])
+        #: (name, default, read_only, valid_range, description, note)
         register_definitions = [
-            ('S0', 0, True, [0, 255], 'auto answer', 'unused'),
-            ('S3', 13, False, [1, 127], 'command termination character', None),
-            ('S4', 10, False, [0, 127], 'response formatting character', None),
-            ('S5', 8, False, [0, 127], 'command line editing character', None),
-            ('S6', 0, True, [0, 255], 'pause before dial', 'unused'),
-            ('S7', 0, True, [0, 255],
+            ('S0', 0, True, (0, 255), 'auto answer', 'unused'),
+            ('S3', 13, False, (1, 127), 'command termination character', None),
+            ('S4', 10, False, (0, 127), 'response formatting character', None),
+            ('S5', 8, False, (0, 127), 'command line editing character', None),
+            ('S6', 0, True, (0, 255), 'pause before dial', 'unused'),
+            ('S7', 0, True, (0, 255),
                 'connection completion timeout', 'unused'),
-            ('S8', 0, True, [0, 255], 'commia dial modifier time', 'unused'),
-            ('S10', 0, True, [0, 255], 'automatic discovery delay', 'unused'),
-            ('S31', 80, False, [10, 250], 'DOP threshold (x10)', None),
-            ('S32', 25, False, [1, 1000],
+            ('S8', 0, True, (0, 255), 'commia dial modifier time', 'unused'),
+            ('S10', 0, True, (0, 255), 'automatic discovery delay', 'unused'),
+            ('S31', 80, False, (10, 250), 'DOP threshold (x10)', None),
+            ('S32', 25, False, (1, 1000),
                 'position accuracy threshold [m]', None),
-            ('S33', 0, False, [0, 8], 'default dynamic platform model', None),
-            ('S34', 7, True, [0, 255],
+            ('S33', 0, False, (0, 8), 'default dynamic platform model', None),
+            ('S34', 7, True, (0, 255),
                 'Doppler dynamic platform model', 'Reserved'),
-            ('S35', 0, False, [0, 255], 'static hold threshold [cm/s]', None),
-            ('S36', 0, False, [-1, 480], 'standby timeout [min]', None),
-            ('S37', 200, False, [1, 1000], 'speed accuracy threshold', None),
-            ('S38', 1, True, [0, 0], 'reserved', None),
-            ('S39', 0, False, [0, 2], 'GNSS mode', None),
-            ('S40', 0, False, [0, 60],
+            ('S35', 0, False, (0, 255), 'static hold threshold [cm/s]', None),
+            ('S36', 0, False, (-1, 480), 'standby timeout [min]', None),
+            ('S37', 200, False, (1, 1000), 'speed accuracy threshold', None),
+            ('S38', 1, True, (0, 0), 'reserved', None),
+            ('S39', 0, False, (0, 2), 'GNSS mode', None),
+            ('S40', 0, False, (0, 60),
                 'GNSS signal satellite detection timeout', None),
-            ('S41', 180, False, [60, 1200], 'GNSS fix timeout', None),
-            ('S42', 65535, False, [0, 65535],
+            ('S41', 180, False, (60, 1200), 'GNSS fix timeout', None),
+            ('S42', 65535, False, (0, 65535),
                 'GNSS augmentation systems', 'Query fails'),
-            ('S50', 0, False, [0, 9], 'power mode', None),
-            ('S51', 0, False, [0, 6], 'wakeup interval', None),
-            ('S52', 2500, True, [0, 2500], 'reserved', 'undocumented'),
-            ('S53', 0, True, [0, 255], 'satcom control', None),
-            ('S54', 0, True, [0, 0], 'satcom status', None),
-            ('S55', 0, False, [0, 30], 'GNSS continuous mode', None),
-            ('S56', 0, True, [0, 255], 'GNSS jamming status', None),
-            ('S57', 0, True, [0, 255], 'GNSS jamming indicator', None),
-            ('S60', 1, False, [0, 1], 'Echo', None),
-            ('S61', 0, False, [0, 1], 'Quiet', None),
-            ('S62', 1, False, [0, 1], 'Verbose', None),
-            ('S63', 0, False, [0, 1], 'CRC', None),
-            ('S64', 42, False, [0, 255],
+            ('S50', 0, False, (0, 9), 'power mode', None),
+            ('S51', 0, False, (0, 6), 'wakeup interval', None),
+            ('S52', 2500, True, (0, 2500), 'reserved', 'undocumented'),
+            ('S53', 0, True, (0, 255), 'satcom control', None),
+            ('S54', 0, True, (0, 0), 'satcom status', None),
+            ('S55', 0, False, (0, 30), 'GNSS continuous mode', None),
+            ('S56', 0, True, (0, 255), 'GNSS jamming status', None),
+            ('S57', 0, True, (0, 255), 'GNSS jamming indicator', None),
+            ('S60', 1, False, (0, 1), 'Echo', None),
+            ('S61', 0, False, (0, 1), 'Quiet', None),
+            ('S62', 1, False, (0, 1), 'Verbose', None),
+            ('S63', 0, False, (0, 1), 'CRC', None),
+            ('S64', 42, False, (0, 255),
                 'prefix character of CRC sequence', None),
-            ('S70', 0, True, [0, 0], 'reserved', 'undocumented'),
-            ('S71', 0, True, [0, 0], 'reserved', 'undocumented'),
-            ('S80', 0, True, [0, 255], 'last error code', None),
-            ('S81', 0, True, [0, 255], 'most recent result code', None),
-            ('S85', 22, True, [0, 0], 'temperature', None),
-            ('S88', 0, False, [0, 65535], 'event notification control', None),
-            # ('S89', 0, False, [0, 65535], 'event notification status', None),
-            ('S90', 0, False, [0, 7], 'capture trace define - class', None),
-            ('S91', 0, False, [0, 31],
+            ('S70', 0, True, (0, 0), 'reserved', 'undocumented'),
+            ('S71', 0, True, (0, 0), 'reserved', 'undocumented'),
+            ('S80', 0, True, (0, 255), 'last error code', None),
+            ('S81', 0, True, (0, 255), 'most recent result code', None),
+            ('S85', 22, True, (0, 0), 'temperature', None),
+            ('S88', 0, False, (0, 65535), 'event notification control', None),
+            #: Reading S89 resets it to zero
+            # ('S89', 0, False, (0, 65535), 'event notification status', None),
+            ('S90', 0, False, (0, 7), 'capture trace define - class', None),
+            ('S91', 0, False, (0, 31),
                 'capture trace define - subclass', None),
-            ('S92', 0, False, [0, 255],
+            ('S92', 0, False, (0, 255),
                 'capture trace define - initiate', None),
-            ('S93', 0, True, [0, 255],
+            ('S93', 0, True, (0, 255),
                 'captured trace property - data size', None),
-            ('S94', 0, True, [0, 255],
+            ('S94', 0, True, (0, 255),
                 'captured trace property - signed indicator', None),
-            ('S95', 0, True, [0, 255],
+            ('S95', 0, True, (0, 255),
                 'captured trace property - mobile ID', None),
-            ('S96', 0, True, [0, 255],
+            ('S96', 0, True, (0, 255),
                 'captured trace property - timestamp', None),
-            ('S97', 0, True, [0, 255],
+            ('S97', 0, True, (0, 255),
                 'captured trace property - class', None),
-            ('S98', 0, True, [0, 255],
+            ('S98', 0, True, (0, 255),
                 'captured trace property - subclass', None),
-            ('S99', 0, True, [0, 255],
+            ('S99', 0, True, (0, 255),
                 'captured trace property - severity', None),
-            ('S100', 0, True, [0, 255], 'captured trace data 0', None),
-            ('S101', 0, True, [0, 255], 'captured trace data 1', None),
-            ('S102', 0, True, [0, 255], 'captured trace data 2', None),
-            ('S103', 0, True, [0, 255], 'captured trace data 3', None),
-            ('S104', 0, True, [0, 255], 'captured trace data 4', None),
-            ('S105', 0, True, [0, 255], 'captured trace data 5', None),
-            ('S106', 0, True, [0, 255], 'captured trace data 6', None),
-            ('S107', 0, True, [0, 255], 'captured trace data 7', None),
-            ('S108', 0, True, [0, 255], 'captured trace data 8', None),
-            ('S109', 0, True, [0, 255], 'captured trace data 9', None),
-            ('S110', 0, True, [0, 255], 'captured trace data 10', None),
-            ('S111', 0, True, [0, 255], 'captured trace data 11', None),
-            ('S112', 0, True, [0, 255], 'captured trace data 12', None),
-            ('S113', 0, True, [0, 255], 'captured trace data 13', None),
-            ('S114', 0, True, [0, 255], 'captured trace data 14', None),
-            ('S115', 0, True, [0, 255], 'captured trace data 15', None),
-            ('S116', 0, True, [0, 255], 'captured trace data 16', None),
-            ('S117', 0, True, [0, 255], 'captured trace data 17', None),
-            ('S118', 0, True, [0, 255], 'captured trace data 18', None),
-            ('S119', 0, True, [0, 255], 'captured trace data 19', None),
-            ('S120', 0, True, [0, 255], 'captured trace data 20', None),
-            ('S121', 0, True, [0, 255], 'captured trace data 21', None),
-            ('S122', 0, True, [0, 255], 'captured trace data 22', None),
-            ('S123', 0, True, [0, 255], 'captured trace data 23', None),
+            ('S100', 0, True, (0, 255), 'captured trace data 0', None),
+            ('S101', 0, True, (0, 255), 'captured trace data 1', None),
+            ('S102', 0, True, (0, 255), 'captured trace data 2', None),
+            ('S103', 0, True, (0, 255), 'captured trace data 3', None),
+            ('S104', 0, True, (0, 255), 'captured trace data 4', None),
+            ('S105', 0, True, (0, 255), 'captured trace data 5', None),
+            ('S106', 0, True, (0, 255), 'captured trace data 6', None),
+            ('S107', 0, True, (0, 255), 'captured trace data 7', None),
+            ('S108', 0, True, (0, 255), 'captured trace data 8', None),
+            ('S109', 0, True, (0, 255), 'captured trace data 9', None),
+            ('S110', 0, True, (0, 255), 'captured trace data 10', None),
+            ('S111', 0, True, (0, 255), 'captured trace data 11', None),
+            ('S112', 0, True, (0, 255), 'captured trace data 12', None),
+            ('S113', 0, True, (0, 255), 'captured trace data 13', None),
+            ('S114', 0, True, (0, 255), 'captured trace data 14', None),
+            ('S115', 0, True, (0, 255), 'captured trace data 15', None),
+            ('S116', 0, True, (0, 255), 'captured trace data 16', None),
+            ('S117', 0, True, (0, 255), 'captured trace data 17', None),
+            ('S118', 0, True, (0, 255), 'captured trace data 18', None),
+            ('S119', 0, True, (0, 255), 'captured trace data 19', None),
+            ('S120', 0, True, (0, 255), 'captured trace data 20', None),
+            ('S121', 0, True, (0, 255), 'captured trace data 21', None),
+            ('S122', 0, True, (0, 255), 'captured trace data 22', None),
+            ('S123', 0, True, (0, 255), 'captured trace data 23', None),
         ]
 
         class SRegister(object):
-            """
-            Twin of a modem S register
+            """Twin of a modem S register.
+            
+            Attributes:
+                name: The register name e.g. 'S50'
+                default: The register's default value
+                read_only: A flag for its behaviour
+                rng: The valid integer range of the value
+                description: Its intended purpose
+                note: Additional information
             """
 
-            def __init__(self, name, default, read_only, low, high, description, note=None):
-                """
-                Initializes an S register twin
-
-                :param name: (string) name of the S register e.g. 'S50'
-                :param default: (int) default value of the register
-                :param read_only: (Boolean)
-                :param low: (int) lowest value allowed
-                :param high: (int) highest value allowed
-                :param description: (string)
-                :param note: (string), defaults to None
-                """
+            def __init__(self,
+                         name: str,
+                         default: int,
+                         read_only: bool,
+                         rng: tuple,
+                         description: str,
+                         note: str = None
+                ):
                 self.name = name
                 self.default = default
                 self.value = default
                 self.read_only = read_only
-                self.rng = range(low, high+1)
+                self.rng = range(rng[0], rng[1] + 1)  #: map range behaviour
                 self.description = description
                 self.note = note
 
             def get(self):
+                """Return the current value."""
                 return self.value
 
-            def set(self, value):
+            def set(self, value: int):
+                """Set the current value."""
                 error = None
                 if not self.read_only:
                     if value in self.rng:
@@ -390,80 +395,82 @@ class Modem(object):
                         self.name)
                 return error if error is not None else value
 
-            def read(self):
-                pass
-
-        def __init__(self, parent):
+        def __init__(self, parent: object):
             self.parent = parent
             self.log = parent.log
             self.log.debug("Initializing S-Registers")
             self.s_registers = []
             for tup in self.register_definitions:
-                reg = self.SRegister(name=tup[0], default=tup[1], read_only=tup[2], low=tup[3][0], high=tup[3][1],
-                                     description=tup[4], note=tup[5])
+                reg = self.SRegister(
+                                     name=tup[0],
+                                     default=tup[1],
+                                     read_only=tup[2],
+                                     rng=tup[3],
+                                     description=tup[4],
+                                     note=tup[5]
+                                     )
                 self.s_registers.append(reg)
 
-        def register(self, name):
-            """
-            Returns the register object based on its name
+        def register(self, name: str) -> object:
+            """Returns the register object based on its name
 
-            :param name: (string) name of the register e.g. 'S50'
-            :return: the register object
-            :rtype: (SRegister)
+            Args:
+                name: The register name e.g. 'S50'
+            
+            Returns:
+                the Sregister object
+            
             """
             for reg in self.s_registers:
                 if reg.name == name:
                     return reg
 
     class _AtStatistics(object):
-        def __init__(self):
-            self.connect_attempts = 0
-            self.total_connect_attempts = 0
-            self.timeouts = 0
-            self.total_timeouts = 0
-            self.response_times_ms = {
-                'gnss': 0,
-                'non_gnss': 0,
-            }
-            self.crc_error_count = 0
-            self.timeout_count = 0
+        """Tracks key statistics for AT commands.
         
-        def update(self, command, submit_time):
-            latency = int((time.time() - submit_time) * 1000)
-            if '%GPS' in command:
-                category = 'gnss'
-            else:
-                category = 'non_gnss'
-            prior_latency = self.response_times_ms[category]
-            if prior_latency == 0:
-                average_latency = latency
-            else:
-                average_latency = int((prior_latency + latency) / 2)
-            self.response_times_ms[category] = average_latency
+        Attributes:
+            last_response_time: (int) Timestamp of last AT response.
+            avg_response_time: (int) Average of all AT responses.
+            total_timeouts: (int) Count of AT timeouts.
+        """
+        def __init__(self):
+            # 'lastResTime': 0,
+            # 'avgResTime': 0,
+            self.last_response_time = 0
+            self.avg_response_time = 0
+            self.total_timeouts = 0
 
     class _PendingAtCommand(object):
+        """Holds metadata and callback for the pending AT command.
+
+        Attributes:
+            command: (string) The AT command sent, not including checksum
+            callback: (Callable) A callback function that will receive 
+                valid_response (bool), responses (list)
+            submit_time: (int)
+            send_time: (int)
+            response_time: (int)
+            response_raw: (str)
+            responses: (list)
+            response_processed_time: (int)
+            response_crc: (str)
+            echo_received: (bool)
+            result: 
+            result_code: 
+            error: (bool)
+            crc_ok: (bool)
+            timeout: (int)
+            timed_out: (bool)
+            retries: (int)
+
         """
-        A private object to track the sending of AT commands and route responses to a callback
 
-        :param at_command: (string) command being sent, not including checksum
-        :param callback: (function) a callback function that will receive:
-
-           * valid_response (boolean)
-           * responses (list)
-
-        :param timeout: (integer) seconds to wait for response
-        :param retries: (integer) number of retries if unsuccessful
-
-        """
-
-        def __init__(self, at_command, callback, timeout=10, retries=0):
-            """
-
-            :param at_command: (string) command being sent, not including checksum
-            :param callback: (function) a callback function that will receive
-            :param timeout: (integer) seconds to wait for response
-            :param retries: (integer) number of retries if unsuccessful
-            """
+        def __init__(self,
+                     at_command: str,
+                     callback: Callable,
+                     timeout: int = 10,
+                     retries: int = 0
+                     ):
             # import time   # TODO: why?
             self.command = at_command
             self.submit_time = time.time()
@@ -484,21 +491,22 @@ class Modem(object):
             self.retries = retries
 
     class _PendingMoMessage(object):
-        """
+        """Holds metadata and callback for pending Mobile-Originated message.
+
         A private class for managing a queue of Mobile-Originated messages submitted via AT command
         Ensures a unique name is assigned based on timestamp submitted
 
-        :param message: (MobileOriginatedMessage) to be queued
-        :param callback: (function) that will receive notification when the message completes/fails
+        Attributes:
+            message: (MobileOriginatedMessage) to be queued
+            q_name: (str) The name of the message used in the modem queue
+            submit_time: (int) Timestamp of submission
+            complete_time: (int) Estimated (due to polling) timestamp of completion
+            failed: (bool)
+            callback: (Callable) that will receive notification when the message completes/fails
 
         """
 
-        def __init__(self, message, callback=None):
-            """
-
-            :param message:
-            :param callback:
-            """
+        def __init__(self, message: object, callback: Callable = None):
             self.message = message
             self.q_name = str(int(time.time()))[1:9]
             self.submit_time = time.time()
@@ -507,23 +515,21 @@ class Modem(object):
             self.callback = callback
 
     class _PendingMtMessage(object):
+        """Holds metadata and callback for pending Mobile-Terminated message.
+
+        Attributes:
+            message: (MobileTerminatedMessage) The message.
+            q_name: (string) The name assigned by the modem.
+            sin: (int) Service Identifier Number first byte of payload
+            size: (int) Bytes in the message.
+            retreived_time: (int)
+            failed: (bool)
+            state:
+            callback: (Callable)
+
         """
 
-        :param message: (MobileTerminatedMessage) object
-        :param q_name: (string) the name assigned by the modem
-        :param sin: (int) Service Identifier Number
-        :param size: (int) bytes in the message
-
-        """
-
-        def __init__(self, message, q_name, sin, size):
-            """
-
-            :param message:
-            :param q_name:
-            :param sin:
-            :param size:
-            """
+        def __init__(self, message: object, q_name: str, sin: int, size: int):
             self.message = message
             self.q_name = q_name
             self.sin = sin
@@ -535,58 +541,60 @@ class Modem(object):
             self.callback = None
 
     class _PendingLocation(object):
+        """Holds metadata and callback for pending location information.
+        
+        Attributes:
+            name: (str) The name of the Location object.
+            callback: (Callable) The callback function.
+            location: (nmea.Location)
+
+        """
         def __init__(self, name, callback):
             self.name = name
             self.callback = callback
             self.location = nmea.Location()
 
     def __init__(self,
-                 serial_name: str = '/dev/ttyUSB0',
-                 use_crc: bool = False,
-                 auto_monitor: bool = True,
-                 com_connect_interval: int = 6,
-                 com_monitor_interval: int = 0,
-                 sat_status_interval: int = 15,
-                 sat_events_interval: int = 0,
-                 sat_mt_message_interval: int = 15,
-                 sat_mo_message_interval: int = 5,
-                 log: object = None,
-                 debug: bool = False,
-                 **kwargs):
-        """Initializes default attributes.
+                 port='/dev/ttyUSB0',
+                 use_crc=False, 
+                 sat_status_interval=0,
+                 sat_events_interval=0,
+                 sat_mt_message_interval=15,
+                 sat_mo_message_interval=5,
+                 log=None,
+                 logfile=False,
+                 debug=False,
+                 **kwargs
+                 ):
+        """Initializes attributes and pointers used by Modem class methods.
 
         Args:
-            serial_name: The name of the serial port to use.
-            use_crc: Boolean flag set true for long serial cable.
-            log: An optional logger, preferably writing to a wrapping file.
-            debug: Boolean flag for verbose trace.
-            com_connect_interval: The number of seconds between attempts
-                to connect to the modem on the serial port.
-            sat_status_interval: The number of seconds between queries
-                for the control state and SNR.
-            sat_mt_message_interval: The number of seconds between queries
-                of the Forward/Mobile-Terminated message queue.
-            sat_mo_message_interval: The number of seconds between queries
-                of the Return/Mobile-Originated message queue when any MO
-                messages are pending.
-            sat_events_interval: The number of seconds between queries of
-                the *events* S-register (see Modem Events)
-            kwargs: Optional keyword arguments for example fine-tune the
-                serial port settings.
+            serial_name: (string) the name of the serial port to use
+            use_crc: (bool) to use CRC for long cable length
+            auto_monitor: (bool) enables automatic monitoring of satellite events
+            log: (logging.Logger) an optional logger, preferably writing to a wrapping file
+            logfile: (Boolean) save log to file
+            debug: (Boolean) option for verbose trace
+
         """
-        self._start_time = str(datetime.datetime.utcnow())
+        self.start_time = str(datetime.datetime.utcnow())
         if is_logger(log):
             self.log = log
         else:
             log_name = get_caller_name(depth=1)
-            self.log = get_wrapping_logger(name=log_name, debug=debug)
-        self._debug = debug
+            log_file_name = (log_name + '.log') if logfile else None
+            self.log = get_wrapping_logger(
+                name=log_name, filename=log_file_name, debug=debug)
+        self.debug = debug
         # serial and connectivity configuration and statistics
-        self.serial_port = self._init_serial(serial_name, **kwargs)
+        self.serial_port = self._init_serial(port, **kwargs)
+        self._reader_thread = ByteReaderThread(self.serial_port, IdpModem)
+        self._reader_thread.start()
+        self.transport, self.modem = self._reader_thread.connect()
+        del self.transport  #: Not used
         self.is_connected = False
         self.connects = 0
         self.disconnects = 0
-        self.at_cmd_stats = self._AtStatistics()
         self.at_connect_attempts = 0
         self.total_at_connect_attempts = 0
         self.at_timeouts = 0
@@ -599,7 +607,7 @@ class Modem(object):
         self.is_initialized = False
         self.s_registers = self._SRegisters(parent=self)
         self.at_config = self._AtConfiguration()
-        self.crc = use_crc
+        self.use_crc = use_crc
         self.crc_errors = 0
         self.sat_status = self._SatStatus()
         self.hw_event_notifications = self._init_hw_event_notifications()
@@ -607,7 +615,7 @@ class Modem(object):
         self.power_mode = self.power_modes['Mobile Powered']
         self.asleep = False
         self.antenna_cut = False
-        self._low_snr = False
+        self.stats_start_time = 0
         self.system_stats = self._init_system_stats()
         self.gnss_mode = self.gnss_modes['GPS']
         self.gnss_continuous = 0
@@ -635,80 +643,44 @@ class Modem(object):
         # Satellite Status/Quality --------------------------
         self.sat_status_pending_callback = None
         # --- Serial processing threads ---------------------
-        # TODO (Geoff) REM self._is_autonomous() = auto_monitor
         self._terminate = False
-        self.daemon_threads = []
-        self.thread_com_listener = threading.Thread(
-            name='com_listener', target=self._listen_serial)
-        self.thread_com_listener.daemon = True
-        self.daemon_threads.append(self.thread_com_listener.name)
-        self.thread_com_at_queue = threading.Thread(
-            name='at_queue', target=self._process_pending_at_command)
-        self.thread_com_at_queue.daemon = True
-        self.daemon_threads.append(self.thread_com_listener.name)
         # --- Timer threads for communication establishment and monitoring
-        # self.thread_lock = threading.RLock()   # TODO: deprecate
         self.timer_threads = []
-        self.com_connect_interval = com_connect_interval
-        self.thread_com_connect = RepeatingTimer(seconds=self.com_connect_interval,
-                                                 name='com_connect',
-                                                 callback=self._com_connect,
-                                                 defer=False)
-        self.timer_threads.append(self.thread_com_connect.name)
         # --- Timer threads for self-monitoring
         self.sat_status_interval = sat_status_interval
         self.sat_mt_message_interval = sat_mt_message_interval
         self.sat_events_interval = sat_events_interval
         self.sat_mo_message_interval = sat_mo_message_interval
         # TODO: Low Power override of the above timer intervals
-        if self._is_autonomous():
-            self.thread_sat_status = RepeatingTimer(seconds=self.sat_status_interval,
-                                                    name='sat_status_monitor', 
-                                                    callback=self._check_sat_status,
-                                                    defer=False)
-            self.thread_sat_status.start()
-            self.timer_threads.append(self.thread_sat_status.name)
-            self.thread_mt_monitor = RepeatingTimer(seconds=self.sat_mt_message_interval,
-                                                    name='sat_mt_message_monitor',
-                                                    callback=self.mt_message_queue)
-            self.thread_mt_monitor.start()
-            self.timer_threads.append(self.thread_mt_monitor.name)
-            self.thread_mo_monitor = RepeatingTimer(seconds=self.sat_mo_message_interval,
-                                                    name='sat_mo_message_monitor',
-                                                    callback=self.mo_message_status)
-            self.thread_mo_monitor.start()
-            self.timer_threads.append(self.thread_mo_monitor.name)
-            self.thread_event_monitor = RepeatingTimer(seconds=self.sat_events_interval,
-                                                       name='sat_events_monitor',
-                                                       callback=self.check_events)
-            self.thread_event_monitor.start()
-            self.timer_threads.append(self.thread_event_monitor.name)
-            self.thread_tracking = RepeatingTimer(seconds=self.tracking_interval,
-                                                  name='tracking',
-                                                  callback=self._tracking,
-                                                  defer=False)
-            self.thread_tracking.start()
-            self.timer_threads.append(self.thread_tracking.name)
-        self.thread_com_listener.start()
-        self.thread_com_at_queue.start()
-        self.thread_com_connect.start_timer()
-
-    def _is_autonomous(self):
-        if (self.sat_status_interval > 0
-            or self.sat_mt_message_interval > 0
-            or self.sat_mo_message_interval > 0
-            or self.sat_events_interval > 0
-            or self.tracking_interval > 0):
-            #: Autonomous
-            return True
-        return False
+        self.thread_sat_status = RepeatingTimer(seconds=self.sat_status_interval,
+                                                name='sat_status_monitor', 
+                                                callback=self._check_sat_status,
+                                                defer=False)
+        self.timer_threads.append(self.thread_sat_status.name)
+        self.thread_mt_monitor = RepeatingTimer(seconds=self.sat_mt_message_interval,
+                                                name='sat_mt_message_monitor',
+                                                callback=self.mt_message_queue)
+        self.timer_threads.append(self.thread_mt_monitor.name)
+        self.thread_mo_monitor = RepeatingTimer(seconds=self.sat_mo_message_interval,
+                                                name='sat_mo_message_monitor',
+                                                callback=self.mo_message_status)
+        self.timer_threads.append(self.thread_mo_monitor.name)
+        self.thread_event_monitor = RepeatingTimer(seconds=self.sat_events_interval,
+                                                    name='sat_events_monitor',
+                                                    callback=self.check_events)
+        self.timer_threads.append(self.thread_event_monitor.name)
+        self.thread_tracking = RepeatingTimer(seconds=self.tracking_interval,
+                                                name='tracking',
+                                                callback=self._tracking,
+                                                defer=False)
+        self.timer_threads.append(self.thread_tracking.name)
 
     def terminate(self):
         self.log.debug("Terminated by external call {}".format(
             sys._getframe(1).f_code.co_name))
         end_time = str(datetime.datetime.utcnow())
         self._terminate = True
-        if self._is_autonomous():
+        if self.autonomous:
             for t in threading.enumerate():
                 if t.name in self.timer_threads:
                     self.log.debug("Terminating thread {}".format(t.name))
@@ -723,7 +695,7 @@ class Modem(object):
         except serial.SerialException as e:
             self._handle_error(e)
         self.log.info(
-            "*** Statistics from {} to {} ***".format(self._start_time, end_time))
+            "*** Statistics from {} to {} ***".format(self.start_time, end_time))
         self.log_statistics()
 
     def _handle_error(self, error_str):
@@ -829,15 +801,6 @@ class Modem(object):
         return gnss_stats
 
     @staticmethod
-    def _init_at_stats():
-        # TODO: track response times per AT command type
-        at_cmd_stats = {
-            'lastResTime': 0,
-            'avgResTime': 0,
-        }
-        return at_cmd_stats
-
-    @staticmethod
     def _init_gpio():
         gpio = {
             "event_notification": None,
@@ -903,245 +866,27 @@ class Modem(object):
             sys._getframe().f_code.co_name))
 
     # ------------------------ Connection Management ------------------------------------------------ #
-    def _com_connect(self):
-        """
-        Called on a repeating timer on power up or after connection is lost,
-        attempts to establish and restore saved config using ATZ.
-        """
-        if not self.is_connected and self.at_command_active is None:
-            self.at_connect_attempts += 1
-            self.log.debug('Attempt ({}) to connect'.format(self.at_connect_attempts))
-            self.total_at_connect_attempts += 1
-            timeout = int(self.com_connect_interval / 2)
-            self.submit_at_command(
-                at_command='ATZ', callback=self._cb_com_connect, timeout=timeout)
-
-    def _cb_com_connect(self, valid_response, responses, request):
-        """
-        Callback from attempt to establish connection. Sets modem connected state and calls on_connect routine.
-
-        :param valid_response: (boolean) successful command response
-        :param responses: (list) string responses to the ATZ command
-        """
-        # TODO: validate that timeouts and error handling is managed by other functions
-        if valid_response:
-            self.is_connected = True
-            self.connects += 1
-            self.log.debug("Modem connected after {} attempts".format(
-                self.at_connect_attempts))
-            self.at_connect_attempts = 0
-            self._on_connect()
-        else:
-            self.log.debug("Modem connect attempt {} failed".format(
-                self.at_connect_attempts))
-
     def _on_connect(self):
         """
         Stops trying to establish communications, starts monitoring for communications loss and calls back connect event
         """
-        self.thread_com_connect.stop_timer()
         if not self._terminate:
             self._init_modem()
         if self.event_callbacks['connect'] is not None:
             self.event_callbacks['connect']()
-
-    def _com_monitor(self, disconnect_timeouts=3):
-        """
-        Periodically called by a timer thread to check if too many timeouts have occurred indicating communication lost.
-        Calls on_disconnect routine.
-
-        :param disconnect_timeouts: (integer) number of time-outs before disconnect is declared
-        """
-        self.log.debug("Monitoring communication: {} timeouts".format(self.at_timeouts))
-        if self.at_timeouts >= disconnect_timeouts and self.is_connected:
-            self.is_connected = False
-            self.disconnects += 1
-            self.log.warning(
-                "AT responses timed out {} times - attempting to reconnect".format(self.at_timeouts))
-            self._on_disconnect()
 
     def _on_disconnect(self):
         """
         Stops monitoring modem operations and communications, and starts trying to re-connect.
         Calls back the disconnect event.
         """
-        if self._is_autonomous():
-            # TODO: optimize this to allow for new threads
-            self.thread_sat_status.stop_timer()
-            self.thread_mt_monitor.stop_timer()
-            self.thread_event_monitor.stop_timer()
-            self.thread_tracking.stop_timer()
-            self.thread_com_connect.start_timer()
+        self.thread_sat_status.stop_timer()
+        self.thread_mt_monitor.stop_timer()
+        self.thread_event_monitor.stop_timer()
+        self.thread_tracking.stop_timer()
         self.is_initialized = False
         if self.event_callbacks['disconnect'] is not None:
             self.event_callbacks['disconnect']()
-
-    # ------------------------ SERIAL PORT DATA PROCESSING ------------------------------------------ #
-    def _listen_serial(self):
-        self.log.debug("Listening on serial")
-        CHAR_WAIT = 0.05
-        ser = self.serial_port
-        read_str = ""
-        parsing_unsolicited = False
-        parsing_at_response = False
-        at_tick = 0
-        while ser.isOpen() and not self._terminate:
-            c = None
-            if ser.inWaiting() > 0:
-                c = ser.read(1).decode()
-            else:
-                if not parsing_at_response and self.at_command_active is not None:
-                    self.log.debug("Awaiting response to {}".format(
-                        self.at_command_active.command))
-                    parsing_at_response = True
-                if parsing_at_response:
-                    at_cmd = self.at_command_active
-                    if time.time() - at_cmd.send_time > at_cmd.timeout:
-                        parsing_at_response = False
-                        at_tick = 0
-                        self._on_at_timeout(at_cmd)
-                    else:
-                        if time.time() - at_cmd.send_time >= at_tick + 1:
-                            at_tick += 1
-                            self.log.debug("Waiting for {} response - tick={}"
-                                            .format(at_cmd.command, at_tick))
-                time.sleep(CHAR_WAIT)
-            if c is not None:
-                if ((self.at_command_active is not None 
-                    or parsing_at_response)
-                    and not parsing_unsolicited):
-                    if not parsing_at_response:
-                        self.log.debug("Processing response for {}"
-                            .format(self.at_command_active.command))
-                        parsing_at_response = True
-                        self.at_command_active.response_time = time.time()
-                    read_str, complete = self._parse_at_response(read_str, c)
-                    if complete:
-                        parsing_at_response = False
-                        at_tick = 0
-                        read_str = ""
-                        self._on_at_response(self.at_command_active)
-                else:
-                    if not parsing_unsolicited:
-                        self.log.debug('AT command queue depth {}'.format(
-                                        len(self.at_commands_pending)))
-                        if self.at_command_active is not None:
-                            self.log.debug('Active command: {}'.format(
-                                            self.at_command_active.command))
-                        self.log.warning(
-                            'No AT command pending - parsing unsolicited')
-                        parsing_unsolicited = True
-                    read_str, complete = self._parse_unsolicited(read_str, c)
-                    if complete:
-                        self._on_unsolicited_serial(read_str)
-                        parsing_unsolicited = False
-                        read_str = ""
-
-    def _parse_at_response(self, read_str, c):
-        """
-        Parses the next character read from the serial port, as an AT command response.
-
-        :param read_str: (string) the string read thus far
-        :param c: the next character read from the serial port
-        :returns:
-
-           * read_str: (string) read thus far, updated with c
-           * response_complete: (Boolean) indicates if the response is complete for processing
-        """
-        ser = self.serial_port
-        read_str += c
-        self.at_command_active.response_raw += c
-        response_complete = False
-        if c == '\r':
-            # cases <echo><cr>
-            # or <cr>...
-            # or <numeric code><cr> (verbose off, no crc)
-            if self.at_command_active.command in read_str:
-                # case <echo><cr>
-                if self.at_command_active.command.upper() == 'ATE0':
-                    self.at_config.echo = False
-                    self.log.debug(
-                        "ATE0 (echo disable) requested - takes effect for next AT command")
-                else:
-                    self.at_config.echo = True
-                if not self.at_command_active.echo_received:
-                    self.log.debug(
-                        "Echo {} received - removing from raw response".format(read_str.strip()))
-                    self.at_command_active.echo_received = True
-                else:
-                    self.log.warning("Echo {} received more than once - removing from raw message"
-                                     .format(read_str.strip()))
-                self.at_command_active.response_raw = self.at_command_active.response_raw.replace(
-                    read_str, '')
-                # <echo><cr> will be not be followed by <lf>
-                # can be followed by <text><cr><lf>
-                # or <cr><lf><text><cr><lf>
-                # or <numeric code><cr>
-                # or <cr><lf><verbose code><cr><lf>
-                read_str = ""  # clear for next line of parsing
-            elif ser.inWaiting() == 0 and read_str.strip() != '':
-                if read_str.strip() != '0' and self.at_command_active.command != 'ATV0' and self.at_config.verbose:
-                    # case <cr><lf><text><cr>...<lf> e.g. delay between NMEA sentences
-                    # or Quiet mode? --unsupported, suppresses result codes
-                    self.log.debug(
-                        "Assuming delay between <cr> and <lf> of Verbose response...waiting")
-                else:
-                    # case <numeric code><cr> since all other alternatives should have <lf> or other pending
-                    if not self.at_config.verbose:
-                        self.log.debug("Assuming receipt of <numeric code = {}><cr> with Verbose undetected"
-                                       .format(read_str.strip()))
-                        self.at_config.verbose = False
-                    self.at_command_active.result_code = read_str.strip()
-                    response_complete = True
-                    # else keep parsing next character
-        elif c == '\n':
-            # case <cr><lf>
-            # or <text><cr><lf>
-            # or <cr><lf><text><cr><lf>
-            # or <cr><lf><verbose code><cr><lf>
-            # or <*crc><cr><lf>
-            if 'OK' in read_str or 'ERROR' in read_str:
-                # <cr><lf><verbose code><cr><lf>
-                self.at_command_active.result = read_str.strip()
-                if not self.at_config.crc or ser.inWaiting() == 0:  # no checksum pending...response complete
-                    response_complete = True
-                else:
-                    read_str = ""  # continue parsing next line (checksum)
-            elif '*' in read_str and len(read_str.strip()) == 5:
-                # <*crc><cr><lf>
-                self.at_config.crc = True
-                self.at_command_active.response_crc = read_str.replace(
-                    '*', '').strip()
-                self.log.debug(
-                    "Found CRC {} - removing from raw response".format(read_str.strip()))
-                self.at_command_active.response_raw = self.at_command_active.response_raw.replace(
-                    read_str, '')
-                response_complete = True
-            else:
-                # case <cr><lf>
-                # or <text><cr><lf>
-                # or <cr><lf><text><cr><lf>
-                if read_str.strip() == '':
-                    # <cr><lf> empty line...not done parsing yet
-                    self.at_config.verbose = True
-                else:
-                    if read_str.strip() != '':  # don't add empty lines
-                        self.at_command_active.responses.append(
-                            read_str.strip())  # don't include \r\n in callback
-                    read_str = ""  # clear for next line parsing
-        return read_str, response_complete
-
-    def _parse_unsolicited(self, read_str, c):
-        read_str += c
-        unsolicited_complete = False
-        if c == '\r':
-            self.log.info("Received unsolicited serial data: {}"
-                          .format(read_str.replace('\n', '<lf>').replace('\r', '<cr>')))
-            if self.event_callbacks['unsolicited_serial'] is not None:
-                self.event_callbacks['unsolicited_serial'](read_str)
-            read_str = ""
-            unsolicited_complete = True
-        return read_str, unsolicited_complete
 
     def _on_unsolicited_serial(self, read_str):
         if self.event_callbacks['unsolicited_serial'] is not None:
@@ -1202,8 +947,6 @@ class Modem(object):
                     if at_cmd is not None:
                         self.log.debug("{} Pending commands - processing: {}"
                                        .format(len(self.at_commands_pending), at_cmd.command))
-                        at_cmd.send_time = time.time()   #: Should be submit_time
-                        self.at_command_active = at_cmd
                         if self.at_config.crc:
                             to_send = at_cmd.command + \
                                 ('*'+self.get_crc(at_cmd.command)
@@ -1216,11 +959,13 @@ class Modem(object):
                         elif "AT%CRC=0" in at_cmd.command.upper():
                             self.at_config.crc = False
                             self.log.debug("CRC disabled for next command")
+                        at_cmd.send_time = time.time()
                         self.log.debug("Sending {} at {} with timeout {} seconds"
                                        .format(to_send,
                                        round(at_cmd.send_time, 3),
                                        at_cmd.timeout))
                         self.serial_port.write((to_send + '\r').encode())
+                        self.at_command_active = at_cmd
                 # else:
                 #     self.log.debug("Processing AT command: {}".format(self.at_command_active.command))
 
@@ -1257,9 +1002,8 @@ class Modem(object):
         if response.result == 'ERROR' or response.result_code == '4':
             response.error = True
             self.at_command_parked = response
-            self.log.warning("Error detected on response to {},"
-                             " checking last error code".format(
-                                self.at_command_parked.command))
+            self.log.warning(
+                "Error detected on response, checking last error code")
             # TODO: fix problem with queueing second response before first response is closed
             self.submit_at_command(
                 at_command='ATS80?', callback=self._cb_get_result_code, jump_queue=True)
@@ -1298,7 +1042,6 @@ class Modem(object):
         if self.serial_port.out_waiting > 0:
             self.log.debug("Found data in serial output buffer, resetting")
             self.serial_port.reset_output_buffer()
-        # if self.serial_port.inWaiting(): clear input buffer
         response.timed_out = True
         self.at_timeouts += 1
         self.at_timeouts_total += 1
@@ -1307,12 +1050,10 @@ class Modem(object):
 
     def _is_at_pending(self, response):
         is_pending = False
-        if len(self.at_commands_pending) > 0:
-            pending = self.at_commands_pending[0]
-            self.log.debug('Expected pending {} vs response {}'.format(
-                pending.command, response.command))
-        else:
-            pending = None
+        pending = self.at_commands_pending[0] if len(
+            self.at_commands_pending) > 0 else None
+        self.log.debug('Expected pending {} vs response {}'.format(
+            pending.command, response.command))
         if pending is not None and response.command == pending.command and response.submit_time == pending.submit_time:
             is_pending = True
         return is_pending
@@ -1325,10 +1066,11 @@ class Modem(object):
         return is_active
 
     def _is_at_parked(self, response):
+        is_parked = False
         parked = self.at_command_parked if self.at_command_parked is not None else None
         if parked is not None and response.command == parked.command and response.submit_time == parked.submit_time:
-            return True
-        return False
+            is_parked = True
+        return is_parked
 
     def _retry_command(self, response):
         if response.retries > 0:
@@ -1374,7 +1116,6 @@ class Modem(object):
                     "Closing parked command {}".format(response.command))
                 complete = True
                 self.at_command_parked = None
-                # TODO (Geoff) don't want to retry in all cases
                 self._retry_command(response)
             else:
                 self.log.debug(
@@ -1382,15 +1123,14 @@ class Modem(object):
         elif self._is_at_active(response):
             if response.timed_out or not response.crc_ok:
                 self._retry_command(response)
-            ''' TODO (Geoff) this can't happen due to above condition
             if self._is_at_parked(response):
                 self.log.debug(
                     "Awaiting error code for {}".format(response.command))
-            else:'''
-            complete = True
+            else:
+                complete = True
         else:
             self.log.warning(
-                "Did not find {} active or parked".format(response.command))
+                "Did not find {} in at_commands_pending".format(response.command))
         if len(self.at_commands_pending) > 0:
             self.log.debug("Next pending command: {}".format(
                 self.at_commands_pending[0].command))
@@ -1428,7 +1168,7 @@ class Modem(object):
         """
         if response.response_time is None:
             # TODO: shouldn't need this workaround
-            self.log.debug('(fixme) Missed received time for {}'
+            self.log.warning('Missed received time for {}'
                 .format(response.command))
             response.response_time = response.response_processed_time
         at_response_time_ms = int((
@@ -1467,21 +1207,26 @@ class Modem(object):
     def _init_modem(self, step=1):
         # TODO: optimize to a single command query/response
         self.log.debug("Initializing modem...step {}".format(step))
+        try:
+            self.modem.config_restore_nvm()
+        except AtCrcConfigError:
+            self.modem.crc = True
+            self.modem.config_restore_nvm()
         if step == 1:   # Restore default configuration
             # TODO: consider using Factory defaults (AT&F) instead of NVM for first initialization?
             self.submit_at_command(
                 at_command='AT&V', callback=self._cb_get_config, timeout=3)
         # enable CRC if explicitly during object creation (used for long serial cable)
         elif step == 2:
-            if self.crc and not self.at_config.crc:
+            if self.use_crc and not self.at_config.crc:
                 self.submit_at_command(
                     at_command="AT%CRC=1", callback=self._cb_configure_crc, timeout=3)
-            elif not self.crc and self.at_config.crc:
+            elif not self.use_crc and self.at_config.crc:
                 self.submit_at_command(
                     at_command='AT%CRC=0', callback=self._cb_configure_crc, timeout=3)
             else:
                 self.log.info("CRC already {} in configuration".format(
-                    "enabled" if self.crc else "disabled"))
+                    "enabled" if self.use_crc else "disabled"))
                 self._init_modem(step=3)
         # enable Verbose since response codes are only OK (0) or ERROR (4)
         elif step == 3:
@@ -1653,7 +1398,7 @@ class Modem(object):
             self.log.error("Failed to write NVM - {}".format(responses))
 
     def _on_initialized(self):
-        if self._is_autonomous():
+        if self.autonomous:
             self.thread_sat_status.start_timer()
             self.thread_mt_monitor.start_timer()
             self.thread_mo_monitor.start_timer()
@@ -1679,7 +1424,6 @@ class Modem(object):
     # TODO: sort out Low SNR Threshold etc
     def _cb_check_sat_status(self, valid_response, responses, request):
         LOW_SNR_THRESHOLD = 38.0
-        # TODO (Geoff) valid_response needs to be checked for format
         if valid_response:
             self.log.debug("Current satellite status: {}".format(
                 self.ctrl_states[int(responses[0])]))
@@ -1768,13 +1512,9 @@ class Modem(object):
                 self._on_sat_status_change(sat_status_change)
             # second response S116 = C/No
             c_n0 = int(responses[1]) / 100.0
-            if c_n0 <= LOW_SNR_THRESHOLD and not self._low_snr:
+            if c_n0 <= LOW_SNR_THRESHOLD:
                 # TODO: generate event
                 self.log.warning("Low SNR {} dB detected".format(c_n0))
-                self._low_snr = True
-            elif c_n0 > LOW_SNR_THRESHOLD and self._low_snr:
-                self.log.info('Adequate SNR {} dB recovered'.format(c_n0))
-                self._low_snr = False
             self.log.debug("SNR: {} dB".format(c_n0))
             if self.system_stats['avgCN0'] == 0:
                 self.system_stats['avgCN0'] = c_n0
@@ -1881,7 +1621,7 @@ class Modem(object):
     def _cb_send_message(self, valid_response, responses, request):
         if valid_response:
             msg_name = request.split('=', 1)[1].split(',')[0].replace('"', '')
-            self.log.info(
+            self.log.debug(
                 "Mobile-Originated message {} submitted".format(request))
         else:
             msg_name = request.split('\"')[1]
@@ -1968,8 +1708,6 @@ class Modem(object):
                                     if state == TX_FAILED:
                                         p_msg.failed = True
                                         self.mo_msg_failed += 1
-                                    else:
-                                        self.log.info("Message {} completed".format(p_msg.q_name))
                                     self.log.debug(
                                         "Removing {} from pending message queue".format(p_msg.q_name))
                                     self.mo_msg_queue.remove(p_msg)
@@ -2031,7 +1769,7 @@ class Modem(object):
                         self.log.debug(
                             "Message {} not complete ({}/{} bytes)".format(name, bytes_read, size))
                 else:
-                    self.log.debug("No pending MT messages")
+                    self.log.warning("Could not find pending message in {}".format(res))
             if len(new_messages) > 0:
                 if self.event_callbacks['new_mt_message'] is not None:
                     self.log.debug("Calling back to {}"
@@ -2112,7 +1850,7 @@ class Modem(object):
                 payload = binascii.b2a_base64(b'{}'.format(data))
             mt_msg = MobileTerminatedMessage(payload=payload, name=q_name, msg_sin=sin, msg_min=msg_min,
                                              msg_num=msg_num, priority=PRIORITY_MT, data_format=data_format, size=size,
-                                             debug=self._debug)
+                                             debug=self.debug)
             for m in self.mt_msg_queue:
                 if m.q_name == q_name:
                     self.mt_msg_queue.remove(m)
@@ -2466,8 +2204,6 @@ class Modem(object):
                 self.log.info(
                     "Tracking interval set to {} seconds".format(interval))
                 self.thread_tracking.change_interval(interval)
-        else:
-            self.log.error('Invalid tracking interval {}'.format(interval))
 
     def _tracking(self):
         self.get_location(callback=self._cb_tracking,
@@ -2757,7 +2493,7 @@ class Message(object):
             raise ValueError("Payload cannot be None if SIN is not specified")
         self.raw_payload = bytearray(0)
         if self.sin is not None and payload is not None:
-            if isinstance(payload, str):  #: TODO broken on Python2 (unicode not str)
+            if isinstance(payload, str):
                 if data_format == FORMAT_TEXT:
                     if msg_sin is not None and msg_min is not None:
                         payload = bytearray(payload.encode())
@@ -2782,9 +2518,8 @@ class Message(object):
             elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255+1)) for i in payload):
                 payload = bytearray(payload)
             elif not isinstance(payload, bytearray):
-                raise ValueError("Invalid payload {} ({}),".format(payload, type(payload))
-                                + " must be text or hex string,"
-                                + " integer list or bytearray")
+                raise ValueError(
+                    "Invalid payload type, must be text or hex string, integer list or bytearray")
             self.raw_payload = bytearray(payload)
             if msg_min is not None:
                 self.raw_payload = bytearray([self.min]) + self.raw_payload
@@ -2919,14 +2654,12 @@ class MobileTerminatedMessage(Message):
 
 
 if __name__ == "__main__":
-    SELFTEST_PORT = '/dev/ttyUSB0'
-    modem = None
     try:
         modem = Modem(serial_name=SELFTEST_PORT, debug=True)
         while (not modem.is_initialized or 
                 modem.sat_status.ctrl_state == 'Stopped'):
             time.sleep(1)
-        # modem.tracking_setup(interval=30)
+        modem.tracking_setup(interval=30)
         textformat='Hello World'
         b64format='SGVsbG8gV29ybGQ='
         hexformat='48656c6c6f20576f726c64'
@@ -2935,13 +2668,9 @@ if __name__ == "__main__":
                                             data_format=FORMAT_B64, 
                                             msg_sin=255, msg_min=255)
         modem.mo_message_send(test_msg)
-        while len(modem.mo_msg_queue) > 0:
-            print('Awaiting {} messages in queue'.format(len(modem.mo_msg_queue)))
-            time.sleep(5)
-        # time.sleep(60)
+        time.sleep(60)
         print('Test time completed')
     except Exception as e:
         print('*** EXCEPTION: {}'.format(e))
     finally:
-        if modem is not None:
-            modem.terminate()
+        modem.terminate()

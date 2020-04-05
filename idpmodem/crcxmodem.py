@@ -4,8 +4,6 @@
 | Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation.
 """
 
-from builtins import input
-
 __version__ = "1.0.1"
 
 POLYNOMIAL = 0x1021
@@ -65,6 +63,10 @@ def crc_bytes(*i):
 
 
 def main():
+    try:
+        from builtins import input
+    except ImportError:
+        pass
     s = input('Enter string: ')
     print('0x{:04X}'.format(crc(s, 0xffff)))
 
