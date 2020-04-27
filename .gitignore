@@ -143,5 +143,4 @@ dmypy.json
 Makefile
 make.bat
 .idea
-st2100*
 idpmodem-asyncio
