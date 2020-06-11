@@ -138,6 +138,73 @@ class _Automation(object):
         self.threads = []
 
 
+class _PendingMoMessage(object):
+    """Holds metadata and callback for pending Mobile-Originated message.
+
+    A private class for managing a queue of Mobile-Originated messages submitted via AT command
+    Ensures a unique name is assigned based on timestamp submitted
+
+    Attributes:
+        message: (MobileOriginatedMessage) to be queued
+        q_name: (str) The name of the message used in the modem queue
+        submit_time: (int) Timestamp of submission
+        complete_time: (int) Estimated (due to polling) timestamp of completion
+        failed: (bool)
+        callback: (Callable) that will receive notification when the message completes/fails
+
+    """
+
+    def __init__(self, message: object, callback: Callable = None):
+        self.message = message
+        self.q_name = str(int(time()))[1:9]
+        self.submit_time = time()
+        self.complete_time = None
+        self.failed = False
+        self.callback = callback
+
+
+class _PendingMtMessage(object):
+    """Holds metadata and callback for pending Mobile-Terminated message.
+
+    Attributes:
+        message: (MobileTerminatedMessage) The message.
+        q_name: (string) The name assigned by the modem.
+        sin: (int) Service Identifier Number first byte of payload
+        size: (int) Bytes in the message.
+        retreived_time: (int)
+        failed: (bool)
+        state:
+        callback: (Callable)
+
+    """
+
+    def __init__(self, message: object, q_name: str, sin: int, size: int):
+        self.message = message
+        self.q_name = q_name
+        self.sin = sin
+        self.size = size
+        self.received_time = time()
+        self.retrieved_time = None
+        self.failed = False
+        self.state = RX_COMPLETE
+        self.callback = None
+
+
+class _PendingLocation(object):
+    """Holds metadata and callback for pending location information.
+    
+    Attributes:
+        name: (str) The name of the Location object.
+        callback: (Callable) The callback function.
+        location: (nmea.Location)
+
+    """
+    def __init__(self, name, callback):
+        self.name = name
+        self.callback = callback
+        self.location = nmea.Location()
+
+
 class Modem(object):
     """
     Abstracts attributes and statistics related to an IDP modem
@@ -233,70 +300,6 @@ class Modem(object):
             self.callback = callback
             self.retries = retries
 
-    class _PendingMoMessage(object):
-        """Holds metadata and callback for pending Mobile-Originated message.
-
-        A private class for managing a queue of Mobile-Originated messages submitted via AT command
-        Ensures a unique name is assigned based on timestamp submitted
-
-        Attributes:
-            message: (MobileOriginatedMessage) to be queued
-            q_name: (str) The name of the message used in the modem queue
-            submit_time: (int) Timestamp of submission
-            complete_time: (int) Estimated (due to polling) timestamp of completion
-            failed: (bool)
-            callback: (Callable) that will receive notification when the message completes/fails
-
-        """
-
-        def __init__(self, message: object, callback: Callable = None):
-            self.message = message
-            self.q_name = str(int(time()))[1:9]
-            self.submit_time = time()
-            self.complete_time = None
-            self.failed = False
-            self.callback = callback
-
-    class _PendingMtMessage(object):
-        """Holds metadata and callback for pending Mobile-Terminated message.
-
-        Attributes:
-            message: (MobileTerminatedMessage) The message.
-            q_name: (string) The name assigned by the modem.
-            sin: (int) Service Identifier Number first byte of payload
-            size: (int) Bytes in the message.
-            retreived_time: (int)
-            failed: (bool)
-            state:
-            callback: (Callable)
-
-        """
-
-        def __init__(self, message: object, q_name: str, sin: int, size: int):
-            self.message = message
-            self.q_name = q_name
-            self.sin = sin
-            self.size = size
-            self.received_time = time()
-            self.retrieved_time = None
-            self.failed = False
-            self.state = RX_COMPLETE
-            self.callback = None
-
-    class _PendingLocation(object):
-        """Holds metadata and callback for pending location information.
-        
-        Attributes:
-            name: (str) The name of the Location object.
-            callback: (Callable) The callback function.
-            location: (nmea.Location)
-
-        """
-        def __init__(self, name, callback):
-            self.name = name
-            self.callback = callback
-            self.location = nmea.Location()
-
     def __init__(self,
                  port='/dev/ttyUSB0',
                  use_crc=False, 
@@ -386,7 +389,7 @@ class Modem(object):
         # TODO: Low Power override of the above timer intervals
         self._automation_threads.append(RepeatingTimer(
             seconds=sat_mt_message_interval, name='sat_mt_message_monitor',
-            callback=self.mt_message_queue))
+            callback=self.message_receive_queue_get))
         self._automation_threads.append(RepeatingTimer(
             seconds=sat_mo_message_interval, name='sat_mo_message_monitor',
             callback=self.mo_message_status))
@@ -1073,6 +1076,7 @@ class Modem(object):
         response = self.modem.sat_status_snr()
         if response is None:
             raise IdpException('Could not retreive satellite status trace')
+        ctrl_state, c_n0 = response
         LOW_SNR_THRESHOLD = 38.0
         old_sat_ctrl_state = self.sat_status.ctrl_state
         new_sat_ctrl_state = self.ctrl_states[ctrl_state]
@@ -1213,9 +1217,9 @@ class Modem(object):
         return "{} ({})".format(state_str, state)
 
     def send_message(self, mo_message, callback=None, priority=None):
-        return self.mo_message_send(mo_message, callback, priority)
+        return self.message_send(mo_message, callback, priority)
 
-    def mo_message_send(self, mo_message, callback=None, priority=None):
+    def message_send(self, mo_message, callback=None, priority=None):
         """
         Submits a message on the AT command interface and calls back when complete.
 
@@ -1226,44 +1230,26 @@ class Modem(object):
 
         """
         if isinstance(mo_message, MobileOriginatedMessage):
-            p_msg = self._PendingMoMessage(
-                message=mo_message, callback=callback)
+            p_msg = _PendingMoMessage(message=mo_message, callback=callback)
             self._log.debug("User submitted message name: {} mapped to {}".format(
                             mo_message.name, p_msg.q_name))
-            mo_message.priority = priority if priority is not None else mo_message.priority
-            msg_min = mo_message.min if mo_message.min is not None else None
-            self.mo_msg_queue.append(p_msg)
-            self.submit_at_command(
-                at_command='AT%MGRT={},{},{}{},{},{}'.format(
-                    '"{}"'.format(p_msg.q_name),
-                    mo_message.priority, 
-                    mo_message.sin, 
-                    '.{}'.format(mo_message.min) if msg_min is not None else '',
-                    mo_message.data_format,
-                    mo_message.data(mo_message.data_format,
-                                    include_min=False if msg_min is not None else True)),
-                callback=self._cb_send_message)
-            return p_msg.q_name
+            include_min = False if mo_message.min is None else True
+            data_format = mo_message.data_format
+            data = mo_message.data(data_format, include_min)
+            response = self.modem.message_mo_send(
+                data=data,
+                data_format=data_format,
+                name=p_msg.q_name,
+                priority=mo_message.priority,
+                sin=mo_message.sin,
+                min=mo_message.min,
+            )
+            if response is not None:
+                self.mo_msg_queue.append(p_msg)
+                return response
         else:
             self._handle_error(
                 "Message submitted must be type MobileOriginatedMessage")
-
-    def _cb_send_message(self, valid_response, responses, request):
-        if valid_response:
-            msg_name = request.split('=', 1)[1].split(',')[0].replace('"', '')
-            self._log.debug(
-                "Mobile-Originated message {} submitted".format(request))
-        else:
-            msg_name = request.split('\"')[1]
-            self._log.error(
-                "MO Message {} failed: {}".format(msg_name, responses))
-            # TODO: de-queue failed message?
-            for p_msg in self.mo_msg_queue:
-                if p_msg.q_name == msg_name:
-                    if p_msg.callback is not None:
-                        p_msg.callback(success=False, message=None)
-                    self.mo_msg_queue.remove(p_msg)
-                    break
 
     def _update_stats_mo_messages(self, size, latency):
         self.mo_msg_count += 1
@@ -1290,137 +1276,90 @@ class Modem(object):
                 msg_list.append(m.q_name)
             self._log.debug("{} MO messages queued ({})".format(
                 len(self.mo_msg_queue), msg_list))
-            callback = self._cb_check_mo_messages if user_callback is None else user_callback
-            self.submit_at_command(at_command='AT%MGRS{}'
-                                   .format('={}'.format(msg_name) if msg_name is not None else ''),
-                                   callback=callback)
+            response = self.modem.message_mo_state(msg_name)
+            if response is None:
+                raise Exception("Unable to retrieve MO message status")
+            if msg_name is not None:
+                return response
+            for msg_status in response:
+                for pending_msg in self.mo_msg_queue:
+                    if pending_msg.name == msg_status.name:
+                        self._log.debug('Processing message {} state {}'.format(
+                            msg_status.name, msg_status.status))
+                        if pending_msg.state != msg_status.state:
+                            if msg_status.state in (TX_COMPLETE, TX_FAILED):
+                                pending_msg.complete_time = time()
+                                mo_msg_latency = int(pending_msg.complete_time
+                                                    - pending_msg.submit_time)
+                                if msg_status.state == TX_FAILED:
+                                    pending_msg.failed = True
+                                    self.mo_msg_failed += 1
+                                self._log.debug(
+                                    "Removing {} from pending message queue"
+                                    .format(pending_msg.q_name))
+                                self.mo_msg_queue.remove(pending_msg)
+                                self._update_stats_mo_messages(msg_status.size,
+                                                               mo_msg_latency)
+                                # TODO: calculate statistics for MO message transmission times
+                                if pending_msg.callback is not None:
+                                    pending_msg.callback(success=True, message=(
+                                        msg_status.name,
+                                        pending_msg.q_name,
+                                        msg_status.state,
+                                        msg_status.size))
+                                else:
+                                    self._log.warning(
+                                        "No callback defined for {}".format(pending_msg.q_name))
         else:
             self._log.debug("No MO messages queued")
 
-    def _cb_check_mo_messages(self, valid_response, responses, request):
-        """
-        Callback from a Mobile Originated message check AT%MGRS
-
-        :param valid_response: (boolean) True if the response had no error and did not time out
-        :param responses: (list) responses to the AT%MGRS command, which may include several messages state info
-        :return: if complete/failed, calls back to the pending message callback with the following parameters:
-
-           * (string or None) name of the message, submitted by user
-           * (string) q_name the unique name assigned for queueing in the modem
-           * (int) state either TX_COMPLETE=6 or TX_FAILED=7
-           * (int) size of the message Over-The-Air, in bytes
-
-        """
-        if valid_response:
-            # Format of responses should be: %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
-            for res in responses:
-                self._log.debug("Processing response: {}".format(res))
-                if len(res.replace('%MGRS:', '').strip()) > 0:
-                    name, msg_no, priority, sin, state, size, sent_bytes = res.replace(
-                        '%MGRS:', '').strip().split(',')
-                    del msg_no  # unused
-                    name = name.replace('\"', '')
-                    priority = int(priority)
-                    sin = int(sin)
-                    state = int(state)
-                    size = int(size)
-                    sent_bytes = int(sent_bytes)
-                    for p_msg in self.mo_msg_queue:
-                        if p_msg.q_name == name:
-                            msg = p_msg.message
-                            self._log.debug("Processing MO message: {} ({}) state: {}"
-                                           .format(msg.name, p_msg.q_name, self.message_state_get(state)))
-                            if state != msg.state:
-                                msg.state = state
-                                if state in (TX_COMPLETE, TX_FAILED):
-                                    p_msg.complete_time = time()
-                                    mo_msg_latency = int(p_msg.complete_time - p_msg.submit_time)
-                                    if state == TX_FAILED:
-                                        p_msg.failed = True
-                                        self.mo_msg_failed += 1
-                                    self._log.debug(
-                                        "Removing {} from pending message queue".format(p_msg.q_name))
-                                    self.mo_msg_queue.remove(p_msg)
-                                    self._update_stats_mo_messages(size, mo_msg_latency)
-                                    # TODO: calculate statistics for MO message transmission times
-                                    if p_msg.callback is not None:
-                                        p_msg.callback(success=True,
-                                                       message=(msg.name, p_msg.q_name, msg.state, msg.size))
-                                    else:
-                                        self._log.warning(
-                                            "No callback defined for {}".format(p_msg.q_name))
-                                else:
-                                    self._log.debug("MO message {} state changed to: {}"
-                                                   .format(p_msg.q_name, self.message_state_get(state)))
-                            break
-                else:
-                    self._log.debug("MO Message(s) completed")
-        else:
-            self._log.warning(
-                "Invalid response to AT%MGRS: {}".format(responses))
-
-    def mt_message_queue(self, user_callback=None):
-        callback = self._cb_check_mt_messages if user_callback is None else user_callback
-        self.submit_at_command(at_command='AT%MGFN', callback=callback)
-
-    def _cb_check_mt_messages(self, valid_response, responses, request):
-        if valid_response and '%MGFN' in responses[0]:
-            self._log.debug("Processing AT%MGFN {}".format(responses))
-            new_messages = []
-            for res in responses:
-                # Format of responses should be: %MGFN: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<bytes_rcvd>
-                msg_pending = res.replace('%MGFN:', '').strip()
-                # TODO: skip if no message
-                if 'FM' in msg_pending:
-                    name, number, priority, sin, state, size, bytes_read = \
-                        msg_pending.split(',')
-                    del number  # unused
-                    name = name.replace('\"', '')
-                    priority = int(priority)
-                    sin = int(sin)
-                    state = int(state)
-                    size = int(size)
-                    if state == RX_COMPLETE:  # Complete and not read
-                        # TODO: assign data_format based on size?
-                        queued = False
-                        for p_msg in self.mt_msg_queue:
-                            if p_msg.q_name == name:
-                                queued = True
-                                self._log.debug(
-                                    "Pending message {} already in queue".format(name))
-                                break
-                        if not queued:
-                            new_messages.append(name)
-                            p_msg = self._PendingMtMessage(
-                                message=None, q_name=name, sin=sin, size=size)
-                            self.mt_msg_queue.append(p_msg)
-                            self._update_stats_mt_messages(size)
-                    else:
+    def message_receive_queue_get(self, user_callback=None):
+        response = self.modem.message_mt_waiting()
+        if response is None:
+            raise Exception('No response to MT message check')
+        new_messages = []
+        for msg_waiting in response:
+            if msg_waiting.state == RX_COMPLETE:  # Complete and not read
+                # TODO: assign data_format based on size?
+                queued = False
+                for p_msg in self.mt_msg_queue:
+                    if p_msg.q_name == msg_waiting.name:
+                        queued = True
                         self._log.debug(
-                            "Message {} not complete ({}/{} bytes)".format(name, bytes_read, size))
-                else:
-                    self._log.warning("Could not find pending message in {}".format(res))
-            if len(new_messages) > 0:
-                if self.event_callbacks['new_mt_message'] is not None:
-                    self._log.debug("Calling back to {}"
-                                    .format(self.event_callbacks['new_mt_message'].__name__))
-                    self.event_callbacks['new_mt_message'](
-                        self.mt_msg_queue)
-                else:
-                    self._log.warning(
-                        "No callback registered for new MT messages")
-                if len(self._mt_message_callbacks) > 0:
-                    for msg_name in new_messages:
-                        for msg in self.mt_msg_queue:
-                            if msg.q_name == msg_name:
-                                for tup in self._mt_message_callbacks:
-                                    if tup[0] == msg.sin:
-                                        self.mt_message_get(
-                                            name=name, callback=tup[1])
-                                        break  # for tup
-                                break  # for msg
-        else:
-            self._log.error("Invalid %MGFN response {}".format(responses))
+                            "Pending message {} already in queue".format(
+                            msg_waiting.name))
+                        break
+                if not queued:
+                    new_messages.append(msg_waiting.name)
+                    p_msg = _PendingMtMessage(message=None,
+                                              q_name=msg_waiting.name,
+                                              sin=msg_waiting.sin,
+                                              size=msg_waiting.size)
+                    self.mt_msg_queue.append(p_msg)
+                    self._update_stats_mt_messages(msg_waiting.size)
+            else:
+                self._log.debug(
+                    "Message {} not complete ({}/{} bytes)".format(
+                    msg_waiting.name, msg_waiting.received, msg_waiting.size))
+        if len(new_messages) > 0:
+            if self.event_callbacks['new_mt_message'] is not None:
+                #: TODO (Geoff) TEST!
+                self._log.debug("Calling back to {}".format(
+                    self.event_callbacks['new_mt_message'].__name__))
+                self.event_callbacks['new_mt_message'](self.mt_msg_queue)
+            else:
+                self._log.warning(
+                    "No callback registered for new MT messages")
+            if len(self._mt_message_callbacks) > 0:
+                for msg_name in new_messages:
+                    for msg in self.mt_msg_queue:
+                        if msg.q_name == msg_name:
+                            for tup in self._mt_message_callbacks:
+                                if tup[0] == msg.sin:
+                                    self.mt_message_get(
+                                        name=msg_waiting.name, callback=tup[1])
+                                    break  # for tup
+                            break  # for msg
 
     def _update_stats_mt_messages(self, size):
         self.mt_msg_count += 1
@@ -1429,7 +1368,7 @@ class Modem(object):
         else:
             self.system_stats['avgMTMsgSize'] = int((self.system_stats['avgMTMsgSize'] + size) / 2)
 
-    def get_message(self, name, callback, data_format=FORMAT_B64):
+    def message_receive(self, name, callback, data_format=FORMAT_B64):
         return self.mt_message_get(name, callback, data_format)
 
     def mt_message_get(self, name, callback, data_format=FORMAT_B64):
@@ -1438,13 +1377,40 @@ class Modem(object):
             if m.q_name == name:
                 found = True
                 m.callback = callback
-                if data_format is None:
-                    data_format = FORMAT_HEX if m.size <= 100 else FORMAT_B64
                 self._log.info("Retrieving MT message {}".format(name))
-                self.submit_at_command(at_command='AT%MGFG=\"{}\",{}'.format(name, data_format),
-                                       callback=self._cb_get_mt_message)
                 break
-        return found, "Message not found in MT queue" if not found else None
+        response = self.modem.message_mt_get(name, data_format)
+        if response is None:
+            raise Exception('No response to message retrieval request')
+        # TODO: is SIN byte always included in data returned?
+        data = response
+        if data_format == FORMAT_TEXT:
+            # remove quotes but only at both ends, not in the middle
+            text = data[1:len(data)-1]
+            if text[0] == '\\':
+                msg_min = int(text[1:3], 16)
+                payload = str(text[3:])
+            else:
+                payload = text
+        elif data_format == FORMAT_HEX:
+            payload = bytearray.fromhex(data)
+            msg_sin = payload[0]
+            msg_min = payload[1]
+        else:
+            payload = binascii.b2a_base64(b'{}'.format(data))
+            msg_sin = payload[0]
+            msg_min = payload[1]
+        mt_msg = MobileTerminatedMessage(
+            payload=payload,
+            name=name,
+            msg_sin=msg_sin,
+            msg_min=msg_min,
+            # msg_num=msg_num,   #: Probably not required, maybe for logging
+            priority=PRIORITY_MT,
+            data_format=data_format,
+            # size=size,
+            debug=self._debug)
+        return mt_msg
 
     def _cb_get_mt_message(self, valid_response, responses, request):
         if valid_response:
@@ -2041,7 +2007,7 @@ if __name__ == "__main__":
                                             name='TEST', 
                                             data_format=FORMAT_B64, 
                                             msg_sin=255, msg_min=255)
-        modem.mo_message_send(test_msg)
+        modem.message_send(test_msg)
         sleep(60)
         print('Test time completed')
     except Exception as e:

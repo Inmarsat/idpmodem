@@ -5,6 +5,7 @@ A threaded serial interface that sends and receives AT commands,
 decoding/abstracting typically used operations.
 """
 
+import asyncio
 from serial.threaded import LineReader, ReaderThread
 import threading
 from time import time, sleep
@@ -163,13 +164,8 @@ class AtProtocol(LineReader):
         super(AtProtocol, self).__init__()
         self.crc = crc
         self.alive = True
+        # self.token = None
         self.pending_command = None
-        self.commands = SearchableQueue()
-        self._command_thread = threading.Thread(
-            target=self._run_command,
-            name='at_commands',
-            daemon=True)
-        self._command_thread.start()
         self.responses = queue.Queue()
         self.unsolicited = queue.Queue()
         self._unsolicited_thread = threading.Thread(
@@ -204,23 +200,6 @@ class AtProtocol(LineReader):
             except:
                 raise AtUnsolicited("Unexpected error handling unsolicited data")
 
-    def _run_command(self):
-        """Process pending commands in a separate thread.
-        
-        Processes a single command at a time.
-
-        Raises:
-            AtException: If an unexpected handling error occurs.
-        
-        """
-        while self.alive:
-            try:
-                if not self.pending_command and not self.commands.empty():
-                    (next_command, timeout) = self.commands.get()
-                    self.command(next_command, timeout)
-            except:
-                raise AtException("Unexpected error handling command queue")
-    
     def data_received(self, data: bytearray):
         """Buffer received data and create packets for handlers.
 
@@ -360,8 +339,6 @@ class AtProtocol(LineReader):
             AtTimeout if the request timed out.
 
         """
-        if self.pending_command is not None:
-            self.commands.put((command, timeout))
         with self._lock:  # ensure that just one thread is sending commands at once
             command = self._get_crc(command) if self.crc else command
             self.pending_command = command
@@ -505,6 +482,21 @@ class IdpModem(AtProtocol):
     def __init__(self):
         super(IdpModem, self).__init__()
         self._at_stats = _AtStatistics()
+        self.token = None
+    
+    def _token_get(self):
+        if self.token is None:
+            self.token = time()
+            return self.token
+        else:
+            return None
+    
+    def _token_release(self, token):
+        if token == self.token:
+            self.token = None
+            return None
+        else:
+            raise AtException('Invalid token release rejected')
 
     def connection_made(self, transport):
         """Clears the input buffer on connect.
@@ -532,14 +524,27 @@ class IdpModem(AtProtocol):
             Response object.
 
         """
-        (response, latency) = super(IdpModem, self).command(command=command,
-                                timeout=timeout)
-        self._at_stats.update(command, latency)
-        # if response[0] == 'ERROR':
-        #     raise AtCommandError('ERROR')
-        return response
+        try:
+            while self.token is not None:
+                pass
+            token = self._token_get()
+            (response, latency) = super(IdpModem, self).command(command=command,
+                                    timeout=timeout)
+            self._at_stats.update(command, latency)
+            if response[0] == 'ERROR':
+                (reason, latency) = super(IdpModem, self).command(
+                                    command='ATS80?')
+                self._at_stats.update('ATS80?', latency)
+                if reason[0] == 'ERROR':
+                    raise AtException('Unexpected error on ATS80?')
+                response.append(self.ERROR_CODES[reason[0]])
+            self._token_release(token)
+            return response
+        except AtException:
+            #TODO log exception
+            return None
 
-    def error_detail(self):
+    def error_detail(self):   #TODO REMOVE REDUNDANT VS COMMAND
         """Queries the last error code.
         
         Returns:
@@ -547,7 +552,7 @@ class IdpModem(AtProtocol):
         """
         response = self.command('ATS80?')
         if response[0] == 'ERROR':
-            #: handle CRC error
+            #: TODO handle CRC error? raise?
             return None
         reason = self.ERROR_CODES[response[0]]
         return reason
@@ -712,7 +717,7 @@ class IdpModem(AtProtocol):
                                 .format(stale_secs, wait_secs, sentences),
                                 timeout=wait_secs + BUFFER_SECONDS)
         if response[0] == 'ERROR':
-            return None
+            return response[1]
         response.remove('OK')
         response[0] = response[0].replace('%GPS: ', '')
         return response
@@ -752,7 +757,7 @@ class IdpModem(AtProtocol):
                                 '"{}"'.format(data) if data_format == 1 else data))
         return name if response[0] == 'OK' else None
 
-    def message_mo_state(self, name: str = None) -> str:
+    def message_mo_state(self, name: str = None) -> list:
         """Returns the message state(s) requested.
         
         If no name filter is passed in, all available messages states
@@ -776,7 +781,20 @@ class IdpModem(AtProtocol):
         response = self.command("AT%MGRS{}".format(filter))
         if response[0] == 'ERROR':
             return None
-        return STATES[int(response[0])]
+        # %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
+        response.remove('OK')
+        states = []
+        for res in response:
+            res = res.replace('%MGRS: ', '')
+            name, number, priority, sin, state, size, sent = res.split(',')
+            del number
+            del priority
+            del sin
+            states.append({name: name,
+                           state: STATES[int(state)],
+                           size: size,
+                           sent: sent})
+        return states
     
     def message_mo_cancel(self, name: str) -> bool:
         """Cancels a mobile-originated message in the Tx ready state."""
@@ -794,8 +812,21 @@ class IdpModem(AtProtocol):
         if response[0] == 'ERROR':
             return None
         response.remove('OK')
-        #: name, number, priority, sin, state, length, bytes_received
-        return response
+        waiting = []
+        #: %MGFN: name, number, priority, sin, state, length, bytes_received
+        for res in response:
+            msg = res.replace('%MGFN:', '').strip()
+            if msg.startswith('FM'):
+                parts = msg.split(',')
+                name, number, priority, sin, state, length, received = parts
+                del number   #: unused
+                waiting.append({name: name,
+                                sin: sin,
+                                priority: priority,
+                                state: state,
+                                length: length,
+                                received: received})
+        return waiting
 
     def message_mt_get(self, name: str, data_format: int = 3) -> str:
         """Returns the payload of a specified mobile-terminated message.
@@ -891,7 +922,7 @@ if __name__ == '__main__':
         def on_connect():
             print('Connected')
 
-        ser = serial.Serial('/dev/ttyUSB1', baudrate=9600, timeout=60)
+        ser = serial.Serial('/dev/ttyUSB0', baudrate=9600, timeout=60)
         t = ByteReaderThread(ser, IdpModem)
         t.start()
         transport, idp_modem = t.connect()
@@ -907,28 +938,31 @@ if __name__ == '__main__':
         print('Versions: FW={} HW={} AT={}'.format(fw_ver, hw_ver, at_ver))
         
         def send_another_command():
-            sleep(5)
+            sleep(0.5)
             print('Requesting satellite status')
             (state, snr) = idp_modem.sat_status_snr()
             print('State: {} | SNR: {}'.format(state, snr))
+            waiting = idp_modem.message_mt_waiting()
+            if isinstance(waiting, list) and len(waiting) > 0:
+                print('{} MT messages waiting'.format(len(waiting)))
 
         test_thread = threading.Thread(target=send_another_command,
                                        name='send_another_command',
                                        daemon=True)
         test_thread.start()
-        gnss_timeout = 15   # seconds
+        gnss_timeout = 1   # seconds
         print('Requesting GNSS location with timeout {}s'.format(gnss_timeout))
         nmea_sentences = idp_modem.gnss_nmea_get(wait_secs=gnss_timeout)
-        if nmea_sentences is not None:
+        if isinstance(nmea_sentences, list):
             for sentence in nmea_sentences:
                 print('{}'.format(sentence))
         else:
-            reason = idp_modem.error_detail()
-            print(reason)
+            print(nmea_sentences)
+        print('Latency Statistics:')
         for stat in idp_modem._at_stats.response_times:
-            print('{}: {} ms'.format(
+            print('  {}: {} ms'.format(
                 stat, idp_modem._at_stats.response_times[stat][0]))
-        delay = 10
+        delay = 5
         print('Waiting for unsoliticted input {} seconds'.format(delay))
         sleep(delay)
     
