@@ -5,11 +5,12 @@ A threaded serial interface that sends and receives AT commands,
 decoding/abstracting typically used operations.
 """
 
-import asyncio
+from collections import OrderedDict
+from serial import Serial, SerialException
 from serial.threaded import LineReader, ReaderThread
 import threading
 from time import time, sleep
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
 try:
     import queue
@@ -18,8 +19,12 @@ except ImportError:
 
 try:
     import crcxmodem
+    import constants
+    import nmea
 except ImportError:
     from idpmodem import crcxmodem
+    from idpmodem import constants
+    from idpmodem import nmea
 
 
 class AtException(Exception):
@@ -47,75 +52,6 @@ class AtUnsolicited(AtException):
     pass
 
 
-class SearchableQueue(object):
-    """Mimics relevant FIFO queue functions to avoid duplicate commands.
-    
-    Makes use of queue Exceptions to mimic a standard queue.
-
-    Attributes:
-        max_size: The maximum queue depth.
-    """
-    def __init__(self, max_size=100):
-        self._queue = []
-        self.max_size = max_size
-    
-    def contains(self, item):
-        """Returns true if the queue contains the item."""
-        for i in self._queue:
-            if i == item: return True
-        return False
-
-    def put(self, item, index=None):
-        """Adds the item to the queue.
-        
-        Args:
-            item: The object to add to the queue.
-            index: The queue position (None=end)
-        """
-        if len(self._queue) > self.max_size:
-            raise queue.Full
-        if index is None:
-            self._queue.append(item)
-        else:
-            self._queue.insert(index, item)
-
-    def put_exclusive(self, item):
-        """Adds the item to the queue only if unique in the queue.
-        
-        Args:
-            item: The object to add to the queue.
-        
-        Raises:
-            queue.Full if a duplicate item is in the queue.
-        """
-        if not self.contains(item):
-            self.put(item)
-        else:
-            raise queue.Full('Duplicate item in queue')
-
-    def get(self):
-        """Pops the first item from the queue.
-        
-        Returns:
-            An object from the queue.
-        
-        Raises:
-            queue.Empty if nothing in the queue.
-        """
-        if len(self._queue) > 0:
-            return self._queue.pop(0)
-        else:
-            raise queue.Empty
-    
-    def qsize(self):
-        """Returns the current size of the queue."""
-        return len(self._queue)
-    
-    def empty(self):
-        """Returns true if the queue is empty."""
-        return len(self._queue) == 0
-
-
 class AtProtocol(LineReader):
     """Threaded protocol factory for the IDP Modem.
     
@@ -133,23 +69,7 @@ class AtProtocol(LineReader):
             unexpected data
     """
 
-    ERROR_CODES = {
-        '0': 'OK',
-        '4': 'ERROR',
-        '100': 'INVALID_CRC',
-        '101': 'COMMAND_UNKNOWN',
-        '102': 'INVALID_PARAMETER',
-        '103': 'MESSAGE_TOO_LONG',
-        '104': 'DATA_MODE_ERROR',
-        '105': 'SYSTEM_ERROR',
-        '106': 'INSUFFICIENT_RESOURCES',
-        '107': 'MESSAGE_NAME_ALREADY_IN_USE',
-        '108': 'GNSS_TIMEOUT',
-        '109': 'MESSAGE_UNAVAILABLE',
-        '110': 'RESERVED',
-        '111': 'RESOURCE_BUSY',
-        '112': 'ATTEMPT_WRITE_TO_READ_ONLY_REGISTER',
-    }
+    ERROR_CODES = constants.AT_ERROR_CODES
 
     def __init__(self,
                  crc: bool = False,
@@ -414,7 +334,7 @@ class ByteReaderThread(ReaderThread):
                     data = self.serial.read()
                     self.protocol.data_received(data)
                 sleep(0.001)
-            except serial.SerialException as e:
+            except SerialException as e:
                 # probably some I/O problem such as disconnected USB serial
                 # adapters -> exit
                 error = e
@@ -458,30 +378,17 @@ class _AtStatistics(object):
         self.response_times[category] = (category_average, category_count)
 
 
-class IdpModem(AtProtocol):
-    """A class abstracting methods specific to an IDP modem."""
+class IdpBusy(AtException):
+    pass
 
-    CONTROL_STATES = {
-        '0': 'Stopped',
-        '1': 'Waiting for GNSS',
-        '2': 'Starting search',
-        '3': 'Beam search',
-        '4': 'Beam found',
-        '5': 'Beam acquired',
-        '6': 'Beam switch in progress',
-        '7': 'Registration in progress',
-        '8': 'Receive only',
-        '9': 'Receiving global bulletin board',
-        '10': 'Active',
-        '11': 'Blocked',
-        '12': 'Confirm previously registered beam',
-        '13': 'Confirm requested beam',
-        '14': 'Connect to confirmed beam',
-    }
+
+class IdpModem(AtProtocol):
+    """A protocol factory abstracting AT commands for an IDP modem."""
 
     def __init__(self):
         super(IdpModem, self).__init__()
         self._at_stats = _AtStatistics()
+        # TODO REMOVE self.notifications = self._notifications_dict()
         self.token = None
     
     def _token_get(self):
@@ -525,8 +432,10 @@ class IdpModem(AtProtocol):
 
         """
         try:
+            request_time = time()
             while self.token is not None:
-                pass
+                if time() - request_time > timeout:
+                    raise IdpBusy('BUSY')
             token = self._token_get()
             (response, latency) = super(IdpModem, self).command(command=command,
                                     timeout=timeout)
@@ -540,9 +449,9 @@ class IdpModem(AtProtocol):
                 response.append(self.ERROR_CODES[reason[0]])
             self._token_release(token)
             return response
-        except AtException:
-            #TODO log exception
-            return None
+        except AtException as e:
+            # TODO cases: AtCrcConfigError, AtCrcError, AtTimeout
+            raise e
 
     def error_detail(self):   #TODO REMOVE REDUNDANT VS COMMAND
         """Queries the last error code.
@@ -551,33 +460,43 @@ class IdpModem(AtProtocol):
             Reason description string or None if error on error.
         """
         response = self.command('ATS80?')
-        if response[0] == 'ERROR':
-            #: TODO handle CRC error? raise?
+        if response is None:
             return None
+        elif response[0] == 'ERROR':
+            #: TODO handle CRC error? raise?
+            return response[1]
         reason = self.ERROR_CODES[response[0]]
         return reason
 
     def config_restore_nvm(self) -> bool:
-        """Sends the ATZ command and returns True on success."""
+        """Sends the ATZ command to restore from non-volatile memory.
+        
+        Returns:
+            Boolean success.
+        """
         response = self.command('ATZ')
-        return True if response[0] == 'OK' else False
+        if response[0] == 'ERROR':
+            return False
+        return True
 
     def config_restore_factory(self) -> bool:
         """Sends the AT&F command and returns True on success."""
         response = self.command('AT&F')
-        return True if response[0] == 'OK' else False
+        if response[0] == 'ERROR':
+            return False
+        return True
     
     def config_nvm_report(self) -> Tuple[dict, dict]:
         """Sends the AT&V command to retrive S-register settings.
         
         Returns:
-            A tuple with two dictionaries, or None if failed.
+            A tuple with two dictionaries or both None if failed
             at_config with booleans crc, echo, quiet and verbose
             reg_config with S-register tags and integer values
         """
         response = self.command('AT&V')
         if response[0] == 'ERROR':
-            return None
+            return (None, None)
         response.remove('OK')
         header, at_config, s_regs = response
         del header  # unused
@@ -594,7 +513,7 @@ class IdpModem(AtProtocol):
             reg_config[name] = int(value)
         return (at_config, reg_config)
 
-    def config_volatile_report(self) -> dict:
+    def config_volatile_report(self) -> Union[dict, None]:
         """Returns key S-register settings.
         
         GNSS Mode (S39), GNSS fix timeout (S41), GNSS Continuous (S55),
@@ -627,15 +546,20 @@ class IdpModem(AtProtocol):
         return volatile_regs
 
     def config_nvm_save(self) -> bool:
-        """Sends the AT&W command and returns 'OK' or 'ERROR'."""
+        """Sends the AT&W command and returns result."""
         response = self.command('AT&W')
-        return True if response[0] == 'OK' else False
+        if response[0] == 'ERROR':
+            return False
+        return True
 
     def crc_enable(self, enable: bool = True) -> bool:
         """Sends the AT%CRC command and returns success flag.
         
         Args:
             enable: turn on CRC if True else turn off
+
+        Returns:
+            True if the operation succeeded else False
         """
         command = 'AT%CRC={}'.format(1 if enable else 0)
         response = self.command(command)
@@ -659,14 +583,14 @@ class IdpModem(AtProtocol):
         """Returns the hardware, firmware and AT versions.
         
         Returns:
-            Tuple with (hardware, firmware, at) version or None if error.
+            Dict with hardware, firmware, at version or all None if error.
         """
         response = self.command("AT+GMR")
         if response[0] == 'ERROR':
             return None
         versions = response[0].replace('+GMR:', '').strip()
         fw_ver, hw_ver, at_ver = versions.split(',')
-        return (hw_ver, fw_ver, at_ver)
+        return {'hardware': hw_ver, 'firmware': fw_ver, 'at': at_ver}
 
     def gnss_continuous_set(self, interval: int=0, doppler: bool=True) -> bool:
         """Sets the GNSS continous mode (0 = on-demand).
@@ -682,10 +606,13 @@ class IdpModem(AtProtocol):
             raise ValueError('GNSS continuous interval must be in range 0..30')
         response = self.command('AT%TRK={}{}'.format(
             interval, ',{}'.format(1 if doppler else 0)))
-        return True if response[0] == 'OK' else False
+        if response[0] == 'ERROR':
+            return False
+        return True
 
     def gnss_nmea_get(self, stale_secs: int = 1, wait_secs: int = 30,
-                      nmea: list = ['RMC', 'GSA', 'GGA', 'GSV']) -> list:
+                      nmea: list = ['RMC', 'GSA', 'GGA', 'GSV']
+                      ) -> Union[list, str]:
         """Returns a list of NMEA-formatted sentences from GNSS.
 
         Args:
@@ -693,7 +620,7 @@ class IdpModem(AtProtocol):
             wait_secs: Maximum time to wait for fix (1..600)
 
         Returns:
-            List of NMEA sentences
+            List of NMEA sentences or 'ERR_TIMEOUT_OCCURRED'
 
         Raises:
             ValueError if parameter out of range
@@ -721,6 +648,13 @@ class IdpModem(AtProtocol):
         response.remove('OK')
         response[0] = response[0].replace('%GPS: ', '')
         return response
+
+    def location_get(self):
+        nmea_sentences = self.gnss_nmea_get()
+        if isinstance(nmea_sentences, str):
+            return None
+        location = nmea.location_get(nmea_sentences)
+        return location
 
     def message_mo_send(self,
                         data: str,
@@ -755,7 +689,9 @@ class IdpModem(AtProtocol):
                                 '.{}'.format(min) if min is not None else '',
                                 data_format,
                                 '"{}"'.format(data) if data_format == 1 else data))
-        return name if response[0] == 'OK' else None
+        if response[0] == 'ERROR':
+            return None
+        return name
 
     def message_mo_state(self, name: str = None) -> list:
         """Returns the message state(s) requested.
@@ -767,7 +703,7 @@ class IdpModem(AtProtocol):
             name: The unique message name in the modem queue
 
         Returns:
-            State: UNAVAILABLE, TX_READY, TX_SENDING, TX_COMPLETE, TX_FAILED
+            State: UNAVAILABLE, TX_READY, TX_SENDING, TX_COMPLETE, TX_FAILED or None
 
         """
         STATES = {
@@ -799,9 +735,11 @@ class IdpModem(AtProtocol):
     def message_mo_cancel(self, name: str) -> bool:
         """Cancels a mobile-originated message in the Tx ready state."""
         response = self.command('AT%MGRC={}'.format(name))
-        return True if response[0] == 'OK' else False
+        if response[0] == 'ERROR':
+            return False
+        return True
 
-    def message_mt_waiting(self) -> list:
+    def message_mt_waiting(self) -> Union[list, None]:
         """Returns a list of received mobile-terminated message information.
         
         Returns:
@@ -820,12 +758,12 @@ class IdpModem(AtProtocol):
                 parts = msg.split(',')
                 name, number, priority, sin, state, length, received = parts
                 del number   #: unused
-                waiting.append({name: name,
-                                sin: sin,
-                                priority: priority,
-                                state: state,
-                                length: length,
-                                received: received})
+                waiting.append({'name': name,
+                                'sin': int(sin),
+                                'priority': int(priority),
+                                'state': int(state),
+                                'length': int(length),
+                                'received': int(received)})
         return waiting
 
     def message_mt_get(self, name: str, data_format: int = 3) -> str:
@@ -842,12 +780,22 @@ class IdpModem(AtProtocol):
 
         """
         response = self.command('AT%MGFG="{},{}"'.format(name, data_format))
-        if response[0] == 'ERROR':
+        if response is None or response[0] == 'ERROR':
             return None
-        response.remove('OK')
+        # response.remove('OK')
         #: name, number, priority, sin, state, length, data_format, data
-        data_str = response[7]
-        return data_str
+        parts = response[0].split(',')
+        message = {
+            'name': parts[0],
+            'number': int(parts[1]),
+            'priority': int(parts[2]),
+            'sin': int(parts[3]),
+            'state': int(parts[4]),
+            'length': int(parts[5]),
+            'data_format': int(parts[6]),
+            'data': parts[7]
+        }
+        return message['data']
 
     def message_mt_delete(self, name: str) -> bool:
         """Marks a message for deletion by the modem.
@@ -860,7 +808,146 @@ class IdpModem(AtProtocol):
 
         """
         response = self.command('AT%MGFM="{}"'.format(name))
-        return True if response[0] == 'OK' else False
+        if response is None or response[0] == 'ERROR':
+            return False
+        return True
+
+    def event_monitor_get(self) -> Union[list, None]:
+        #: AT%EVMON
+        result = self.command('AT%EVMON')
+        if result is None or result[0] == 'ERROR':
+            return None
+        events = result[0].replace('%EVMON: ', '').split(',')
+        '''
+        for i in range(len(events)):
+            c, s = events[i].strip().split('.')
+            if s[-1] == '*':
+                s = s.replace('*', '')
+                # TODO flag change for retrieval
+            events[i] = (int(c), int(s))
+        '''
+        return events
+
+    def event_monitor_set(self, eventlist: list) -> bool:
+        #: AT%EVMON{ = <c1.s1>[, <c2.s2> ..]}
+        cmd = ''
+        for monitor in eventlist:
+            if isinstance(monitor, tuple):
+                if len(cmd) > 0:
+                    cmd += ','
+                cmd += '{}.{}'.format(monitor[0], monitor[1])
+        result = self.command('AT%EVMON={}'.format(cmd))
+        if result is None or result[0] == 'ERROR':
+            return False
+        return True
+
+    @staticmethod
+    def _to_signed32(n):
+        n = n & 0xffffffff
+        return (n ^ 0x80000000) - 0x80000000
+
+    def event_get(self, event: tuple, raw: bool = True) -> Union[str, dict, None]:
+        #: AT%EVNT=c,s
+        #: res %EVNT: <dataCount>,<signedBitmask>,<MTID>,<timestamp>,
+        # <class>,<subclass>,<priority>,<data0>,<data1>,..,<dataN>
+        if not (isinstance(event, tuple) and len(event) == 2):
+            raise AtException('event_get expects (class, subclass)')
+        result = self.command('AT%EVNT={},{}'.format(event[0], event[1]))
+        if result is None or result[0] == 'ERROR':
+            return None
+        eventdata = result[0].replace('%EVNT: ', '').split(',')
+        event = {
+            'data_count': int(eventdata[0]),
+            'signed_bitmask': bin(int(eventdata[1]))[2:],
+            'mobile_id': eventdata[2],
+            'timestamp': eventdata[3],
+            'class': eventdata[4],
+            'subclass': eventdata[5],
+            'priority': eventdata[6],
+            'data': eventdata[7:]
+        }
+        bitmask = event['signed_bitmask']
+        while len(bitmask) < event['data_count']:
+            bitmask = '0' + bitmask
+        i = 0
+        for bit in reversed(bitmask):
+            #: 32-bit signed conversion redundant since response is string
+            if bit == '1':
+                event['data'][i] = self._to_signed32(int(event['data'][i]))
+            else:
+                event['data'][i] = int(event['data'][i])
+            i += 1
+        # TODO lookup class/subclass definitions
+        return result[0] if raw else event
+
+    @staticmethod
+    def _notifications_dict(sreg_value: int = None):
+        template = OrderedDict([
+            (bit, False) for bit in constants.NOTIFICATION_BITMASK])
+        if sreg_value is not None:
+            bitmask = bin(int(sreg_value))[2:]
+            if len(bitmask) > len(template):
+                bitmask = bitmask[:len(template) - 1]
+            while len(bitmask) < len(template):
+                bitmask = '0' + bitmask
+            i = 0
+            for key in reversed(template):
+                template[key] = True if bitmask[i] == '1' else False
+                i += 1
+        return template
+
+    def notification_control_set(self, event_map: list) -> bool:
+        #: ATS88=bitmask
+        # TODO REMOVE old_notifications = self.notifications.copy()
+        notifications_changed = False
+        old_notifications = self.notification_control_get()
+        if old_notifications is None:
+            return False
+        for event in event_map:
+            if event in old_notifications:
+                binary = '0b'
+                for key in reversed(old_notifications):
+                    bit = '1' if old_notifications[key] else '0'
+                    if key == event:
+                        notify = event_map[event]
+                        if old_notifications[key] != notify:
+                            bit = '1' if notify else '0'
+                            notifications_changed = True
+                            # self.notifications[key] = notify
+                    binary += bit
+        if notifications_changed:
+            bitmask = int(binary, 2)
+            result = self.command('ATS88={}'.format(bitmask))
+            if result is None or result[0] == 'ERROR':
+                return False
+        return True
+    
+    def notification_control_get(self) -> Union[dict, None]:
+        #: ATS88?
+        result = self.command('ATS88?')
+        if result is None or result[0] == 'ERROR':
+            return None
+        return self._notifications_dict(int(result[0]))
+        '''
+        binary = bin(int(result[0]))[2:]
+        if len(binary) > len(self.notifications):
+            binary = binary[:len(self.notifications) - 1]
+        while len(binary) < len(self.notifications):  # pad leading zeros
+            binary = '0' + binary
+        i = 0
+        for key in reversed(self.notifications):
+            self.notifications[key] = True if binary[i] == '1' else False
+            i += 1
+        '''
+        # TODO REMOVE return dict(self.notifications)
+
+    def notification_check(self) -> OrderedDict:
+        #: ATS89?
+        result = self.command('ATS89?')
+        if result is None or result[0] == 'ERROR':
+            return None
+        template = self._notifications_dict(int(result[0]))
+        return template
 
     def sat_status_snr(self) -> Tuple[str, float]:
         """Returns the control state and C/No.
@@ -869,79 +956,111 @@ class IdpModem(AtProtocol):
             Tuple with (state: int, C/No: float) or None if error.
         """
         response = self.command("ATS90=3 S91=1 S92=1 S122? S116?")
-        if response[0] == 'ERROR':
-            return None
+        if response is None or response[0] == 'ERROR':
+            return (None, None)
         response.remove('OK')
         ctrl_state, cn_0 = response
         ctrl_state = int(ctrl_state)
         cn_0 = int(cn_0) / 100.0
         return (ctrl_state, cn_0)
 
-    def sat_status_description(self, ctrl_state: int) -> str:
+    def sat_status_name(self, ctrl_state: int) -> str:
         """Returns human-readable definition of a control state value.
         
         Raises:
             ValueError if ctrl_state is not found.
         """
-        for s in self.CONTROL_STATES:
+        for s in constants.CONTROL_STATES:
             if int(s) == ctrl_state:
-                return self.CONTROL_STATES[s]
+                return constants.CONTROL_STATES[s]
         raise ValueError('Control state {} not found'.format(ctrl_state))
 
     def shutdown(self) -> bool:
         """Sleep in preparation for power-down."""
         response = self.command('AT%OFF')
-        return True if response[0] == 'OK' else False
+        if response is None or response[0] == 'ERROR':
+            return False
+        return True
 
-    def utc_time(self) -> str:
+    def utc_time(self) -> Union[str, None]:
         response = self.command('AT%UTC')
-        if response[0] == 'ERROR':
+        if response is None or response[0] == 'ERROR':
             return None
         return response[0]
 
-    def s_register_get(self, register: str) -> int:
+    def s_register_get(self, register: str) -> Union[int, None]:
         if not register.startswith('S'):
             # TODO: better Exception handling
             raise Exception('Invalid S-register {}'.format(register))
         response = self.command('AT{}?'.format(register))
-        if response[0] == 'ERROR':
+        if response is None or response[0] == 'ERROR':
             return None
         return int(response[0])
 
+    def sreg_get_all(self) -> Union[list, None]:
+        #: AT%SREG
+        #: Sreg, RSV, CurrentVal, DefaultVal, MinimumVal, MaximumVal
+        result = self.command('AT%SREG')
+        if result is None or result[0] == 'ERROR':
+            return None
+        result.remove('OK')
+        reg_defs = result[2:]
+        registers = []
+        for row in reg_defs:
+            reg_def = row.split(' ')
+            reg_def = tuple(filter(None, reg_def))
+            registers.append(reg_def)
+        return registers
+
     def raw_command(self, command: str = 'AT') -> list:
-        """Sends a command and returns a list of responses."""
+        """Sends a command and returns a list of responses and response code."""
         response = self.command(command)
         return response
+
+
+def getModemConnection(port: str = '/dev/ttyUSB0'):
+    ser = Serial(port, baudrate=9600, timeout=60)
+    t = ByteReaderThread(ser, IdpModem)
+    t.start()
+    transport, idp_modem = t.connect()
+    del transport   #: unusued
+    return (t, idp_modem)
 
 
 # Self-test
 if __name__ == '__main__':
     try:
-        import serial
-        
         def on_connect():
             print('Connected')
 
-        ser = serial.Serial('/dev/ttyUSB0', baudrate=9600, timeout=60)
+        ser = Serial('/dev/ttyUSB0', baudrate=9600, timeout=60)
         t = ByteReaderThread(ser, IdpModem)
         t.start()
         transport, idp_modem = t.connect()
         idp_modem.on_connect = on_connect
         try:
-            idp_modem.config_restore_nvm()
+            connected = idp_modem.config_restore_nvm()
+            if not connected:
+                raise Exception('Could not connect to modem')
+            print('Modem connected')
         except AtCrcConfigError:
             idp_modem.crc = True
             idp_modem.config_restore_nvm()
         mobile_id = idp_modem.device_mobile_id()
         print('Mobile ID: {}'.format(mobile_id))
-        fw_ver, hw_ver, at_ver = idp_modem.device_version()
-        print('Versions: FW={} HW={} AT={}'.format(fw_ver, hw_ver, at_ver))
+        versions = idp_modem.device_version()
+        print('Versions: FW={} HW={} AT={}'.format(
+              versions['firmware'], versions['hardware'], versions['at']))
         
         def send_another_command():
             sleep(0.5)
             print('Requesting satellite status')
-            (state, snr) = idp_modem.sat_status_snr()
-            print('State: {} | SNR: {}'.format(state, snr))
+            state = None
+            snr = None
+            while state is None:
+                (state, snr) = idp_modem.sat_status_snr()
+            print('State: {} | SNR: {} dB'.format(
+                idp_modem.sat_status_name(state), snr))
             waiting = idp_modem.message_mt_waiting()
             if isinstance(waiting, list) and len(waiting) > 0:
                 print('{} MT messages waiting'.format(len(waiting)))
@@ -949,8 +1068,9 @@ if __name__ == '__main__':
         test_thread = threading.Thread(target=send_another_command,
                                        name='send_another_command',
                                        daemon=True)
-        test_thread.start()
-        gnss_timeout = 1   # seconds
+        # test_thread.start()
+        '''
+        gnss_timeout = 15   # seconds
         print('Requesting GNSS location with timeout {}s'.format(gnss_timeout))
         nmea_sentences = idp_modem.gnss_nmea_get(wait_secs=gnss_timeout)
         if isinstance(nmea_sentences, list):
@@ -958,6 +1078,23 @@ if __name__ == '__main__':
                 print('{}'.format(sentence))
         else:
             print(nmea_sentences)
+        registers = idp_modem.sreg_get_all()
+        print(registers)
+        '''
+        to_monitor = (3, 1)
+        mon = idp_modem.event_monitor_set([to_monitor])
+        monitored = idp_modem.event_monitor_get()
+        print('Monitored: {}'.format(monitored))
+        if monitored is not None:
+            for mon in monitored:
+                if mon[-1] == '*':
+                    to_get = tuple(int(i) for i in mon[0:-1].split('.'))
+                    print(idp_modem.event_get(to_get))
+        idp_modem.notification_control_set({'event_cached': True})
+        event_notifications = idp_modem.notification_control_get()
+        print('Notifications enabled: {}'.format(event_notifications))
+        event_check = idp_modem.notification_check()
+        print('Notifications active: {}'.format(event_check))
         print('Latency Statistics:')
         for stat in idp_modem._at_stats.response_times:
             print('  {}: {} ms'.format(

@@ -21,6 +21,10 @@ import time
 from typing import Callable
 
 import serial.tools.list_ports as list_ports
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 
 
 class RepeatingTimer(threading.Thread):
@@ -71,11 +75,14 @@ class RepeatingTimer(threading.Thread):
             err_str = 'RepeatingTimer seconds must be integer >= 0'
             raise ValueError(err_str)
         threading.Thread.__init__(self)
-        self.log = get_wrapping_logger(get_caller_name())
         if name is not None:
             self.name = name
         else:
             self.name = str(callback) + '_timer_thread'
+        if is_logger(log):
+            self.log = log
+        else:
+            self.log = get_wrapping_logger(name=self.name, debug=debug)
         self.interval = seconds
         if callback is None:
             self.log.warning('No callback specified for RepeatingTimer {}'
@@ -178,6 +185,75 @@ class RepeatingTimer(threading.Thread):
         self.stop_timer()
         self._terminate_event.set()
         self.log.info('{} timer terminated'.format(self.name))
+
+
+class SearchableQueue(object):
+    """Mimics relevant FIFO queue functions to avoid duplicate commands.
+    
+    Makes use of queue Exceptions to mimic a standard queue.
+
+    Attributes:
+        max_size: The maximum queue depth.
+    """
+    def __init__(self, max_size=100):
+        self._queue = []
+        self.max_size = max_size
+    
+    def contains(self, item):
+        """Returns true if the queue contains the item."""
+        for i in self._queue:
+            if i == item: return True
+        return False
+
+    def put(self, item, index=None):
+        """Adds the item to the queue.
+        
+        Args:
+            item: The object to add to the queue.
+            index: The queue position (None=end)
+        """
+        if len(self._queue) > self.max_size:
+            raise queue.Full
+        if index is None:
+            self._queue.append(item)
+        else:
+            self._queue.insert(index, item)
+
+    def put_exclusive(self, item):
+        """Adds the item to the queue only if unique in the queue.
+        
+        Args:
+            item: The object to add to the queue.
+        
+        Raises:
+            queue.Full if a duplicate item is in the queue.
+        """
+        if not self.contains(item):
+            self.put(item)
+        else:
+            raise queue.Full('Duplicate item in queue')
+
+    def get(self):
+        """Pops the first item from the queue.
+        
+        Returns:
+            An object from the queue.
+        
+        Raises:
+            queue.Empty if nothing in the queue.
+        """
+        if len(self._queue) > 0:
+            return self._queue.pop(0)
+        else:
+            raise queue.Empty
+    
+    def qsize(self):
+        """Returns the current size of the queue."""
+        return len(self._queue)
+    
+    def empty(self):
+        """Returns true if the queue is empty."""
+        return len(self._queue) == 0
 
 
 def is_logger(log: object) -> bool:

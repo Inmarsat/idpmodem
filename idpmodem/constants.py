@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 # Message Priorities and Data Formats
 PRIORITY_MT, PRIORITY_HIGH, PRIORITY_MEDH, PRIORITY_MEDL, PRIORITY_LOW = (
     0, 1, 2, 3, 4)
@@ -50,40 +52,40 @@ GNSS_DPM_AIR_1G = 6
 GNSS_DPM_AIR_2G = 7
 GNSS_DPM_AIR_4G = 8
 
-CONTROL_STATES = (
-    'Stopped',
-    'Waiting for GNSS fix',
-    'Starting search',
-    'Beam search',
-    'Beam found',
-    'Beam acquired',
-    'Beam switch in progress',
-    'Registration in progress',
-    'Receive only',
-    'Downloading Bulletin Board',
-    'Active',
-    'Blocked',
-    'Confirm previously registered beam',
-    'Confirm requested beam',
-    'Connect to confirmed beam'
-)
+CONTROL_STATES = {
+    0: 'Stopped',
+    1: 'Waiting for GNSS fix',
+    2: 'Starting search',
+    3: 'Beam search',
+    4: 'Beam found',
+    5: 'Beam acquired',
+    6: 'Beam switch in progress',
+    7: 'Registration in progress',
+    8: 'Receive only',
+    9: 'Downloading Bulletin Board',
+    10: 'Active',
+    11: 'Blocked',
+    12: 'Confirm previously registered beam',
+    13: 'Confirm requested beam',
+    14: 'Connect to confirmed beam'
+}
 
-at_err_result_codes = {
+AT_ERROR_CODES = {
     '0': 'OK',
-    '4': 'UNRECOGNIZED',
-    '100': 'INVALID CRC SEQUENCE',
-    '101': 'UNKNOWN COMMAND',
-    '102': 'INVALID COMMAND PARAMETERS',
-    '103': 'MESSAGE LENGTH EXCEEDS PERMITTED SIZE FOR FORMAT',
-    '104': 'RESERVED',
-    '105': 'SYSTEM ERROR',
-    '106': 'INSUFFICIENT RESOURCES',
-    '107': 'MESSAGE NAME ALREADY IN USE',
-    '108': 'TIMEOUT OCCURRED',
-    '109': 'UNAVAILABLE',
-    '110': 'RESERVED',
-    '111': 'RESERVED',
-    '112': 'ATTEMPT TO WRITE READ-ONLY PARAMETER'
+    '4': 'ERROR',
+    '100': 'ERR_INVALID_CRC_SEQUENCE',
+    '101': 'ERR_UNKNOWN_COMMAND',
+    '102': 'ERR_INVALID_COMMAND_PARAMETERS',
+    '103': 'ERR_MESSAGE_LENGTH_EXCEEDS_FORMAT_SIZE',
+    '104': 'ERR_RESERVED_104',
+    '105': 'ERR_SYSTEM_ERROR',
+    '106': 'ERR_INSUFFICIENT_RESOURCES',
+    '107': 'ERR_MESSAGE_NAME_ALREADY_IN_USE',
+    '108': 'ERR_TIMEOUT_OCCURRED',
+    '109': 'ERR_UNAVAILABLE',
+    '110': 'ERR_RESERVED_110',
+    '111': 'ERR_RESERVED_111',
+    '112': 'ERR_ATTEMPT_TO_WRITE_READ_ONLY_PARAMETER'
 }
 
 wakeup_intervals = {
@@ -128,3 +130,18 @@ gnss_dpm_modes = {
     'Air 2g': 7,
     'Air 4g': 8
 }
+
+NOTIFICATION_BITMASK = (
+    'gnss_fix_new',
+    'message_mt_received',
+    'message_mo_complete',
+    'network_registered',
+    'modem_reset',
+    'jamming_antenna_change',
+    'modem_reset_pending',
+    'wakeup_period_changed',
+    'utc_time_set',
+    'gnss_fix_timeout',
+    'event_cached',
+    'network_ping_acknowledged'
+)

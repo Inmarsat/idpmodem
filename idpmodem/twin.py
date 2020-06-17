@@ -250,56 +250,6 @@ class Modem(object):
     }
 
     # ----------------------- Twinning and helper objects ----------------------------------- #
-    class _PendingAtCommand(object):
-        """Holds metadata and callback for the pending AT command.
-
-        Attributes:
-            command: (string) The AT command sent, not including checksum
-            callback: (Callable) A callback function that will receive 
-                valid_response (bool), responses (list)
-            submit_time: (int)
-            send_time: (int)
-            response_time: (int)
-            response_raw: (str)
-            responses: (list)
-            response_processed_time: (int)
-            response_crc: (str)
-            echo_received: (bool)
-            result: 
-            result_code: 
-            error: (bool)
-            crc_ok: (bool)
-            timeout: (int)
-            timed_out: (bool)
-            retries: (int)
-
-        """
-
-        def __init__(self,
-                     at_command: str,
-                     callback: Callable,
-                     timeout: int = 10,
-                     retries: int = 0
-                     ):
-            # import time   # TODO: why?
-            self.command = at_command
-            self.submit_time = time()
-            self.send_time = None
-            self.response_time = None
-            self.response_raw = ""
-            self.responses = []
-            self.response_processed_time = None
-            self.response_crc = None
-            self.echo_received = False
-            self.result = None
-            self.result_code = None
-            self.error = False
-            self.crc_ok = True
-            self.timeout = timeout
-            self.timed_out = False
-            self.callback = callback
-            self.retries = retries
-
     def __init__(self,
                  port='/dev/ttyUSB0',
                  use_crc=False, 
@@ -337,14 +287,13 @@ class Modem(object):
         self._reader_thread.start()
         _transport, self.modem = self._reader_thread.connect()
         del _transport  #: Not used
+        self.modem.crc = use_crc
+        self.modem.unsolicited_callback = self._on_unsolicited_serial
         self.at_timeouts = 0
         self.at_timeouts_total = 0
         # modem parameters
         self.mobile_id = None
         self.version = _Version()
-        # self.hardware_version = 'unknown'
-        # self.software_version = 'unknown'
-        # self.at_version = 'unknown'
         self.is_initialized = False
         self.s_registers = SRegisters()
         self.at_config = _AtConfiguration()
@@ -363,11 +312,6 @@ class Modem(object):
         self.gnss_stats = self._init_gnss_stats()
         self.gpio = self._init_gpio()
         self.event_callbacks = self._init_event_callbacks()
-        # AT command queue ---------------------------------
-        self.at_commands_pending = []
-        self.at_command_active = None
-        self.at_command_parked = None
-        self._at_command_active_user_callback = None
         # Message queues -----------------------------------
         self.mo_msg_count = 0
         self.mo_msg_failed = 0
@@ -618,10 +562,8 @@ class Modem(object):
         Stops monitoring modem operations and communications, and starts trying to re-connect.
         Calls back the disconnect event.
         """
-        self.thread_sat_status.stop_timer()
-        self.thread_mt_monitor.stop_timer()
-        self.thread_event_monitor.stop_timer()
-        self.thread_tracking.stop_timer()
+        for t in self._automation_threads:
+            t.stop_timer()
         self.is_initialized = False
         if self.event_callbacks['disconnect'] is not None:
             self.event_callbacks['disconnect']()
@@ -633,321 +575,16 @@ class Modem(object):
             self._log.warning(
                 "No callback defined for unsolicited serial: {}".format(read_str))
 
-    # ------------------------- AT Command handling -------------------------------------------------- #
-    @staticmethod
-    def get_crc(at_cmd):
-        """
-        Returns the CRC-16-CCITT (initial value 0xFFFF) checksum using crcxmodem module.
-
-        :param at_cmd: the AT command to calculate CRC on
-        :return: the CRC for the AT command
-
-        """
-        return '{:04X}'.format(crcxmodem.crc(at_cmd, 0xffff))
-
-    def submit_at_command(self, at_command, callback, timeout=10, retries=0, jump_queue=False):
-        """
-        Creates and enqueues an AT command with a defined callback for the response
-
-        :param at_command: properly formatted AT command
-        :param callback: the function to call back with the response
-        :param timeout: optional integer seconds to wait for the command response
-        :param retries: optional number of retries on timeout or error
-        :param jump_queue: optional Boolean if the message should be placed at front of queue
-        """
-        command = self._PendingAtCommand(
-            at_command=at_command, callback=callback, timeout=timeout, retries=retries)
-        self._log.debug("Submitting command {} at {} with timeout {}s calling back to {}"
-                       .format(at_command, round(command.submit_time, 3), timeout,
-                               callback.__name__ if callback is not None else None))
-        if at_command in self.at_commands_pending:
-            self._log.warning("Prior command {} queued - discarding".format(at_command))
-        else:
-            if jump_queue:
-                # Not inserted at 0 since the prior command needs to complete
-                self.at_commands_pending.insert(1, command)
-            else:
-                self.at_commands_pending.append(command)
-        queue_debug = []
-        for c in self.at_commands_pending:
-            queue_debug.append('{}'.format(c.command))
-        self._log.debug("AT command queue: {}".format(queue_debug))
-
-    def _process_pending_at_command(self):
-        """Checks the queue of pending AT commands and sends on serial if one is pending and none are active"""
-        while self.serial_port.isOpen() and not self._terminate:
-            if len(self.at_commands_pending) > 0:
-                if self.at_command_active is None:
-                    # for cmd in self.at_commands_pending:
-                    #     self._log.debug("[{}]: {}".format(self.at_commands_pending.index(cmd), cmd.command))
-                    at_cmd = self.at_commands_pending[0] if len(
-                        self.at_commands_pending) > 0 else None
-                    if at_cmd is not None:
-                        self._log.debug("{} Pending commands - processing: {}"
-                                       .format(len(self.at_commands_pending), at_cmd.command))
-                        if self.at_config.crc:
-                            to_send = at_cmd.command + \
-                                ('*'+self.get_crc(at_cmd.command)
-                                 if self.at_config.crc else '')
-                        else:
-                            to_send = at_cmd.command
-                        if "AT%CRC=1" in at_cmd.command.upper():
-                            self.at_config.crc = True
-                            self._log.debug("CRC enabled for next command")
-                        elif "AT%CRC=0" in at_cmd.command.upper():
-                            self.at_config.crc = False
-                            self._log.debug("CRC disabled for next command")
-                        at_cmd.send_time = time()
-                        self._log.debug("Sending {} at {} with timeout {} seconds"
-                                       .format(to_send,
-                                       round(at_cmd.send_time, 3),
-                                       at_cmd.timeout))
-                        self.serial_port.write((to_send + '\r').encode())
-                        self.at_command_active = at_cmd
-                # else:
-                #     self._log.debug("Processing AT command: {}".format(self.at_command_active.command))
-
-    def _on_at_response(self, response):
-        """
-        Called when a response parsing completes. Validates CRC if present.
-        If a response ERROR is detected, requests the result code immediately jumping the AT queue.
-        Updates debug statistics and sends the final completed response for processing.
-
-        :param response: (_PendingAtCommand) the current pending command
-        """
-        response.response_processed_time = time()
-        self.at_timeouts = 0
-        self._log.debug(
-            "Processing AT response: {}".format(vars(response)))
-        if response.response_crc is not None:
-            if not self.at_config.crc:
-                self._log.warning(
-                    "Unexpected CRC response received, setting CRC flag True")
-                self.at_config.crc = True
-            self._log.debug("Raw response to validate CRC: {}"
-                           .format(response.response_raw.replace('\r', '<cr>').replace('\n', '<lf>')))
-            expected_crc = self.get_crc(response.response_raw)
-            self._log.debug("Expected CRC: *{}".format(expected_crc))
-            if response.response_crc != expected_crc:
-                response.crc_ok = False
-                self.crc_errors += 1
-                self._log.warning(
-                    "Bad CRC received: *{} - expected: *{}".format(response.response_crc, expected_crc))
-                if response.result_code == '100' or not self.at_config.crc and response.response_crc is not None:
-                    self._log.info(
-                        "CRC found on response but not explicitly configured...capturing config")
-                    self.at_config.crc = True
-        if response.result == 'ERROR' or response.result_code == '4':
-            response.error = True
-            self.at_command_parked = response
-            self._log.warning(
-                "Error detected on response, checking last error code")
-            # TODO: fix problem with queueing second response before first response is closed
-            self.submit_at_command(
-                at_command='ATS80?', callback=self._cb_get_result_code, jump_queue=True)
-        self._update_stats_at_response(response)
-        self._complete_pending_command(response)
-
-    def _cb_get_result_code(self, valid_response, responses, request):
-        """
-        Called back by a request for last error code (ATS80?), populates the result code and human readable
-        :param valid_response: (boolean) was the ATS80? response valid
-        :param responses: (_PendingAtCommand) the current pending command
-        :return:
-        """
-        if valid_response:
-            result_code = responses[0]
-            error_desc = self.at_err_result_codes[str(result_code)]
-            self.at_command_parked.result_code = result_code
-            self.at_command_parked.result = error_desc
-            self._log.debug("Processing result code {} for: {}".format(
-                error_desc, vars(self.at_command_parked)))
-            self._complete_pending_command(self.at_command_parked)
-        else:
-            self._log.error(
-                "Unhandled exception: {} {}".format(request, responses))
-
-    def _on_at_timeout(self, response):
-        """
-        Called if a timeout happens while waiting on AT command response. Increments a timeout counter and
-        immediately checks if enough timeouts have happened to imply a disconnect.
-        Then passes the command for final handling.
-
-        :param response: (_PendingAtCommand) the current pending command
-        """
-        self._log.warning("Command {} timed out after {} seconds - data may be present in serial adapter buffer".
-                         format(response.command, response.timeout))
-        if self.serial_port.out_waiting > 0:
-            self._log.debug("Found data in serial output buffer, resetting")
-            self.serial_port.reset_output_buffer()
-        response.timed_out = True
-        self.at_timeouts += 1
-        self.at_timeouts_total += 1
-        # self._com_monitor()
-        self._complete_pending_command(response)
-
-    def _is_at_pending(self, response):
-        is_pending = False
-        pending = self.at_commands_pending[0] if len(
-            self.at_commands_pending) > 0 else None
-        self._log.debug('Expected pending {} vs response {}'.format(
-            pending.command, response.command))
-        if pending is not None and response.command == pending.command and response.submit_time == pending.submit_time:
-            is_pending = True
-        return is_pending
-
-    def _is_at_active(self, response):
-        is_active = False
-        active = self.at_command_active if self.at_command_active is not None else None
-        if active is not None and response.command == active.command and response.submit_time == active.submit_time:
-            is_active = True
-        return is_active
-
-    def _is_at_parked(self, response):
-        is_parked = False
-        parked = self.at_command_parked if self.at_command_parked is not None else None
-        if parked is not None and response.command == parked.command and response.submit_time == parked.submit_time:
-            is_parked = True
-        return is_parked
-
-    def _retry_command(self, response):
-        if response.retries > 0:
-            self._log.info("Retrying command {}".format(response.command))
-            response.retries -= 1
-            self.submit_at_command(at_command=response.command, callback=response.callback,
-                                   timeout=response.timeout, retries=response.retries - 1)
-        else:
-            self._log.debug(
-                "No retries remaining for command {}".format(response.command))
-
-    def _complete_pending_command(self, response):
-        """
-        Handles final processing of a pending command, either re-attempting or calling back with response details
-
-        :param response: (_PendingAtCommand) the current pending command
-        :return: calls back with:
-
-           * (boolean) valid_response flag
-           * (string) error message or (list) of valid response strings
-           * (string) the AT command request to correlate to
-
-        """
-        complete = False
-        # TODO: fix error handling and recovery for failed AT e.g. AT%MGRT
-        if self._is_at_pending(response):
-            discard = self.at_commands_pending.pop(0)
-            if discard is not None:
-                self._log.debug("Pending AT command buffer FIFO popped ({}) - {} pending AT commands"
-                               .format(discard.command, len(self.at_commands_pending)))
-                queue_debug = []
-                for c in self.at_commands_pending:
-                    queue_debug.append('{}'.format(c.command))
-                self._log.debug("AT command queue: {}".format(queue_debug))
-            else:
-                self._log.error(
-                    "Tried to pop pending command from AT queue but got nothing")
-        if self._is_at_parked(response):
-            self._log.debug("Processing error result for {}: {}".format(
-                response.command, response.result))
-            if response.result is not None and response.result != 'ERROR':
-                self._log.debug(
-                    "Closing parked command {}".format(response.command))
-                complete = True
-                self.at_command_parked = None
-                self._retry_command(response)
-            else:
-                self._log.debug(
-                    "Awaiting closure of parked command {}".format(response.command))
-        elif self._is_at_active(response):
-            if response.timed_out or not response.crc_ok:
-                self._retry_command(response)
-            if self._is_at_parked(response):
-                self._log.debug(
-                    "Awaiting error code for {}".format(response.command))
-            else:
-                complete = True
-        else:
-            self._log.warning(
-                "Did not find {} in at_commands_pending".format(response.command))
-        if len(self.at_commands_pending) > 0:
-            self._log.debug("Next pending command: {}".format(
-                self.at_commands_pending[0].command))
-        else:
-            self._log.debug("No pending AT commands")
-        self._log.debug("Clearing active command {}".format(response.command))
-        self.at_command_active = None
-        if complete:
-            if response.callback is not None:
-                self._log.debug("Calling back to {}".format(
-                    response.callback.__name__))
-                if response.timed_out:
-                    response.callback(False, "TIMED_OUT", response.command)
-                elif not response.crc_ok:
-                    response.callback(
-                        False, "RESPONSE_CRC_ERROR", response.command)
-                elif response.error:
-                    response.callback(False, response.result, response.command)
-                else:
-                    response.callback(
-                        True, response.responses, response.command)
-            else:
-                self._log.warning(
-                    "No callback defined for command {}".format(response.command))
-        else:
-            self._log.warning(
-                "Message incomplete, awaiting further processing...(probably ATS80?)")
-
-    def _update_stats_at_response(self, response):
-        """
-        Updates the last and average AT command response time statistics.
-
-        :param response: (_PendingAtCommand) the response to the AT command that was sent
-
-        """
-        if response.response_time is None:
-            # TODO: shouldn't need this workaround
-            self._log.warning('Missed received time for {}'
-                .format(response.command))
-            response.response_time = response.response_processed_time
-        at_response_time_ms = int((
-            response.response_time - response.send_time) * 1000)
-        self.system_stats['lastATResponseTime_ms'] = at_response_time_ms
-        self._log.debug("Response time for {}: {} [ms]".format(
-            response.command, at_response_time_ms))
-        if self.system_stats['avgATResponseTime_ms'] == 0:
-            self.system_stats['avgATResponseTime_ms'] = at_response_time_ms
-        else:
-            self.system_stats['avgATResponseTime_ms'] = \
-                int((
-                    self.system_stats['avgATResponseTime_ms'] + at_response_time_ms) / 2)
-        # TODO: categorize AT commands for characterization
-        if 'AT%GPS' in response.command.upper():
-            request_parts = response.command.split(',')
-            sentences = []
-            for part in request_parts:
-                if part.replace('"', '') in ['RMC', 'GGA', 'GSA', 'GSV']:
-                    sentences.append(part.replace('"', ''))
-            self._log.debug("Get GNSS information processed for {}".format(
-                sentences))
-        elif 'AT%MGFG' in response.command.upper():
-            self._log.debug("Get To-Mobile message processed")
-        elif 'ATS' in response.command.upper():
-            self._log.debug("S-register operation {} processed".format(
-                response.command[2:].replace('?', '')))
-        elif 'AT%EVMON' in response.command.upper():
-            self._log.debug("Event Log Monitor {} processed".format(
-                response.command[10:]))
-        elif 'AT%EVNT' in response.command.upper():
-            self._log.debug("Event Log Get {} processed".format(
-                response.command[9:]))
-
     # ---------------------- Modem initialization & twinning ---------------------------------------- #
     def _init_modem(self, step=1):
         # TODO: handle AtTimeout
         self._log.debug("Initializing modem...step {}".format(step))
         try:
             # TODO: check settings restored from nvm are what we want
-            self.modem.config_restore_nvm()
+            connected = False
+            while not connected:
+                connected = self.modem.config_restore_nvm()
+                sleep(1)
         except AtCrcConfigError:
             if self.crc:
                 self.modem.crc = True
@@ -961,7 +598,7 @@ class Modem(object):
         # TODO: return (None, None) or check if None is ok for unpack
         atv = self.modem.config_nvm_report()
         if atv is not None:
-            self._cb_get_config(nvm_config)
+            self._cb_get_config(atv)
         else:
             raise IdpException('Could not retrieve configuration from AT&V')
         # TODO: check to ensure Verbose is enabled, should be from nvm default
