@@ -2419,9 +2419,8 @@ class Modem(object):
                                                                  self.gnss_stats['avgGNSSFixDuration']) / 2)
                 else:
                     self.gnss_stats['avgGNSSFixDuration'] = gnss_fix_duration
-                success, errors = nmea.parse_nmea_to_location(nmea_data_set=nmea_data_set,
-                                                              loc=self.location_pending.location)
-                if success:
+                try:
+                    self.location_pending.location = nmea.location_get(nmea_data_set=nmea_data_set)
                     if self.location_pending is not None and self.location_pending.callback is not None:
                         self.location_pending.callback(
                             self.location_pending.location)
@@ -2429,8 +2428,8 @@ class Modem(object):
                         self.log.warning(
                             "No callback defined for pending location")
                     self.location_pending = None
-                else:
-                    self.log.error(errors)
+                except Exception as e:
+                    self.log.error(e)
         else:
             self.log.error("Error getting location: {}".format(responses))
             if 'TIMEOUT' in responses:

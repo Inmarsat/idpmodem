@@ -33,6 +33,7 @@ class CommonMessageFormat(object):
         'string',
         'data',
         # 'array',   # TODO: support for array type
+        # 'enum',   #TODO: support for enum type
     )
 
     class Field(object):

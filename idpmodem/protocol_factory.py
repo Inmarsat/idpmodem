@@ -5,9 +5,11 @@ A threaded serial interface that sends and receives AT commands,
 decoding/abstracting typically used operations.
 """
 
+from base64 import b64decode, b64encode
 from collections import OrderedDict
 from serial import Serial, SerialException
 from serial.threaded import LineReader, ReaderThread
+from struct import unpack
 import threading
 from time import time, sleep
 from typing import Callable, Tuple, Union
@@ -389,8 +391,8 @@ class IdpModem(AtProtocol):
         super(IdpModem, self).__init__()
         self._at_stats = _AtStatistics()
         # TODO REMOVE self.notifications = self._notifications_dict()
-        self.token = None
-    
+        self.busy = False
+    '''
     def _token_get(self):
         if self.token is None:
             self.token = time()
@@ -404,10 +406,10 @@ class IdpModem(AtProtocol):
             return None
         else:
             raise AtException('Invalid token release rejected')
-
+    '''
     def connection_made(self, transport):
         """Clears the input buffer on connect.
-        
+        TODO: not tested
         May be overridden by user subclass.
         """
         super(IdpModem, self).connection_made(transport)
@@ -415,17 +417,19 @@ class IdpModem(AtProtocol):
     
     def connection_lost(self, exc):
         """Raises an exception on disconnect.
-        
+        TODO: not tested
         May be overridden by user subclass.
         """
         super(IdpModem, self).connection_lost(exc)
     
-    def command(self, command, timeout = 5):
+    def command(self, command: str, timeout:int = 5,
+                busy_timeout:int = 30) -> list:
         """Overrides the super class function to add metrics.
         
         Args:
             command (str): The AT command
             timeout (int): The command timeout (default 5 seconds)
+            busy_timeout (int): Timeout (seconds) for next waiting command
         
         Returns:
             Response object.
@@ -433,10 +437,11 @@ class IdpModem(AtProtocol):
         """
         try:
             request_time = time()
-            while self.token is not None:
-                if time() - request_time > timeout:
-                    raise IdpBusy('BUSY')
-            token = self._token_get()
+            while self.busy:
+                if time() - request_time > busy_timeout:
+                    raise IdpBusy('{} second timeout awaiting prior command'
+                                  .format(busy_timeout))
+            self.busy = True
             (response, latency) = super(IdpModem, self).command(command=command,
                                     timeout=timeout)
             self._at_stats.update(command, latency)
@@ -447,7 +452,7 @@ class IdpModem(AtProtocol):
                 if reason[0] == 'ERROR':
                     raise AtException('Unexpected error on ATS80?')
                 response.append(self.ERROR_CODES[reason[0]])
-            self._token_release(token)
+            self.busy = False
             return response
         except AtException as e:
             # TODO cases: AtCrcConfigError, AtCrcError, AtTimeout
@@ -754,7 +759,7 @@ class IdpModem(AtProtocol):
         #: %MGFN: name, number, priority, sin, state, length, bytes_received
         for res in response:
             msg = res.replace('%MGFN:', '').strip()
-            if msg.startswith('FM'):
+            if msg.startswith('"FM'):
                 parts = msg.split(',')
                 name, number, priority, sin, state, length, received = parts
                 del number   #: unused
@@ -779,23 +784,38 @@ class IdpModem(AtProtocol):
             The encoded data as a string
 
         """
-        response = self.command('AT%MGFG="{},{}"'.format(name, data_format))
+        response = self.command('AT%MGFG={},{}'.format(name, data_format))
         if response is None or response[0] == 'ERROR':
             return None
         # response.remove('OK')
         #: name, number, priority, sin, state, length, data_format, data
         parts = response[0].split(',')
-        message = {
-            'name': parts[0],
-            'number': int(parts[1]),
-            'priority': int(parts[2]),
-            'sin': int(parts[3]),
-            'state': int(parts[4]),
-            'length': int(parts[5]),
-            'data_format': int(parts[6]),
-            'data': parts[7]
-        }
-        return message['data']
+        sys_msg_num, sys_msg_seq = parts[1].split('.')
+        msg_sin = int(parts[3])
+        data_str_no_sin = parts[7]
+        if data_format == constants.FORMAT_HEX:
+            data = hex(msg_sin) + data_str_no_sin
+        elif data_format == constants.FORMAT_B64:
+            # add SIN as base64
+            databytes = bytes([msg_sin]) + b64decode(data_str_no_sin)
+            data = b64encode(databytes)
+        elif data_format == constants.FORMAT_TEXT:
+            data = '\\x{}'.format(hex(msg_sin).replace('0x','')) + data_str_no_sin
+        try:
+            message = {
+                'name': parts[0],
+                'system_message_number': int(sys_msg_num),
+                'system_message_sequence': int(sys_msg_seq),
+                'priority': int(parts[2]),
+                'sin': msg_sin,
+                'state': int(parts[4]),
+                'length': int(parts[5]),
+                'data_format': data_format,
+                'data': data
+            }
+            return message['data']
+        except Exception as e:
+            print(e)
 
     def message_mt_delete(self, name: str) -> bool:
         """Marks a message for deletion by the modem.
@@ -1018,8 +1038,10 @@ class IdpModem(AtProtocol):
         return response
 
 
-def getModemConnection(port: str = '/dev/ttyUSB0'):
-    ser = Serial(port, baudrate=9600, timeout=60)
+def getModemConnection(port: str = '/dev/ttyUSB0',
+                       baudrate: int = 9600,
+                       timeout: int = 60) -> tuple:
+    ser = Serial(port, baudrate=baudrate, timeout=timeout)
     t = ByteReaderThread(ser, IdpModem)
     t.start()
     transport, idp_modem = t.connect()
@@ -1033,10 +1055,7 @@ if __name__ == '__main__':
         def on_connect():
             print('Connected')
 
-        ser = Serial('/dev/ttyUSB0', baudrate=9600, timeout=60)
-        t = ByteReaderThread(ser, IdpModem)
-        t.start()
-        transport, idp_modem = t.connect()
+        t, idp_modem = getModemConnection()
         idp_modem.on_connect = on_connect
         try:
             connected = idp_modem.config_restore_nvm()

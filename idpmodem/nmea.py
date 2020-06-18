@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Utilities for parsing NMEA data into a location object
 """
@@ -94,6 +93,10 @@ def validate_nmea_checksum(sentence):
     nmeadata = nmeadata.replace('$', '')
     xcksum = str("%0.2x" % (reduce(operator.xor, (ord(c) for c in nmeadata), 0))).upper()
     return (cksum == xcksum), nmeadata[2:]
+
+
+class NmeaException(Exception):
+    pass
 
 
 def location_get(nmea_data_set, degrees_resolution=6):
@@ -222,13 +225,14 @@ def location_get(nmea_data_set, degrees_resolution=6):
                 pass
 
         else:
-            error = "{}{} NMEA sentence type not recognized".format(';' if err_str != '' else '', sentence[0:3])
-            raise Exception(error)
+            error = "{}{} NMEA sentence type not recognized".format(sentence[0:3])
+            raise NmeaException(error)
     return loc
 
-
-def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
+'''
+def parse_nmea_to_location(nmea_data_set, loc=None, degrees_resolution=6):
     """
+    TODO: cleanup and exception handling
     Parses a NMEA string to partially populate a ``Location`` object.
     Several sentence parameters are unused but remain as placeholders for completeness/future use.
 
@@ -240,6 +244,8 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
        - error string if not successful
 
     """
+    if loc is None:
+        loc = Location()
     err_str = ''
     for sentence in nmea_data_set:
         res, nmea_data = validate_nmea_checksum(sentence)
@@ -367,4 +373,7 @@ def parse_nmea_to_location(nmea_data_set, loc, degrees_resolution=6):
             err_str = "{}Invalid NMEA checksum on {}".format(';' if err_str != '' else '', sentence[0:3])
     if loc.latitude == 90.0 and loc.longitude == 180.0:
         err_str += 'Unable to get valid location from NMEA'
+    if err_str != '':
+        raise Exception(err_str)
     return err_str == '', err_str
+'''

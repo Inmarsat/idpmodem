@@ -1,3 +1,7 @@
+"""
+Message classes for structured data exchange
+"""
+
 from base64 import b64decode, b64encode
 import binascii
 from string import printable
@@ -58,7 +62,8 @@ class Message(object):
     MAX_NAME_LENGTH = 8
     MAX_HEX_SIZE = 100
 
-    def __init__(self, payload, name=None, msg_sin=None, msg_min=None, priority=PRIORITY_LOW,
+    def __init__(self, payload, name=None,
+                 msg_sin=None, msg_min=None, priority=PRIORITY_LOW,
                  data_format=FORMAT_HEX, size=None, log=None, debug=False):
         if is_logger(log):
             self.log = log
@@ -77,7 +82,8 @@ class Message(object):
                 # assume that payload does not also include MIN
             else:
                 self.log.warning(
-                    "Invalid MIN value {} must be integer in range 0..255".format(msg_min))
+                    "Invalid MIN value {} must be integer in range 0..255"
+                    .format(msg_min))
         elif payload is not None:
             if isinstance(payload, bytearray):
                 self.min = payload[0]
@@ -91,13 +97,15 @@ class Message(object):
                 self.sin = msg_sin
             else:
                 raise ValueError(
-                    "Invalid SIN value {}, must be integer in range 16..255".format(msg_sin))
+                    "Invalid SIN value {}, must be integer in range 16..255"
+                    .format(msg_sin))
         elif payload is not None:
             if isinstance(payload, bytearray):
                 if payload[0] > 15:
                     self.sin = payload[0]
                     self.log.debug(
-                        "Received bytearray with implied SIN={}".format(self.sin))
+                        "Received bytearray with implied SIN={}"
+                        .format(self.sin))
                     payload = payload[1:] if msg_min is None else payload[2:]
                 else:
                     raise ValueError(
@@ -131,10 +139,13 @@ class Message(object):
                 else:
                     raise ValueError(
                         "Unrecognized data_format: {}".format(data_format))
-            elif isinstance(payload, list) and all((isinstance(i, int) and i in range(0, 255+1)) for i in payload):
+            elif (isinstance(payload, list)
+                  and all((isinstance(i, int)
+                          and i in range(0, 255+1)) for i in payload)):
                 payload = bytearray(payload)
             elif not isinstance(payload, bytearray):
-                raise ValueError("Invalid payload {} ({}),".format(payload, type(payload))
+                raise ValueError("Invalid payload {} ({}),"
+                                .format(payload, type(payload))
                                 + " must be text or hex string,"
                                 + " integer list or bytearray")
             self.raw_payload = bytearray(payload)
@@ -145,7 +156,8 @@ class Message(object):
         self.size = len(self.raw_payload)
         if size is not None and size != self.size:
             self.log.warning(
-                "Size {} passed during init does not match derived size {}".format(size, self.size))
+                "Size {} passed during init does not match derived size {}"
+                .format(size, self.size))
         self.priority = priority
         self.data_format = data_format
         # self.log.debug("New message created: {}".format(vars(self)))
@@ -166,7 +178,10 @@ class Message(object):
                 else:
                     payload = self.raw_payload
             else:
-                payload = self.raw_payload[1:] if include_min else self.raw_payload[2:]
+                if include_min:
+                    payload = self.raw_payload[1:]
+                else:
+                    payload = self.raw_payload[2:]
             if data_format == FORMAT_TEXT:
                 data = '"{}"'.format(_bytearray_to_str(payload))
             elif data_format == FORMAT_HEX:
