@@ -110,6 +110,7 @@ def location_get(nmea_data_set, degrees_resolution=6):
         sentence_type = nmea_data[0:3]
         if sentence_type == 'GGA':          # GGA is essential fix information for 3D location and accuracy
             gga = nmea_data.split(',')      # $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*4
+            '''
             gga_utc_hhmmss = gga[1]         # Fix taken at 12:35:19 UTC
             gga_latitude_dms = gga[2]       # Latitude 48 deg 07.038'
             gga_latitude_ns = gga[3]        # Latitude N
@@ -127,14 +128,17 @@ def location_get(nmea_data_set, degrees_resolution=6):
                 'Manual',                   # 7 = Manual input mode
                 'Simulation'                # 8 = Simulation mode
             )
+            '''
             gga_satellites = gga[7]         # Number of satellites being tracked
             gga_hdop = gga[8]               # Horizontal dilution of precision
             gga_altitude = gga[9]           # Altitude above mean sea level
+            '''
             gga_altitude_unit = gga[10]     # Altitude units (M)eters
             gga_height_wgs84 = gga[11]      # Height of geoid (mean sea level) above WGS84 ellipsoid
             gga_height_unit = gga[12]       # Height units (M)eters
             gga_dgps_update_time = gga[13]  # Time in seconds since last DGPS update
             gga_dgps_station = gga[14]      # DGPS station ID number
+            '''
             satellites = int(gga_satellites)
             if loc.satellites < satellites:
                 loc.satellites = satellites
@@ -155,8 +159,10 @@ def location_get(nmea_data_set, degrees_resolution=6):
             rmc_speed_knots = rmc[7]          # 022.4 = 22.4 knots
             rmc_heading_deg_true = rmc[8]     # 084.4 = 84.4 degrees True
             rmc_date_ddmmyy = rmc[9]          # date 23rd of March 1994
+            '''
             rmc_mag_var_mag = rmc[10]         # Magnetic Variation (magnitude)
             rmc_mag_var_dir = rmc[11]         # Magnetic Variation (direction)
+            '''
             # Convert text values to workable numbers
             year = int(rmc_date_ddmmyy[4:6]) + 2000
             month = int(rmc_date_ddmmyy[2:4])
@@ -181,18 +187,20 @@ def location_get(nmea_data_set, degrees_resolution=6):
 
         elif sentence_type == 'GSA':                    # GSA is used for DOP and active satellites
             gsa = nmea_data.split(',')                  # $GPGSA,A,3,04,05,,09,12,,,24,,,,,2.5,1.3,2.1*39
-            gsa_auto = gsa[1]                           # Auto selection of 2D or 3D fix (M = manual)
+            #: gsa_auto = gsa[1]                           # Auto selection of 2D or 3D fix (M = manual)
             gsa_fix_type = gsa[2]                       # 3D fix type
+            '''
             gsa_fix_types = {
                 'none': 1,
                 '2D': 2,
                 '3D': 3
             }
+            '''
             gsa_prns = []                               # PRNs of satellites used for fix (space for 12)
             for prn in range(1, 12):
                 gsa_prns.append(gsa[prn+2])             # offset of prns in the split array is [3]
             gsa_pdop = gsa[15]                          # Probability dilution of precision (DOP), above 20 is bad
-            gsa_hdop = gsa[16]                          # Horizontal DOP
+            #: gsa_hdop = gsa[16]                          # Horizontal DOP
             gsa_vdop = gsa[17]                          # Vertical DOP
             # Use GSA for fix_type, PDOP, VDOP (HDOP comes from GGA)
             loc.fix_type = int(gsa_fix_type) if gsa_fix_type != '' else 0
@@ -201,8 +209,10 @@ def location_get(nmea_data_set, degrees_resolution=6):
 
         elif sentence_type == 'GSV':         # Satellites in View
             gsv = nmea_data.split(',')       # $GPGSV,2,1,08,01,40,083,46,02,17,308,41,12,07,344,39,14,22,228,45*75
+            '''
             gsv_sentences = gsv[1]           # Number of sentences for full data
             gsv_sentence = gsv[2]            # Sentence number (up to 4 satellites per sentence)
+            '''
             gsv_satellites = gsv[3]          # Number of satellites in view
             # following supports up to 4 satellites per sentence
             satellites_info = []
@@ -225,7 +235,7 @@ def location_get(nmea_data_set, degrees_resolution=6):
                 pass
 
         else:
-            error = "{}{} NMEA sentence type not recognized".format(sentence[0:3])
+            error = "{} NMEA sentence type not recognized".format(sentence[0:3])
             raise NmeaException(error)
     return loc
 

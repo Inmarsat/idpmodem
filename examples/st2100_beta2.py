@@ -245,9 +245,7 @@ def main():
     logfilename = user_options['logfile']
     logsize = user_options['log_size']
     tracking_interval = int(user_options['tracking'])
-    tracking_seconds = int(tracking_interval * 60)
     debug = user_options['debug']
-    debug = True
 
     modem = None
     stats_monitor = None
