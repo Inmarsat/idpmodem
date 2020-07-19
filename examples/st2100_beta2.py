@@ -12,7 +12,7 @@ import os
 import sys
 from time import sleep
 
-from idpmodem.protocol_factory import getModemConnection, IdpBusy, AtException, AtCrcConfigError, AtCrcError
+from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
 from idpmodem.codecs import common as idpcodec
 from idpmodem.constants import FORMAT_B64, FORMAT_HEX
@@ -80,7 +80,7 @@ def get_stats():
             raise Exception('No response or error to stat request')
         response.remove('OK')
         log_stats(response)
-    except IdpBusy:
+    except IdpModemBusy:
         log.warning('Timed out modem busy')
 
 
@@ -113,11 +113,11 @@ def handle_mt_messages():
                                 if msg_sin == 255 and msg_min == 1:
                                     interval = int(data[4:], 16)
                                     update_tracking_interval(interval)
-                        except IdpBusy:
+                        except IdpModemBusy:
                             log.warning('Timed out modem busy')
             else:
                 log.debug('No forward messages queued')
-    except IdpBusy:
+    except IdpModemBusy:
         log.warning('Timed out modem busy')
 
 def update_tracking_interval(interval_minutes):
@@ -199,11 +199,11 @@ def send_idp_location():
                                         data_format=data_format,
                                         sin=msg_sin,
                                         min=msg_min)
-        if message_id is None:
-            log.error('Failed to submit location message')
+        if message_id.startswith('ERR'):
+            log.error('Failed to submit location message: {}'.message_id)
         else:
             log.info('Location message submitted with ID {}'.format(message_id))
-    except IdpBusy:
+    except IdpModemBusy:
         log.warning('Timed out modem busy')
 
 
@@ -256,7 +256,7 @@ def main():
     log.info('{}Starting ST2100 Beta{}'.format('*' * 15, '*' * 15))
     at_threads = []
     try:
-        (t, modem) = getModemConnection(port)
+        (modem, t) = get_modem_thread(port)
         try:
             connected = modem.config_restore_nvm()
         except AtCrcConfigError:

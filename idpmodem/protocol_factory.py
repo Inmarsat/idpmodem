@@ -186,11 +186,12 @@ class AtProtocol(LineReader):
             unsolicited: A unicode string terminated by <lf>.
 
         """
-        if self.unsolicited_callback is not None:
-            self.unsolicited_callback(unsolicited)
-        else: 
-            print('Unsolicited message: {}'.format(
-                unsolicited.replace('\r', '<cr>').replace('\n', '<lf>')))
+        if unsolicited is not None:
+            if self.unsolicited_callback is not None:
+                self.unsolicited_callback(unsolicited)
+            else: 
+                print('Unsolicited message: {}'.format(
+                    unsolicited.replace('\r', '<cr>').replace('\n', '<lf>')))
 
     @staticmethod
     def _clean_response(lines: list,
@@ -380,7 +381,7 @@ class _AtStatistics(object):
         self.response_times[category] = (category_average, category_count)
 
 
-class IdpBusy(AtException):
+class IdpModemBusy(AtException):
     pass
 
 
@@ -392,21 +393,7 @@ class IdpModem(AtProtocol):
         self._at_stats = _AtStatistics()
         # TODO REMOVE self.notifications = self._notifications_dict()
         self.busy = False
-    '''
-    def _token_get(self):
-        if self.token is None:
-            self.token = time()
-            return self.token
-        else:
-            return None
     
-    def _token_release(self, token):
-        if token == self.token:
-            self.token = None
-            return None
-        else:
-            raise AtException('Invalid token release rejected')
-    '''
     def connection_made(self, transport):
         """Clears the input buffer on connect.
         TODO: not tested
@@ -439,7 +426,7 @@ class IdpModem(AtProtocol):
             request_time = time()
             while self.busy:
                 if time() - request_time > busy_timeout:
-                    raise IdpBusy('{} second timeout awaiting prior command'
+                    raise IdpModemBusy('{} second timeout awaiting prior command'
                                   .format(busy_timeout))
             self.busy = True
             (response, latency) = super(IdpModem, self).command(command=command,
@@ -680,7 +667,7 @@ class IdpModem(AtProtocol):
             min: 
 
         Returns:
-            Name of the message if successful, or None
+            Name of the message if successful, or the error string
         """
         if name is None:
             # Use the 8 least-signficant numbers of unix timestamp as unique
@@ -695,7 +682,7 @@ class IdpModem(AtProtocol):
                                 data_format,
                                 '"{}"'.format(data) if data_format == 1 else data))
         if response[0] == 'ERROR':
-            return None
+            return response[1]
         return name
 
     def message_mo_state(self, name: str = None) -> list:
@@ -771,7 +758,8 @@ class IdpModem(AtProtocol):
                                 'received': int(received)})
         return waiting
 
-    def message_mt_get(self, name: str, data_format: int = 3) -> str:
+    def message_mt_get(self, name: str, data_format: int = 3,
+                       verbose: bool = False) -> Union[str, dict]:
         """Returns the payload of a specified mobile-terminated message.
         
         Payload is presented as a string with encoding based on data_format. 
@@ -794,13 +782,13 @@ class IdpModem(AtProtocol):
         msg_sin = int(parts[3])
         data_str_no_sin = parts[7]
         if data_format == constants.FORMAT_HEX:
-            data = hex(msg_sin) + data_str_no_sin
+            data = hex(msg_sin) + data_str_no_sin.lower()
         elif data_format == constants.FORMAT_B64:
             # add SIN as base64
             databytes = bytes([msg_sin]) + b64decode(data_str_no_sin)
-            data = b64encode(databytes)
+            data = b64encode(databytes).decode('ascii')
         elif data_format == constants.FORMAT_TEXT:
-            data = '\\x{}'.format(hex(msg_sin).replace('0x','')) + data_str_no_sin
+            data = '\\{:02x}'.format(msg_sin) + data_str_no_sin
         try:
             message = {
                 'name': parts[0],
@@ -813,12 +801,12 @@ class IdpModem(AtProtocol):
                 'data_format': data_format,
                 'data': data
             }
-            return message['data']
+            return message if verbose else message['data']
         except Exception as e:
             print(e)
 
     def message_mt_delete(self, name: str) -> bool:
-        """Marks a message for deletion by the modem.
+        """Marks a Return message for deletion by the modem.
         
         Args:
             name: The unique mobile-terminated name in the queue
@@ -833,7 +821,13 @@ class IdpModem(AtProtocol):
         return True
 
     def event_monitor_get(self) -> Union[list, None]:
-        #: AT%EVMON
+        """Returns a list of monitored/cached events.
+        As a list of <class.subclass> strings which includes an asterisk
+        for each new event that can be retrieved.
+
+        Returns:
+            list of strings <class.subclass[*]> or None
+        """
         result = self.command('AT%EVMON')
         if result is None or result[0] == 'ERROR':
             return None
@@ -849,6 +843,14 @@ class IdpModem(AtProtocol):
         return events
 
     def event_monitor_set(self, eventlist: list) -> bool:
+        """Sets trace events to monitor.
+
+        Args:
+            eventlist: list of tuples (class, subclass)
+
+        Returns:
+            True if successfully set
+        """
         #: AT%EVMON{ = <c1.s1>[, <c2.s2> ..]}
         cmd = ''
         for monitor in eventlist:
@@ -863,10 +865,20 @@ class IdpModem(AtProtocol):
 
     @staticmethod
     def _to_signed32(n):
+        """Converts an integer to signed 32-bit format."""
         n = n & 0xffffffff
         return (n ^ 0x80000000) - 0x80000000
 
     def event_get(self, event: tuple, raw: bool = True) -> Union[str, dict, None]:
+        """Gets the cached event by class/subclass.
+
+        Args:
+            event: tuple of (class, subclass)
+            raw: Returns the raw text string if True
+        
+        Returns:
+            String if raw=True, dictionary if raw=False or None
+        """
         #: AT%EVNT=c,s
         #: res %EVNT: <dataCount>,<signedBitmask>,<MTID>,<timestamp>,
         # <class>,<subclass>,<priority>,<data0>,<data1>,..,<dataN>
@@ -901,7 +913,15 @@ class IdpModem(AtProtocol):
         return result[0] if raw else event
 
     @staticmethod
-    def _notifications_dict(sreg_value: int = None):
+    def _notifications_dict(sreg_value: int = None) -> OrderedDict:
+        """Returns an OrderedDictionary as an abstracted bitmask of notifications.
+        
+        Args:
+            sreg_value: (optional) the integer value stored in S88 or S89
+        
+        Returns:
+            ordered dictionary corresponding to bitmask
+        """
         template = OrderedDict([
             (bit, False) for bit in constants.NOTIFICATION_BITMASK])
         if sreg_value is not None:
@@ -917,6 +937,14 @@ class IdpModem(AtProtocol):
         return template
 
     def notification_control_set(self, event_map: list) -> bool:
+        """Sets the event notification bitmask.
+
+        Args:
+            event_map: list of dict{event_name, bool}
+        
+        Returns:
+            True if successful.
+        """
         #: ATS88=bitmask
         # TODO REMOVE old_notifications = self.notifications.copy()
         notifications_changed = False
@@ -942,26 +970,18 @@ class IdpModem(AtProtocol):
                 return False
         return True
     
-    def notification_control_get(self) -> Union[dict, None]:
+    def notification_control_get(self) -> Union[OrderedDict, None]:
+        """Returns the current notification configuration bitmask."""
         #: ATS88?
         result = self.command('ATS88?')
         if result is None or result[0] == 'ERROR':
             return None
         return self._notifications_dict(int(result[0]))
-        '''
-        binary = bin(int(result[0]))[2:]
-        if len(binary) > len(self.notifications):
-            binary = binary[:len(self.notifications) - 1]
-        while len(binary) < len(self.notifications):  # pad leading zeros
-            binary = '0' + binary
-        i = 0
-        for key in reversed(self.notifications):
-            self.notifications[key] = True if binary[i] == '1' else False
-            i += 1
-        '''
-        # TODO REMOVE return dict(self.notifications)
 
     def notification_check(self) -> OrderedDict:
+        """Returns the current active event notification bitmask.
+        Clears the value of S89 upon reading.
+        """
         #: ATS89?
         result = self.command('ATS89?')
         if result is None or result[0] == 'ERROR':
@@ -996,19 +1016,28 @@ class IdpModem(AtProtocol):
         raise ValueError('Control state {} not found'.format(ctrl_state))
 
     def shutdown(self) -> bool:
-        """Sleep in preparation for power-down."""
+        """Tell the modem to prepare for power-down."""
         response = self.command('AT%OFF')
         if response is None or response[0] == 'ERROR':
             return False
         return True
 
     def utc_time(self) -> Union[str, None]:
+        """Returns current UTC time of the modem in ISO format."""
         response = self.command('AT%UTC')
         if response is None or response[0] == 'ERROR':
             return None
-        return response[0]
+        return response[0].replace('%UTC: ', '').replace(' ', 'T') + 'Z'
 
     def s_register_get(self, register: str) -> Union[int, None]:
+        """Returns the value of the S-register requested.
+
+        Args:
+            register: The register name/number (e.g. S80)
+
+        Returns:
+            integer value or None
+        """
         if not register.startswith('S'):
             # TODO: better Exception handling
             raise Exception('Invalid S-register {}'.format(register))
@@ -1018,6 +1047,12 @@ class IdpModem(AtProtocol):
         return int(response[0])
 
     def sreg_get_all(self) -> Union[list, None]:
+        """Returns a list of S-register definitions.
+        R=read-only, S=signed, V=volatile
+        
+        Returns:
+            tuple(register, RSV, current, default, minimum, maximum) or None
+        """
         #: AT%SREG
         #: Sreg, RSV, CurrentVal, DefaultVal, MinimumVal, MaximumVal
         result = self.command('AT%SREG')
@@ -1038,25 +1073,31 @@ class IdpModem(AtProtocol):
         return response
 
 
-def getModemConnection(port: str = '/dev/ttyUSB0',
+def get_modem_thread(port: str = '/dev/ttyUSB0',
                        baudrate: int = 9600,
                        timeout: int = 60) -> tuple:
+    """Gets a threaded IDP modem connection / protocol factory.
+
+    Args:
+        port: The serial port name (default /dev/ttyUSB0)
+        baudrate: The serial baud rate (default 9600)
+        timeout: The serial connection timeout
+
+    Returns:
+        tuple with Thread and IdpModem
+    """
     ser = Serial(port, baudrate=baudrate, timeout=timeout)
     t = ByteReaderThread(ser, IdpModem)
     t.start()
     transport, idp_modem = t.connect()
     del transport   #: unusued
-    return (t, idp_modem)
+    return (idp_modem, t)
 
 
 # Self-test
 if __name__ == '__main__':
     try:
-        def on_connect():
-            print('Connected')
-
-        t, idp_modem = getModemConnection()
-        idp_modem.on_connect = on_connect
+        idp_modem, t = get_modem_thread()
         try:
             connected = idp_modem.config_restore_nvm()
             if not connected:
