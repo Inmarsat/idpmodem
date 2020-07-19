@@ -200,7 +200,7 @@ def send_idp_location():
                                         sin=msg_sin,
                                         min=msg_min)
         if message_id.startswith('ERR'):
-            log.error('Failed to submit location message: {}'.message_id)
+            log.error('Failed to submit location message: {}'.format(message_id))
         else:
             log.info('Location message submitted with ID {}'.format(message_id))
     except IdpModemBusy:
