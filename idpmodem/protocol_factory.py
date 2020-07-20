@@ -706,6 +706,7 @@ class IdpModem(AtProtocol):
             6: 'TX_COMPLETE',
             7: 'TX_FAILED'
         }
+        
         filter = '="{}"'.format(name) if name is not None else ''
         response = self.command("AT%MGRS{}".format(filter))
         if response[0] == 'ERROR':
@@ -714,15 +715,16 @@ class IdpModem(AtProtocol):
         response.remove('OK')
         states = []
         for res in response:
-            res = res.replace('%MGRS: ', '')
-            name, number, priority, sin, state, size, sent = res.split(',')
-            del number
-            del priority
-            del sin
-            states.append({name: name,
-                           state: STATES[int(state)],
-                           size: size,
-                           sent: sent})
+            res = res.replace('%MGRS:', '').strip()
+            if len(res) > 0:
+                name, number, priority, sin, state, size, sent = res.split(',')
+                del number
+                del priority
+                del sin
+                states.append({'name': name,
+                            'state': STATES[int(state)],
+                            'size': size,
+                            'sent': sent})
         return states
     
     def message_mo_cancel(self, name: str) -> bool:

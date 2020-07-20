@@ -122,6 +122,7 @@ def handle_mt_messages():
     except IdpModemBusy:
         log.warning('Timed out modem busy')
 
+
 def update_tracking_interval(interval_minutes):
     """A remote command reconfigures the tracking interval.
 
@@ -213,11 +214,11 @@ def send_idp_location():
 def complete_mo_messages():
     global log
     global modem
-    message_states = modem.mo_message_state()
+    message_states = modem.message_mo_state()
     if message_states is not None and len(message_states) > 0:
         for status in message_states:
-            if status.state in ['TX_COMPLETE', 'TX_FAILED']:
-                log.info('Mobile-originated message {} {}'.format(status.name, status.state))
+            if status['state'] in ['TX_COMPLETE', 'TX_FAILED']:
+                log.info('Mobile-originated message {} {}'.format(status['name'], status['state']))
 
 
 def parse_args(argv):
@@ -288,7 +289,7 @@ def main():
                                     name='tracking', callback=send_idp_location,
                                     defer=False, auto_start=True)
         at_threads.append(tracking_thread)
-        mo_cleanup = RepeatingTime(5, name='mo_message_cleanup', defer=False,
+        mo_cleanup = RepeatingTimer(5, name='mo_message_cleanup', defer=False,
                                     callback=complete_mo_messages, auto_start=True)
         at_threads.append(mo_cleanup)
         mt_commands = RepeatingTimer(5, name='mt_message_check', defer=False,
