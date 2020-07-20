@@ -683,6 +683,7 @@ class IdpModem(AtProtocol):
                                 '"{}"'.format(data) if data_format == 1 else data))
         if response[0] == 'ERROR':
             return response[1]
+        # TODO: spin thread to check status until complete/remove
         return name
 
     def message_mo_state(self, name: str = None) -> list:
