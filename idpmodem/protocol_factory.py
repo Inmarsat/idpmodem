@@ -731,6 +731,15 @@ class IdpModem(AtProtocol):
             return False
         return True
 
+    def message_mo_clear(self) -> bool:
+        list_response = self.command('AT%MGRL')
+        if list_response[0] == 'ERROR':
+            return False
+        del_response = self.command('AT%MGRD')
+        if del_response[0] == 'ERROR':
+            return False
+        return True
+
     def message_mt_waiting(self) -> Union[list, None]:
         """Returns a list of received mobile-terminated message information.
         

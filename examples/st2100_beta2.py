@@ -11,6 +11,7 @@ import binascii
 import os
 import sys
 from time import sleep
+import traceback
 
 from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
@@ -75,11 +76,12 @@ def get_stats():
             event_str += ';'
     log.debug('Getting satellite statistics')
     try:
-        response = modem.raw_command('AT{}'.format(event_str))
-        if response is None or response[0] == 'ERROR':
-            raise Exception('No response or error to stat request')
-        response.remove('OK')
-        log_stats(response)
+        responses = modem.raw_command('AT{}'.format(event_str))
+        if 'OK' in responses:
+            responses.remove('OK')
+            log_stats(responses)
+        else:
+            log.warning('Error getting statistics...likely no hourly metrics exist yet')
     except IdpModemBusy:
         log.warning('Timed out modem busy')
 
@@ -156,7 +158,7 @@ def send_idp_location():
     global log
     global modem
     global snr
-    log.debug('Getting location to send')
+    log.info('Getting location to send')
     try:
         loc = modem.location_get()
         if loc is None:
@@ -267,6 +269,7 @@ def main():
             connected = modem.config_restore_nvm()
             log.warning('Unable to connect to IDP modem, retrying in 1 second')
             sleep(1)
+        modem.message_mo_clear()
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
         at_threads.append(stats_monitor)
@@ -284,6 +287,7 @@ def main():
         print('Interrupted by user')
     
     except Exception as e:
+        traceback.print_exc()
         print(e)
     
     finally:
