@@ -10,10 +10,10 @@ import argparse
 import binascii
 import os
 import sys
-from time import sleep
+from time import sleep, time
 import traceback
 
-from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError
+from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
 from idpmodem.codecs import common as idpcodec
 from idpmodem.constants import FORMAT_B64, FORMAT_HEX
@@ -244,6 +244,8 @@ def parse_args(argv):
                         help="enable verbose debug logging")
     parser.add_argument('-p', '--port', dest='port', type=str, default='/dev/ttyUSB0',
                         help="the serial port of the IDP modem")
+    parser.add_argument('-q', dest='quit_timeout', type=int, default=60,
+                        help="Timeout seconds with no modem connection to quit")
     return vars(parser.parse_args(args=argv[1:]))
 
 
@@ -260,6 +262,7 @@ def main():
     logsize = user_options['log_size']
     tracking_interval = int(user_options['tracking'])
     debug = user_options['debug']
+    quit_timeout = user_options['quit_timeout']
 
     modem = None
     stats_monitor = None
@@ -270,17 +273,22 @@ def main():
     log.info('{}Starting ST2100 Beta{}'.format('*' * 15, '*' * 15))
     at_threads = []
     try:
+        connected = False
         (modem, t) = get_modem_thread(port)
-        try:
-            connected = modem.config_restore_nvm()
-        except AtCrcConfigError:
-            modem.crc = True
-            connected = modem.config_restore_nvm()
-        log.debug('Connected to modem')
+        start_time = int(time())
         while not connected:
-            connected = modem.config_restore_nvm()
-            log.warning('Unable to connect to IDP modem, retrying in 1 second')
-            sleep(1)
+            if int(time()) - start_time > quit_timeout:
+                raise Exception('Timed out trying to connect to modem')
+            try:
+                connected = modem.config_restore_nvm()
+                log.debug('Connected to modem')
+            except AtCrcConfigError:
+                log.warning('CRC detected retrying connect to IDP modem')
+                modem.crc = True
+                connected = modem.config_restore_nvm()
+            except AtTimeout:
+                log.warning('Timeout connecting to IDP modem, retrying in 6 seconds')
+                sleep(6)
         modem.message_mo_clear()
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)

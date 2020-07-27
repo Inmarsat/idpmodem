@@ -427,7 +427,7 @@ class IdpModem(AtProtocol):
             while self.busy:
                 if time() - request_time > busy_timeout:
                     raise IdpModemBusy('{} second timeout awaiting prior command'
-                                  .format(busy_timeout))
+                                        .format(busy_timeout))
             self.busy = True
             (response, latency) = super(IdpModem, self).command(command=command,
                                     timeout=timeout)
@@ -443,6 +443,7 @@ class IdpModem(AtProtocol):
             return response
         except AtException as e:
             # TODO cases: AtCrcConfigError, AtCrcError, AtTimeout
+            self.busy = False
             raise e
 
     def error_detail(self):   #TODO REMOVE REDUNDANT VS COMMAND
