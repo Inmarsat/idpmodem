@@ -34,23 +34,23 @@ class AtException(Exception):
     pass
 
 
-class AtCommandError(AtException):
-    pass
-
-
 class AtTimeout(AtException):
+    """Indicates a timeout waiting for response."""
     pass
 
 
 class AtCrcError(AtException):
+    """Indicates a detected CRC mismatch on a response."""
     pass
 
 
 class AtCrcConfigError(AtException):
+    """Indicates a CRC response was received when none expected or vice versa."""
     pass
 
 
 class AtUnsolicited(AtException):
+    """Indicates unsolicited data was received from the modem."""
     pass
 
 
@@ -441,8 +441,7 @@ class IdpModem(AtProtocol):
                 response.append(self.ERROR_CODES[reason[0]])
             self.busy = False
             return response
-        except AtException as e:
-            # TODO cases: AtCrcConfigError, AtCrcError, AtTimeout
+        except (AtCrcConfigError, AtCrcError, AtTimeout) as e:
             self.busy = False
             raise e
 
@@ -735,14 +734,21 @@ class IdpModem(AtProtocol):
             return False
         return True
 
-    def message_mo_clear(self) -> bool:
+    def message_mo_clear(self) -> int:
+        """Clears the modem transmit queue.
+        
+        Returns:
+            Count of messages deleted, or -1 in case of error
+        """
         list_response = self.command('AT%MGRL')
         if list_response[0] == 'ERROR':
-            return False
+            return -1
+        list_response.remove('OK')
+        message_count = len(list_response)
         del_response = self.command('AT%MGRD')
         if del_response[0] == 'ERROR':
-            return False
-        return True
+            return -1
+        return message_count
 
     def message_mt_waiting(self) -> Union[list, None]:
         """Returns a list of received mobile-terminated message information.
@@ -1097,7 +1103,7 @@ def get_modem_thread(port: str = '/dev/ttyUSB0',
         timeout: The serial connection timeout
 
     Returns:
-        tuple with Thread and IdpModem
+        (IdpModem, Thread)
     """
     ser = Serial(port, baudrate=baudrate, timeout=timeout)
     t = ByteReaderThread(ser, IdpModem)

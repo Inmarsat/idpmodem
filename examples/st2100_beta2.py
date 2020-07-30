@@ -84,6 +84,8 @@ def get_stats():
             log.warning('Error getting statistics...likely no hourly metrics exist yet')
     except IdpModemBusy:
         log.warning('Timed out modem busy')
+    except Exception as e:
+        log.error(e)
 
 
 def handle_mt_messages():
@@ -214,11 +216,21 @@ def send_idp_location():
 def complete_mo_messages():
     global log
     global modem
-    message_states = modem.message_mo_state()
-    if message_states is not None and len(message_states) > 0:
-        for status in message_states:
-            if status['state'] in ['TX_COMPLETE', 'TX_FAILED']:
-                log.info('Mobile-originated message {} {}'.format(status['name'], status['state']))
+    log.debug('Checking return message status')
+    try:
+        message_states = modem.message_mo_state()
+        if message_states is not None:
+            for status in message_states:
+                if status['state'] == 'TX_COMPLETE':
+                    log.info('Mobile-originated message {} {}'.format(status['name'], status['state']))
+                elif status['state'] == 'TX_FAILED':
+                    log.warning('Mobile-originated message {} {}'.format(status['name'], status['state']))
+                else:
+                    log.debug('Mobile-originated message {} {}'.format(status['name'], status['state']))
+        else:
+            log.warning('Get message states returned None')
+    except Exception as e:
+        log.error(e)
 
 
 def parse_args(argv):
@@ -289,7 +301,8 @@ def main():
             except AtTimeout:
                 log.warning('Timeout connecting to IDP modem, retrying in 6 seconds')
                 sleep(6)
-        modem.message_mo_clear()
+        messages_cleared = modem.message_mo_clear()
+        log.debug('Cleared {} from modem transmit queue'.format(messages_cleared))
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
         at_threads.append(stats_monitor)
