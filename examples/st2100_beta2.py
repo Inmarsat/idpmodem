@@ -69,6 +69,15 @@ def log_stats(stats):
             network_state = int(status_metrics[29])
             log.debug('C/No={} | State={}'.format(snr, network_state))
 
+def get_status():
+    global log
+    global modem
+    global network_state
+    response = modem.raw_command('ATS90=3 S91=1 S92=1 S122'.format(event_str), TIMEOUT)
+    if 'OK' in responses:
+        responses.remove('OK')
+        network_state = int(responses[0])
+
 
 def get_stats():
     """Requests relevant beta trial statistics."""
@@ -286,6 +295,8 @@ def main():
     quit_timeout = user_options['quit_timeout']
     blockage_timeout = 15 * 60
 
+    debug = True
+
     modem = None
     stats_monitor = None
     log = get_wrapping_logger(name='st2100_beta_log',
@@ -314,14 +325,16 @@ def main():
         messages_cleared = modem.message_mo_clear()
         log.debug('Cleared {} from modem transmit queue'.format(messages_cleared))
         #: Initially check status every 5 seconds until registered
-        stats_monitor = RepeatingTimer(5, name='beta_stats', defer=False, 
+        stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
         at_threads.append(stats_monitor)
         # TODO: wait for registration before starting messaging threads
         while network_state != 10:
+            log.debug('Getting network state')
+            get_status()
             if time() > start_time + blockage_timeout:
                 raise Exception('Timed out due to blockage')
-        stats_monitor.change_interval(interval)
+            sleep(5)
         tracking_thread = RepeatingTimer(int(tracking_interval * 60), 
                                     name='tracking', callback=send_idp_location,
                                     defer=False, auto_start=True)
