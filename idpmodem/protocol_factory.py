@@ -1086,9 +1086,9 @@ class IdpModem(AtProtocol):
             registers.append(reg_def)
         return registers
 
-    def raw_command(self, command: str = 'AT') -> list:
+    def raw_command(self, command: str = 'AT', timeout: int = 5) -> list:
         """Sends a command and returns a list of responses and response code."""
-        response = self.command(command)
+        response = self.command(command, timeout)
         return response
 
 

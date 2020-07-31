@@ -28,7 +28,9 @@ global tracking_interval
 global tracking_thread
 global log
 global snr
+global network_state
 snr = 0.0
+network_state = 0
 STATS_LIST = [
     ("systemStats", "2,3"),
     ("satcomStats", "2,4"),
@@ -54,6 +56,7 @@ def log_stats(stats):
     global modem
     global log
     global snr
+    global network_state
     for i in range(len(STATS_LIST)):
         # at_cmd = '%EVNT={}'.format(STATS_LIST[i][1])
         to_log = '{}'.format(
@@ -63,6 +66,8 @@ def log_stats(stats):
         if STATS_LIST[i][1] == '3,1':
             status_metrics = stats[i].replace('%EVNT:', '').strip().split(',')
             snr = round(int(status_metrics[23]) / 100, 2)
+            network_state = int(status_metrics[29])
+            log.debug('C/No={} | State={}'.format(snr, network_state))
 
 
 def get_stats():
@@ -70,13 +75,14 @@ def get_stats():
     global log
     global modem
     event_str = ''
+    TIMEOUT = 10
     for i in range(len(STATS_LIST)):
         event_str += '%EVNT={}'.format(STATS_LIST[i][1])
         if i < len(STATS_LIST) - 1:
             event_str += ';'
     log.debug('Getting satellite statistics')
     try:
-        responses = modem.raw_command('AT{}'.format(event_str))
+        responses = modem.raw_command('AT{}'.format(event_str), TIMEOUT)
         if 'OK' in responses:
             responses.remove('OK')
             log_stats(responses)
@@ -221,12 +227,14 @@ def complete_mo_messages():
         message_states = modem.message_mo_state()
         if message_states is not None:
             for status in message_states:
+                log_message = 'Mobile-originated message {} {}'.format(status['name'], status['state'])
                 if status['state'] == 'TX_COMPLETE':
-                    log.info('Mobile-originated message {} {}'.format(status['name'], status['state']))
+                    log.info(log_message)
                 elif status['state'] == 'TX_FAILED':
-                    log.warning('Mobile-originated message {} {}'.format(status['name'], status['state']))
+                    log.warning('{} getting modem statistics'.format(log_message))
+                    get_stats()
                 else:
-                    log.debug('Mobile-originated message {} {}'.format(status['name'], status['state']))
+                    log.debug(log_message)
         else:
             log.warning('Get message states returned None')
     except Exception as e:
@@ -266,6 +274,7 @@ def main():
     global log
     global tracking_interval
     global tracking_thread
+    global network_state
 
     user_options = parse_args(sys.argv)
     port = user_options['port']
@@ -275,6 +284,7 @@ def main():
     tracking_interval = int(user_options['tracking'])
     debug = user_options['debug']
     quit_timeout = user_options['quit_timeout']
+    blockage_timeout = 15 * 60
 
     modem = None
     stats_monitor = None
@@ -287,9 +297,9 @@ def main():
     try:
         connected = False
         (modem, t) = get_modem_thread(port)
-        start_time = int(time())
+        start_time = time()
         while not connected:
-            if int(time()) - start_time > quit_timeout:
+            if time() - start_time > quit_timeout:
                 raise Exception('Timed out trying to connect to modem')
             try:
                 connected = modem.config_restore_nvm()
@@ -303,9 +313,15 @@ def main():
                 sleep(6)
         messages_cleared = modem.message_mo_clear()
         log.debug('Cleared {} from modem transmit queue'.format(messages_cleared))
-        stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
+        #: Initially check status every 5 seconds until registered
+        stats_monitor = RepeatingTimer(5, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
         at_threads.append(stats_monitor)
+        # TODO: wait for registration before starting messaging threads
+        while network_state != 10:
+            if time() > start_time + blockage_timeout:
+                raise Exception('Timed out due to blockage')
+        stats_monitor.change_interval(interval)
         tracking_thread = RepeatingTimer(int(tracking_interval * 60), 
                                     name='tracking', callback=send_idp_location,
                                     defer=False, auto_start=True)

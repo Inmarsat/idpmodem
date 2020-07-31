@@ -103,7 +103,7 @@ def location_get(nmea_data_set, degrees_resolution=6):
     loc = Location()
     for sentence in nmea_data_set:
         if not sentence.startswith('$G'):
-            raise Exception('location_get found invalid NMEA string')
+            raise Exception('location_get found invalid NMEA string {}'.format(sentence))
         valid, nmea_data = validate_nmea_checksum(sentence)
         if not valid:
             raise Exception('Invalid NMEA checksum for {}'.format(sentence))
