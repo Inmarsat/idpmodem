@@ -295,8 +295,6 @@ def main():
     quit_timeout = user_options['quit_timeout']
     blockage_timeout = 15 * 60
 
-    debug = True
-
     modem = None
     stats_monitor = None
     log = get_wrapping_logger(name='st2100_beta_log',
