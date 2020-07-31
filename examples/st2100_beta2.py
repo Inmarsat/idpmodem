@@ -73,9 +73,9 @@ def get_status():
     global log
     global modem
     global network_state
-    response = modem.raw_command('ATS90=3 S91=1 S92=1 S122'.format(event_str), TIMEOUT)
+    TIMEOUT = 10
+    responses = modem.raw_command('ATS90=3 S91=1 S92=1 S122?', TIMEOUT)
     if 'OK' in responses:
-        responses.remove('OK')
         network_state = int(responses[0])
 
 
