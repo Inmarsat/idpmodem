@@ -42,7 +42,7 @@ STATS_LIST = [
 ]
 
 
-def log_stats(stats):
+def log_stat(stat_label, stat, response):
     """Logs the requested statistics.
     
     EVNT responses have the format:
@@ -57,19 +57,15 @@ def log_stats(stats):
     global log
     global snr
     global network_state
-    for i in range(len(STATS_LIST)):
-        # at_cmd = '%EVNT={}'.format(STATS_LIST[i][1])
-        to_log = '{}'.format(
-            stats[i].replace('%EVNT', '%EVNT{}'.format(STATS_LIST[i][1]))
-        )
-        log.info(to_log)
-        if STATS_LIST[i][1] == '3,1':
-            status_metrics = stats[i].replace('%EVNT:', '').strip().split(',')
-            snr = round(int(status_metrics[23]) / 100, 2)
-            network_state = int(status_metrics[29])
-            log.debug('C/No={} | State={}'.format(snr, network_state))
+    log.info('{}{}'.format(stat_label, response).replace(' ', '').strip())
+    if stat == '3,1':
+        status_metrics = response.replace('%EVNT:', '').strip().split(',')
+        snr = round(int(status_metrics[23]) / 100, 2)
+        network_state = int(status_metrics[29])
+        log.debug('C/No={} | State={}'.format(snr, network_state))
 
-def get_status():
+
+def get_network_state():
     global log
     global modem
     global network_state
@@ -83,24 +79,28 @@ def get_stats():
     """Requests relevant beta trial statistics."""
     global log
     global modem
-    event_str = ''
+    # event_str = ''
     TIMEOUT = 10
     for i in range(len(STATS_LIST)):
+        '''
         event_str += '%EVNT={}'.format(STATS_LIST[i][1])
         if i < len(STATS_LIST) - 1:
             event_str += ';'
-    log.debug('Getting satellite statistics')
-    try:
-        responses = modem.raw_command('AT{}'.format(event_str), TIMEOUT)
-        if 'OK' in responses:
-            responses.remove('OK')
-            log_stats(responses)
-        else:
-            log.warning('Error getting statistics...likely no hourly metrics exist yet')
-    except IdpModemBusy:
-        log.warning('Timed out modem busy')
-    except Exception as e:
-        log.error(e)
+        '''
+        try:
+            stat_label, stat = STATS_LIST[i]
+            log.debug('Getting stat: {}'.format(stat_label))
+            response = modem.raw_command('AT%EVNT={}'.format(stat), TIMEOUT)
+            if 'OK' in response:
+                log_stat(stat_label, stat, response[0])
+            else:
+                if stat_label in ['rxMetricsHour', 'txMetricsHour']:
+                    stat += ' (likely no hourly metrics exist yet)'
+                log.warning('Error getting stat {}'.format(stat))
+        except IdpModemBusy:
+            log.warning('Timed out modem busy')
+        except Exception as e:
+            log.error(e)
 
 
 def handle_mt_messages():
@@ -321,7 +321,8 @@ def main():
                 log.warning('Timeout connecting to IDP modem, retrying in 6 seconds')
                 sleep(6)
         messages_cleared = modem.message_mo_clear()
-        log.debug('Cleared {} from modem transmit queue'.format(messages_cleared))
+        if messages_cleared > 0:
+            log.info('Cleared {} from modem transmit queue'.format(messages_cleared))
         #: Initially check status every 5 seconds until registered
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
@@ -329,7 +330,7 @@ def main():
         # TODO: wait for registration before starting messaging threads
         while network_state != 10:
             log.debug('Getting network state')
-            get_status()
+            get_network_state()
             if time() > start_time + blockage_timeout:
                 raise Exception('Timed out due to blockage')
             sleep(5)
