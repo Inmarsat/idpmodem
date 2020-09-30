@@ -747,9 +747,11 @@ class IdpModem(AtProtocol):
         if '%MGRL:' in list_response:
             list_response.remove('%MGRL:')
         message_count = len(list_response)
-        del_response = self.command('AT%MGRD')
-        if del_response[0] == 'ERROR':
-            return -1
+        for msg in list_response:
+            name = msg.replace('%MGRL: ', '').split(',')[0]
+            del_response = self.command('AT%MGRD={}C'.format(name))
+            if del_response[0] == 'ERROR':
+                return -1
         return message_count
 
     def message_mt_waiting(self) -> Union[list, None]:
