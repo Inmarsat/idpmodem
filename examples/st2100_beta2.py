@@ -20,10 +20,11 @@ from idpmodem.constants import FORMAT_B64, FORMAT_HEX
 from idpmodem.utils import get_wrapping_logger, RepeatingTimer
 
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 
 global modem
+global timeout_count
 global tracking_interval
 global tracking_thread
 global log
@@ -99,8 +100,8 @@ def get_stats():
                 log.warning('Error getting stat {}'.format(stat))
         except IdpModemBusy:
             log.warning('Timed out modem busy')
-        except Exception as e:
-            log.error(e)
+        # except Exception as e:
+        #    log.error(e)
 
 
 def handle_mt_messages():
@@ -235,6 +236,8 @@ def complete_mo_messages():
     try:
         message_states = modem.message_mo_state()
         if message_states is not None:
+            if len(message_states) == 0:
+                log.debug('No return messages queued')
             for status in message_states:
                 log_message = 'Mobile-originated message {} {}'.format(status['name'], status['state'])
                 if status['state'] == 'TX_COMPLETE':
@@ -246,8 +249,8 @@ def complete_mo_messages():
                     log.debug(log_message)
         else:
             log.warning('Get message states returned None')
-    except Exception as e:
-        log.error(e)
+    except IdpModemBusy:
+        log.warning('Timed out modem busy')
 
 
 def parse_args(argv):
@@ -284,6 +287,8 @@ def main():
     global tracking_interval
     global tracking_thread
     global network_state
+    global snr
+    global timeout_count
 
     user_options = parse_args(sys.argv)
     port = user_options['port']
@@ -302,6 +307,9 @@ def main():
                               file_size=logsize,
                               debug=debug)
     log.info('{}Starting ST2100 Beta{}'.format('*' * 15, '*' * 15))
+    network_state = 0
+    snr = 0.0
+    timeout_count = 0
     at_threads = []
     try:
         connected = False
@@ -322,7 +330,7 @@ def main():
                 sleep(6)
         messages_cleared = modem.message_mo_clear()
         if messages_cleared > 0:
-            log.info('Cleared {} from modem transmit queue'.format(messages_cleared))
+            log.info('Cleared {} message(s) from modem transmit queue'.format(messages_cleared))
         #: Initially check status every 5 seconds until registered
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
                                     callback=get_stats, auto_start=True)
@@ -347,6 +355,10 @@ def main():
         while True:
             pass
     
+    except AtTimeout as e:
+        timeout_count += 1
+        log.warning('AT timeout count: {}'.format(timeout_count))
+
     except KeyboardInterrupt:
         print('Interrupted by user')
     
