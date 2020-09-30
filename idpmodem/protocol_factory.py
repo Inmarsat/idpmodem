@@ -744,7 +744,8 @@ class IdpModem(AtProtocol):
         if list_response[0] == 'ERROR':
             return -1
         list_response.remove('OK')
-        list_response.remove('%MGRL:')
+        if '%MGRL:' in list_response:
+            list_response.remove('%MGRL:')
         message_count = len(list_response)
         del_response = self.command('AT%MGRD')
         if del_response[0] == 'ERROR':
