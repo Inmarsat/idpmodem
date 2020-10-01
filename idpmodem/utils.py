@@ -27,26 +27,7 @@ except ImportError:
     import Queue as queue
 
 
-class PropagatingThread(Thread):
-    def run(self):
-        self.exc = None
-        try:
-            if hasattr(self, '_Thread__target'):
-                # Thread uses name mangling prior to Python 3.
-                self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
-            else:
-                self.ret = self._target(*self._args, **self._kwargs)
-        except BaseException as e:
-            self.exc = e
-
-    def join(self):
-        super(PropagatingThread, self).join()
-        if self.exc:
-            raise self.exc
-        return self.ret
-
-
-class RepeatingTimer(PropagatingThread):
+class RepeatingTimer(Thread):
     """A repeating thread to call a function, can be stopped/restarted/changed.
     
     A Thread that counts down seconds using sleep increments, then calls back 
@@ -57,14 +38,13 @@ class RepeatingTimer(PropagatingThread):
     Attributes:
         interval: Repeating timer interval in seconds (0=disabled).
         log: A logger, with name inherited from calling function.
-        callback: A Callable function invoked when the timer expires.
         defer: Set (default=True) if the function call waits
             for the first cycle expiry before calling back.
         sleep_chunk: The fraction of seconds between processing ticks.
     """
     def __init__(self,
                  seconds: int,
-                 callback: Callable,
+                 target: Callable,
                  *args,
                  name: str = None,
                  log: object = None,
@@ -77,15 +57,15 @@ class RepeatingTimer(PropagatingThread):
 
         Args:
             seconds: Interval for timer repeat.
-            callback: The function to execute each timer expiry.
-            args: Positional arguments required by the callback.
+            target: The function to execute each timer expiry.
+            args: Positional arguments required by the target.
             name: Optional thread name.
             log: Optional external logger to use.
             sleep_chunk: Tick seconds between expiry checks.
             auto_start: Starts the thread and timer when created.
-            defer: Set if first callback waits for timer expiry.
+            defer: Set if first target waits for timer expiry.
             debug: verbose logging of tick count
-            kwargs: Optional keyword arguments to pass into the callback.
+            kwargs: Optional keyword arguments to pass into the target.
 
         Raises:
             ValueError if seconds is not an integer.
@@ -93,20 +73,21 @@ class RepeatingTimer(PropagatingThread):
         if not (isinstance(seconds, int) and seconds >= 0):
             err_str = 'RepeatingTimer seconds must be integer >= 0'
             raise ValueError(err_str)
-        Thread.__init__(self)
+        super(RepeatingTimer, self).__init__()
         if name is not None:
             self.name = name
         else:
-            self.name = str(callback) + '_timer_thread'
+            self.name = '{}_timer_thread'.format(str(target))
         if is_logger(log):
             self.log = log
         else:
             self.log = get_wrapping_logger(name=self.name, debug=debug)
         self.interval = seconds
-        if callback is None:
-            self.log.warning('No callback specified for RepeatingTimer {}'
+        if target is None:
+            self.log.warning('No target specified for RepeatingTimer {}'
                              .format(self.name))
-        self.callback = callback
+        self._target = target
+        self._exception = None
         self._args = args
         self._kwargs = kwargs
         self.sleep_chunk = sleep_chunk
@@ -124,30 +105,33 @@ class RepeatingTimer(PropagatingThread):
         """Counts down the interval, checking every sleep_chunk for expiry."""
         while not self._terminate_event.is_set():
             while (self._count > 0
-                   and self._start_event.is_set()
-                   and self.interval > 0):
+                and self._start_event.is_set()
+                and self.interval > 0):
                 if self._debug:
                     if (self._count * self.sleep_chunk
                         - int(self._count * self.sleep_chunk)
                         == 0.0):
                         #: log debug message at reasonable interval
                         self.log.debug('{} countdown: {} ({}s @ step {})'
-                                       .format(self.name,
-                                       self._count,
-                                       self.interval,
-                                       self.sleep_chunk))
+                                    .format(self.name,
+                                    self._count,
+                                    self.interval,
+                                    self.sleep_chunk))
                 if self._reset_event.wait(self.sleep_chunk):
                     self._reset_event.clear()
                     self._count = self.interval / self.sleep_chunk
                 self._count -= 1
                 if self._count <= 0:
-                    self.callback(*self._args, **self._kwargs)
-                    self._count = self.interval / self.sleep_chunk
+                    try:
+                        self._target(*self._args, **self._kwargs)
+                        self._count = self.interval / self.sleep_chunk
+                    except BaseException as e:
+                        self._exception = e
 
     def start_timer(self):
         """Initially start the repeating timer."""
         if not self._defer and self.interval > 0:
-            self.callback(*self._args, **self._kwargs)
+            self._target(*self._args, **self._kwargs)
         self._start_event.set()
         if self.interval > 0:
             self.log.info('{} timer started ({} seconds)'.format(
@@ -166,7 +150,7 @@ class RepeatingTimer(PropagatingThread):
     def restart_timer(self):
         """Restart the repeating timer (after an interval change)."""
         if not self._defer and self.interval > 0:
-            self.callback(*self._args, **self._kwargs)
+            self._target(*self._args, **self._kwargs)
         if self._start_event.is_set():
             self._reset_event.set()
         else:
@@ -204,6 +188,12 @@ class RepeatingTimer(PropagatingThread):
         self.stop_timer()
         self._terminate_event.set()
         self.log.info('{} timer terminated'.format(self.name))
+    
+    def join(self):
+        super(RepeatingTimer, self).join()
+        if self._exception:
+            raise self._exception
+        return self._target
 
 
 class SearchableQueue(object):

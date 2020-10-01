@@ -32,6 +32,7 @@ log = None
 snr = 0.0
 network_state = None
 
+MAX_TIMEOUT_COUNT = 3
 MODEM_BUSY_WARNING = 'Modem busy processing prior command'
 STATS_LIST = [
     ("systemStats", "2,3"),
@@ -352,7 +353,7 @@ def main():
             log.info('Cleared {} message(s) from modem transmit queue'.format(messages_cleared))
         #: Initially check status every 5 seconds until registered
         stats_monitor = RepeatingTimer(interval, name='beta_stats', defer=False, 
-                                    callback=get_stats, auto_start=True)
+                                    target=get_stats, auto_start=True)
         at_threads.append(stats_monitor)
         # TODO: wait for registration before starting messaging threads
         while network_state != 10:
@@ -362,31 +363,32 @@ def main():
                 raise Exception('Timed out due to blockage')
             sleep(5)
         tracking_thread = RepeatingTimer(int(tracking_interval * 60), 
-                                    name='tracking', callback=send_idp_location,
+                                    name='tracking', target=send_idp_location,
                                     defer=False, auto_start=True)
         at_threads.append(tracking_thread)
         mo_cleanup = RepeatingTimer(5, name='mo_message_cleanup', defer=False,
-                                    callback=complete_mo_messages, auto_start=True)
+                                    target=complete_mo_messages, auto_start=True)
         at_threads.append(mo_cleanup)
         mt_commands = RepeatingTimer(5, name='mt_message_check', defer=False,
-                                    callback=handle_mt_messages, auto_start=True)
+                                    target=handle_mt_messages, auto_start=True)
         at_threads.append(mt_commands)
-        while True:
+        while timeout_count <= MAX_TIMEOUT_COUNT:
             pass
     
     except KeyboardInterrupt:
         print('Interrupted by user')
     
     except Exception as e:
-        log.exception()
+        log.error(e)
     
     finally:
         # stats_monitor.join()
+        for at_thread in at_threads:
+            at_thread.terminate()
+            at_thread.join()
         if modem is not None:
             modem.stop()
             t.close()
-        for at_thread in at_threads:
-            at_thread.terminate()
         sys.exit()
 
 
