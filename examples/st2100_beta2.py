@@ -32,7 +32,6 @@ log = None
 snr = 0.0
 network_state = None
 
-MAX_TIMEOUT_COUNT = 3
 MODEM_BUSY_WARNING = 'Modem busy processing prior command'
 STATS_LIST = [
     ("systemStats", "2,3"),
@@ -289,15 +288,17 @@ def parse_args(argv):
     parser.add_argument('-s', '--logsize', dest='log_size', type=int, default=5,
                         help="the maximum log file size, in MB (default 5 MB)")
     parser.add_argument('-i', '--interval', dest='interval', type=int, default=900,
-                        help="stats logging interval in seconds")
+                        help="stats logging interval in seconds (default 900)")
     parser.add_argument('-t', '--tracking', dest='tracking', type=int, default=15,
-                        help="tracking interval in minutes")
+                        help="tracking interval in minutes (default 15)")
     parser.add_argument('--debug', dest='debug', action='store_true',
                         help="enable verbose debug logging")
     parser.add_argument('-p', '--port', dest='port', type=str, default='/dev/ttyUSB0',
                         help="the serial port of the IDP modem")
     parser.add_argument('-q', dest='quit_timeout', type=int, default=60,
                         help="Timeout seconds with no modem connection to quit")
+    parser.add_argument('-x', dest='max_timeouts', type=int, default=100,
+                        help="Maximum serial timeouts before quit (default 100)")
     return vars(parser.parse_args(args=argv[1:]))
 
 
@@ -318,6 +319,7 @@ def main():
     tracking_interval = int(user_options['tracking'])
     debug = user_options['debug']
     quit_timeout = user_options['quit_timeout']
+    max_timeouts = user_options['max_timeouts']
     blockage_timeout = 15 * 60
 
     modem = None
@@ -372,7 +374,7 @@ def main():
         mt_commands = RepeatingTimer(5, name='mt_message_check', defer=False,
                                     target=handle_mt_messages, auto_start=True)
         at_threads.append(mt_commands)
-        while timeout_count <= MAX_TIMEOUT_COUNT:
+        while timeout_count < max_timeouts:
             pass
     
     except KeyboardInterrupt:
