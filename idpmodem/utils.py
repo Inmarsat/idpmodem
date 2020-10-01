@@ -16,7 +16,7 @@ a modem can be simplified by *validate_serial_port*.
 import inspect
 import logging
 from logging.handlers import RotatingFileHandler
-import threading
+from threading import Thread, Event
 import time
 from typing import Callable
 
@@ -27,7 +27,26 @@ except ImportError:
     import Queue as queue
 
 
-class RepeatingTimer(threading.Thread):
+class PropagatingThread(Thread):
+    def run(self):
+        self.exc = None
+        try:
+            if hasattr(self, '_Thread__target'):
+                # Thread uses name mangling prior to Python 3.
+                self.ret = self._Thread__target(*self._Thread__args, **self._Thread__kwargs)
+            else:
+                self.ret = self._target(*self._args, **self._kwargs)
+        except BaseException as e:
+            self.exc = e
+
+    def join(self):
+        super(PropagatingThread, self).join()
+        if self.exc:
+            raise self.exc
+        return self.ret
+
+
+class RepeatingTimer(PropagatingThread):
     """A repeating thread to call a function, can be stopped/restarted/changed.
     
     A Thread that counts down seconds using sleep increments, then calls back 
@@ -74,7 +93,7 @@ class RepeatingTimer(threading.Thread):
         if not (isinstance(seconds, int) and seconds >= 0):
             err_str = 'RepeatingTimer seconds must be integer >= 0'
             raise ValueError(err_str)
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         if name is not None:
             self.name = name
         else:
@@ -93,9 +112,9 @@ class RepeatingTimer(threading.Thread):
         self.sleep_chunk = sleep_chunk
         self._defer = defer
         self._debug = debug
-        self._terminate_event = threading.Event()
-        self._start_event = threading.Event()
-        self._reset_event = threading.Event()
+        self._terminate_event = Event()
+        self._start_event = Event()
+        self._reset_event = Event()
         self._count = self.interval / self.sleep_chunk
         if auto_start:
             self.start()

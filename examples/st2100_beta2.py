@@ -23,15 +23,16 @@ from idpmodem.utils import get_wrapping_logger, RepeatingTimer
 __version__ = "2.0.1"
 
 
-global modem
-global timeout_count
-global tracking_interval
-global tracking_thread
-global log
-global snr
-global network_state
+# TODO: more elegant way of managing than global variables
+modem = None
+timeout_count = 0
+tracking_interval = 900
+tracking_thread = None
+log = None
 snr = 0.0
-network_state = 0
+network_state = None
+
+MODEM_BUSY_WARNING = 'Modem busy processing prior command'
 STATS_LIST = [
     ("systemStats", "2,3"),
     ("satcomStats", "2,4"),
@@ -41,6 +42,25 @@ STATS_LIST = [
     #: ("lowPowerStats", "2,2"),
     ("status", "3,1"),
 ]
+
+
+def handle_serial_timeout(e):
+    global timeout_count
+    timeout_count += 1
+    log.warning('{} (total = {})'.format(e, timeout_count))
+
+
+def command(at_command, timeout=None):
+    global log
+    global modem
+    try:
+        response = modem.command(at_command, timeout)
+        return response
+    except IdpModemBusy:
+        log.warning(MODEM_BUSY_WARNING)
+    except AtTimeout as e:
+        handle_serial_timeout(e)
+    return None
 
 
 def log_stat(stat_label, stat, response):
@@ -71,9 +91,10 @@ def get_network_state():
     global modem
     global network_state
     TIMEOUT = 10
-    responses = modem.raw_command('ATS90=3 S91=1 S92=1 S122?', TIMEOUT)
-    if 'OK' in responses:
-        network_state = int(responses[0])
+    responses = command('ATS90=3 S91=1 S92=1 S122?', TIMEOUT)
+    if responses is not None:
+        if 'OK' in responses:
+            network_state = int(responses[0])
 
 
 def get_stats():
@@ -83,25 +104,16 @@ def get_stats():
     # event_str = ''
     TIMEOUT = 10
     for i in range(len(STATS_LIST)):
-        '''
-        event_str += '%EVNT={}'.format(STATS_LIST[i][1])
-        if i < len(STATS_LIST) - 1:
-            event_str += ';'
-        '''
-        try:
-            stat_label, stat = STATS_LIST[i]
-            log.debug('Getting stat: {}'.format(stat_label))
-            response = modem.raw_command('AT%EVNT={}'.format(stat), TIMEOUT)
+        stat_label, stat = STATS_LIST[i]
+        log.debug('Getting stat: {}'.format(stat_label))
+        response = command('AT%EVNT={}'.format(stat), TIMEOUT)
+        if response is not None:
             if 'OK' in response:
                 log_stat(stat_label, stat, response[0])
             else:
                 if stat_label in ['rxMetricsHour', 'txMetricsHour']:
                     stat += ' (likely no hourly metrics exist yet)'
                 log.warning('Error getting stat {}'.format(stat))
-        except IdpModemBusy:
-            log.warning('Timed out modem busy')
-        # except Exception as e:
-        #    log.error(e)
 
 
 def handle_mt_messages():
@@ -134,11 +146,15 @@ def handle_mt_messages():
                                     interval = int(data[4:], 16)
                                     update_tracking_interval(interval)
                         except IdpModemBusy:
-                            log.warning('Timed out modem busy')
+                            log.warning(MODEM_BUSY_WARNING)
+                        except AtTimeout as e:
+                            handle_serial_timeout(e)
             else:
                 log.debug('No forward messages queued')
     except IdpModemBusy:
-        log.warning('Timed out modem busy')
+        log.warning(MODEM_BUSY_WARNING)
+    except AtTimeout as e:
+        handle_serial_timeout(e)
 
 
 def update_tracking_interval(interval_minutes):
@@ -224,9 +240,10 @@ def send_idp_location():
             log.error('Failed to submit location message: {}'.format(message_id))
         else:
             log.info('Location message submitted with ID {}'.format(message_id))
-
     except IdpModemBusy:
-        log.warning('Timed out modem busy')
+        log.warning(MODEM_BUSY_WARNING)
+    except AtTimeout as e:
+        handle_serial_timeout(e)
 
 
 def complete_mo_messages():
@@ -250,7 +267,9 @@ def complete_mo_messages():
         else:
             log.warning('Get message states returned None')
     except IdpModemBusy:
-        log.warning('Timed out modem busy')
+        log.warning(MODEM_BUSY_WARNING)
+    except AtTimeout as e:
+        handle_serial_timeout(e)
 
 
 def parse_args(argv):
@@ -355,16 +374,11 @@ def main():
         while True:
             pass
     
-    except AtTimeout as e:
-        timeout_count += 1
-        log.warning('AT timeout count: {}'.format(timeout_count))
-
     except KeyboardInterrupt:
         print('Interrupted by user')
     
     except Exception as e:
-        traceback.print_exc()
-        print(e)
+        log.exception()
     
     finally:
         # stats_monitor.join()
