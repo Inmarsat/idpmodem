@@ -642,6 +642,8 @@ class IdpModem(AtProtocol):
         return response
 
     def location_get(self, stale_secs: int = 1, wait_secs: int = 30):
+        """Returns a location object
+        """
         nmea_sentences = self.gnss_nmea_get(stale_secs, wait_secs)
         if isinstance(nmea_sentences, str):
             return None

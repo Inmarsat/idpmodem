@@ -92,6 +92,7 @@ def log_stat(stat_label, stat, response):
 
 
 def get_network_state():
+    """Updates the network state"""
     global log
     global modem
     global network_state
@@ -122,12 +123,7 @@ def get_stats():
 
 
 def handle_mt_messages():
-    """Processes Mobile-Terminated messages with SIN 255.
-    
-    Args:
-        message_queue: list of pending MT messages
-
-    """
+    """Processes Mobile-Terminated messages with SIN 255."""
     global log
     global modem
     global tracking_interval
@@ -189,18 +185,16 @@ def update_tracking_interval(interval_minutes):
 
 def send_idp_location():
     """
-    Prepares a specific binary-optimized location report
-    using SIN=255, MIN=255.
-
-    :param loc: a Location object
-    :return: Boolean success
+    Sends a binary-optimized location report using SIN=255, MIN=255.
     """
     global log
     global modem
     global snr
-    log.info('Getting location to send')
+    FIX_STALE = 1
+    FIX_TIMEOUT = 30
+    log.info('Getting location to send ({}s timeout)'.format(FIX_TIMEOUT))
     try:
-        loc = modem.location_get(1, 15)
+        loc = modem.location_get(FIX_STALE, FIX_TIMEOUT)
         if loc is None:
             log.warning('Location not returned')
             return
@@ -211,7 +205,7 @@ def send_idp_location():
         lat_milliminutes = int(loc.latitude * 60000)
         lng_milliminutes = int(loc.longitude * 60000)
         alt_m = int(loc.altitude)
-        spd_kph = int(loc.speed * 1.852)
+        spd_kph = int(loc.speed * 1.852)   #: convert from knots
         hdg = int(loc.heading)
         #: pdop = int(loc.pdop)
         data_format = FORMAT_B64
@@ -247,6 +241,7 @@ def send_idp_location():
 
 
 def complete_mo_messages():
+    """Checks return message status in the queue to avoid queue filling."""
     global log
     global modem
     log.debug('Checking return message status')
@@ -329,7 +324,7 @@ def main():
                               file_size=logsize,
                               debug=debug)
     log.info('{}Starting ST2100 Beta{}'.format('*' * 15, '*' * 15))
-    log.info('Version {}'.format(__version__))
+    log.info('Python App Version {}'.format(__version__))
     network_state = 0
     snr = 0.0
     timeout_count = 0
@@ -343,7 +338,10 @@ def main():
                 raise Exception('Timed out trying to connect to modem')
             try:
                 connected = modem.config_restore_nvm()
-                log.debug('Connected to modem')
+                mobile_id = modem.device_mobile_id()
+                versions = modem.device_version()
+                log.debug('Connected to modem {} (FW:{})'.format(mobile_id,
+                        versions['firmware']))
             except AtCrcConfigError:
                 log.warning('CRC detected retrying connect to IDP modem')
                 modem.crc = True
