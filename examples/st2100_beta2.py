@@ -32,7 +32,6 @@ log = None
 snr = 0.0
 network_state = None
 
-MODEM_BUSY_WARNING = 'Modem busy processing prior command'
 STATS_LIST = [
     ("systemStats", "2,3"),
     ("satcomStats", "2,4"),
@@ -53,7 +52,7 @@ def handle_serial_timeout(e):
 
 def handle_modem_busy(e):
     global log
-    log.warning('{}'.format(e))
+    log.warning('Modem busy: {}'.format(e))
 
 
 def command(at_command, timeout=None):
@@ -232,12 +231,7 @@ def send_idp_location():
         # Get binary string payload to send
         data_str = payload.encode_idp(data_format=data_format)
         # Create message wrapper with SIN/MIN
-        '''
-        message = MobileOriginatedMessage(payload=data_str, 
-                                        data_format=data_format, 
-                                        msg_sin=msg_sin, 
-                                        msg_min=msg_min)
-        '''
+        log.debug('Submitting mobile-originated location message')
         message_id = modem.message_mo_send(data=data_str,
                                         data_format=data_format,
                                         sin=msg_sin,
