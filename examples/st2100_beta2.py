@@ -20,7 +20,7 @@ from idpmodem.constants import FORMAT_B64, FORMAT_HEX
 from idpmodem.utils import get_wrapping_logger, RepeatingTimer
 
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 
 # TODO: more elegant way of managing than global variables
@@ -46,8 +46,14 @@ STATS_LIST = [
 
 def handle_serial_timeout(e):
     global timeout_count
+    global log
     timeout_count += 1
     log.warning('{} (total = {})'.format(e, timeout_count))
+
+
+def handle_modem_busy(e):
+    global log
+    log.warning('{}'.format(e))
 
 
 def command(at_command, timeout=None):
@@ -56,8 +62,8 @@ def command(at_command, timeout=None):
     try:
         response = modem.command(at_command, timeout)
         return response
-    except IdpModemBusy:
-        log.warning(MODEM_BUSY_WARNING)
+    except IdpModemBusy as e:
+        handle_modem_busy(e)
     except AtTimeout as e:
         handle_serial_timeout(e)
     return None
@@ -145,14 +151,14 @@ def handle_mt_messages():
                                 if msg_sin == 255 and msg_min == 1:
                                     interval = int(data[4:], 16)
                                     update_tracking_interval(interval)
-                        except IdpModemBusy:
-                            log.warning(MODEM_BUSY_WARNING)
+                        except IdpModemBusy as e:
+                            handle_modem_busy(e)
                         except AtTimeout as e:
                             handle_serial_timeout(e)
             else:
                 log.debug('No forward messages queued')
-    except IdpModemBusy:
-        log.warning(MODEM_BUSY_WARNING)
+    except IdpModemBusy as e:
+        handle_modem_busy(e)
     except AtTimeout as e:
         handle_serial_timeout(e)
 
@@ -195,7 +201,7 @@ def send_idp_location():
     global snr
     log.info('Getting location to send')
     try:
-        loc = modem.location_get()
+        loc = modem.location_get(1, 15)
         if loc is None:
             log.warning('Location not returned')
             return
@@ -240,8 +246,8 @@ def send_idp_location():
             log.error('Failed to submit location message: {}'.format(message_id))
         else:
             log.info('Location message submitted with ID {}'.format(message_id))
-    except IdpModemBusy:
-        log.warning(MODEM_BUSY_WARNING)
+    except IdpModemBusy as e:
+        handle_modem_busy(e)
     except AtTimeout as e:
         handle_serial_timeout(e)
 
@@ -266,8 +272,8 @@ def complete_mo_messages():
                     log.debug(log_message)
         else:
             log.warning('Get message states returned None')
-    except IdpModemBusy:
-        log.warning(MODEM_BUSY_WARNING)
+    except IdpModemBusy as e:
+        handle_modem_busy(e)
     except AtTimeout as e:
         handle_serial_timeout(e)
 
@@ -329,6 +335,7 @@ def main():
                               file_size=logsize,
                               debug=debug)
     log.info('{}Starting ST2100 Beta{}'.format('*' * 15, '*' * 15))
+    log.info('Version {}'.format(__version__))
     network_state = 0
     snr = 0.0
     timeout_count = 0

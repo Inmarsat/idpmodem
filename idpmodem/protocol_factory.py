@@ -426,8 +426,8 @@ class IdpModem(AtProtocol):
             request_time = time()
             while self.busy:
                 if time() - request_time > busy_timeout:
-                    raise IdpModemBusy('{} second timeout awaiting prior command'
-                                        .format(busy_timeout))
+                    raise IdpModemBusy('{}s timeout awaiting prior command: {}'
+                                    .format(busy_timeout, self.pending_command))
             self.busy = True
             (response, latency) = super(IdpModem, self).command(command=command,
                                     timeout=timeout)
@@ -641,8 +641,8 @@ class IdpModem(AtProtocol):
         response[0] = response[0].replace('%GPS: ', '')
         return response
 
-    def location_get(self):
-        nmea_sentences = self.gnss_nmea_get()
+    def location_get(self, stale_secs: int = 1, wait_secs: int = 30):
+        nmea_sentences = self.gnss_nmea_get(stale_secs, wait_secs)
         if isinstance(nmea_sentences, str):
             return None
         location = nmea.location_get(nmea_sentences)
