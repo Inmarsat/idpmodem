@@ -380,7 +380,7 @@ def main():
         print('Interrupted by user')
     
     except Exception as e:
-        log.error(e)
+        log.exception(e)
     
     finally:
         # stats_monitor.join()
