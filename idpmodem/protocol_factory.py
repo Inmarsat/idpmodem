@@ -7,9 +7,9 @@ decoding/abstracting typically used operations.
 
 from base64 import b64decode, b64encode
 from collections import OrderedDict
+import platform
 from serial import Serial, SerialException
 from serial.threaded import LineReader, ReaderThread
-from struct import unpack
 import threading
 from time import time, sleep
 from typing import Callable, Tuple, Union
@@ -45,7 +45,8 @@ class AtCrcError(AtException):
 
 
 class AtCrcConfigError(AtException):
-    """Indicates a CRC response was received when none expected or vice versa."""
+    """Indicates a CRC response was received when none expected or vice versa.
+    """
     pass
 
 
@@ -72,10 +73,12 @@ class AtProtocol(LineReader):
     """
 
     ERROR_CODES = constants.AT_ERROR_CODES
+    DEFAULT_AT_TIMEOUT = 5
 
     def __init__(self,
                  crc: bool = False,
-                 unsolicited_callback: Callable = None):
+                 unsolicited_callback: Callable = None,
+                 default_at_timeout: int = DEFAULT_AT_TIMEOUT):
         """Initialize with CRC and optional callback
 
         Args:
@@ -86,7 +89,7 @@ class AtProtocol(LineReader):
         super(AtProtocol, self).__init__()
         self.crc = crc
         self.alive = True
-        # self.token = None
+        self.default_at_timeout = default_at_timeout
         self.pending_command = None
         self.responses = queue.Queue()
         self.unsolicited = queue.Queue()
@@ -240,7 +243,9 @@ class AtProtocol(LineReader):
         expected_crc = '{:04X}'.format(crcxmodem.crc(validate, 0xffff))
         return expected_crc == crc
 
-    def command(self, command: str, timeout: int = 5) -> (list, int):
+    def command(
+        self, command: str, timeout: int = DEFAULT_AT_TIMEOUT
+    ) -> (list, int):
         """Send an AT command and wait for the response.
 
         Returns the response as a list.  If an error response code was
@@ -263,6 +268,8 @@ class AtProtocol(LineReader):
 
         """
         with self._lock:  # ensure that just one thread is sending commands at once
+            if timeout < self.default_at_timeout:
+                timeout = self.default_at_timeout
             command = self._get_crc(command) if self.crc else command
             self.pending_command = command
             command_sent = time()
@@ -409,8 +416,9 @@ class IdpModem(AtProtocol):
         """
         super(IdpModem, self).connection_lost(exc)
     
-    def command(self, command: str, timeout:int = 5,
-                busy_timeout:int = 30) -> list:
+    def command(
+        self, command: str, timeout:int = 5, busy_timeout:int = 30
+    ) -> list:
         """Overrides the super class function to add metrics.
         
         Args:
@@ -602,7 +610,7 @@ class IdpModem(AtProtocol):
             return False
         return True
 
-    def gnss_nmea_get(self, stale_secs: int = 1, wait_secs: int = 30,
+    def gnss_nmea_get(self, stale_secs: int = 1, wait_secs: int = 35,
                       nmea: list = ['RMC', 'GSA', 'GGA', 'GSV']
                       ) -> Union[list, str]:
         """Returns a list of NMEA-formatted sentences from GNSS.
@@ -619,8 +627,9 @@ class IdpModem(AtProtocol):
 
         """
         NMEA_SUPPORTED = ['RMC', 'GGA', 'GSA', 'GSV']
-        BUFFER_SECONDS = 5
-        if stale_secs not in range(1, 600+1) or wait_secs not in range(1, 600+1):
+        BUFFER_SECONDS = self.default_at_timeout
+        if (stale_secs not in range(1, 600+1) or
+            wait_secs not in range(1, 600+1)):
             raise ValueError('stale_secs and wait_secs must be 1..600')
         sentences = ''
         for sentence in nmea:
@@ -641,7 +650,7 @@ class IdpModem(AtProtocol):
         response[0] = response[0].replace('%GPS: ', '')
         return response
 
-    def location_get(self, stale_secs: int = 1, wait_secs: int = 30):
+    def location_get(self, stale_secs: int = 1, wait_secs: int = 35):
         """Returns a location object
         """
         nmea_sentences = self.gnss_nmea_get(stale_secs, wait_secs)
@@ -894,7 +903,9 @@ class IdpModem(AtProtocol):
         n = n & 0xffffffff
         return (n ^ 0x80000000) - 0x80000000
 
-    def event_get(self, event: tuple, raw: bool = True) -> Union[str, dict, None]:
+    def event_get(
+        self, event: tuple, raw: bool = True
+    ) -> Union[str, dict, None]:
         """Gets the cached event by class/subclass.
 
         Args:
@@ -1098,24 +1109,23 @@ class IdpModem(AtProtocol):
         return response
 
 
-def get_modem_thread(port: str = '/dev/ttyUSB0',
-                       baudrate: int = 9600,
-                       timeout: int = 60) -> tuple:
+def get_modem_thread(port: str = '/dev/ttyUSB0', baudrate: int = 9600) -> tuple:
     """Gets a threaded IDP modem connection / protocol factory.
 
     Args:
         port: The serial port name (default /dev/ttyUSB0)
         baudrate: The serial baud rate (default 9600)
-        timeout: The serial connection timeout
 
     Returns:
         (IdpModem, Thread)
     """
-    ser = Serial(port, baudrate=baudrate, timeout=timeout)
+    ser = Serial(port, baudrate=baudrate)
     t = ByteReaderThread(ser, IdpModem)
     t.start()
     transport, idp_modem = t.connect()
     del transport   #: unusued
+    if platform.system() == 'Windows':
+        idp_modem.default_at_timeout = 10
     return (idp_modem, t)
 
 

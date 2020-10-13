@@ -6,12 +6,14 @@ Periodically queries modem status and writes to a log file
 """
 from __future__ import absolute_import
 
-import argparse
-import binascii
-import os
+from argparse import ArgumentParser
+from os.path import abspath, dirname, join, realpath
 import sys
 from time import sleep, time
-import traceback
+
+THIS_DIR = dirname(__file__)
+MODULE_DIR = abspath(join(THIS_DIR, '..', 'idpmodem'))
+sys.path.append(MODULE_DIR)
 
 from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
@@ -191,7 +193,7 @@ def send_idp_location():
     global modem
     global snr
     FIX_STALE = 1
-    FIX_TIMEOUT = 30
+    FIX_TIMEOUT = 35
     log.info('Getting location to send ({}s timeout)'.format(FIX_TIMEOUT))
     try:
         loc = modem.location_get(FIX_STALE, FIX_TIMEOUT)
@@ -275,8 +277,8 @@ def parse_args(argv):
     :returns: A dictionary containing the command line arguments and their values
 
     """
-    parser = argparse.ArgumentParser(description="Interface with an IDP modem.")
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    parser = ArgumentParser(description="Interface with an IDP modem.")
+    dir_path = dirname(realpath(__file__))
     logfilename = dir_path + '/st2100_beta.log'
     parser.add_argument('-l', '--log', dest='logfile', type=str, default=logfilename,
                         help="the log file name with optional extension (default extension .log)")
@@ -367,10 +369,10 @@ def main():
                                     name='tracking', target=send_idp_location,
                                     defer=False, auto_start=True)
         at_threads.append(tracking_thread)
-        mo_cleanup = RepeatingTimer(5, name='mo_message_cleanup', defer=False,
+        mo_cleanup = RepeatingTimer(11, name='mo_message_cleanup', defer=False,
                                     target=complete_mo_messages, auto_start=True)
         at_threads.append(mo_cleanup)
-        mt_commands = RepeatingTimer(5, name='mt_message_check', defer=False,
+        mt_commands = RepeatingTimer(12, name='mt_message_check', defer=False,
                                     target=handle_mt_messages, auto_start=True)
         at_threads.append(mt_commands)
         while timeout_count < max_timeouts:
