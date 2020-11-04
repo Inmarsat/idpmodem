@@ -1,4 +1,8 @@
 """
+Incomplete work in progress
+"""
+
+'''
     POWER_ON
     |
 +-> Wait_5s <---------------------------------+
@@ -31,7 +35,7 @@
 * Log Daily statistics?
     * System Stats (2.3)
     * System SatCom Stats (2.4)
-"""
+'''
 
 from time import time, sleep
 
