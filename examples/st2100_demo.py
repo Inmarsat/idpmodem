@@ -11,11 +11,12 @@ from os.path import abspath, dirname, join, realpath
 import sys
 from time import sleep, time
 
+'''
 THIS_DIR = dirname(__file__)
 MODULE_DIR = abspath(join(THIS_DIR, '..', 'idpmodem'))
 sys.path.append(MODULE_DIR)
-
-from idpmodem.protocol_factory import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
+'''
+from idpmodem.atcommand_thread import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
 from idpmodem.codecs import common as idpcodec
 from idpmodem.constants import FORMAT_B64, FORMAT_HEX
@@ -340,6 +341,7 @@ def main():
                 raise Exception('Timed out trying to connect to modem')
             try:
                 connected = modem.config_restore_nvm()
+                crc_enabled = modem.crc_enable()
                 mobile_id = modem.device_mobile_id()
                 versions = modem.device_version()
                 log.debug('Connected to modem {} (FW:{})'.format(mobile_id,

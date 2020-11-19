@@ -1,4 +1,5 @@
-"""
+"""IDP modem S-register definitions
+
 IDP modem S-register definitions useful for creating a digital twin of the modem
 Updated register map of default and configured values can be read from the modem
 using AT%SREG which returns a human-readable table

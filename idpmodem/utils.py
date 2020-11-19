@@ -331,6 +331,7 @@ def get_wrapping_logger(name: str = None,
                         filename: str = None,
                         file_size: int = 5,
                         debug: bool = False,
+                        log_level: int = logging.INFO,
                         **kwargs):
     """Sets up a wrapping logger that writes to console and optionally a file.
 
@@ -362,7 +363,7 @@ def get_wrapping_logger(name: str = None,
     if debug or logger.getEffectiveLevel() == logging.DEBUG:
         log_lvl = logging.DEBUG
     else:
-        log_lvl = logging.INFO
+        log_lvl = log_level
     logger.setLevel(log_lvl)
     #: Set up log file
     if filename is not None:

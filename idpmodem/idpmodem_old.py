@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+# TODO: OBSOLETE
 """
 Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (**IDP**) modem using AT commands.
 

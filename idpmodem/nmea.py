@@ -1,5 +1,5 @@
-"""
-Utilities for parsing NMEA data into a location object
+"""Utilities for parsing NMEA data into a location object
+
 """
 
 from datetime import datetime
@@ -54,8 +54,7 @@ class Location(object):
         self.pdop = 99.9
         self.hdop = 99.9
         self.vdop = 99.9
-        self.time_readable = datetime.utcfromtimestamp(timestamp).strftime(
-                                '%Y-%m-%d %H:%M:%S')
+        self.time_iso = datetime.utcfromtimestamp(timestamp).isoformat()
         self.satellites_info = []
 
     class GnssSatelliteInfo(object):
@@ -76,6 +75,10 @@ class Location(object):
                         break
                 if new:
                     self.satellites_info.append(satellite_info)
+    
+    def isotime(self):
+        self.time_iso = (datetime.utcfromtimestamp(self.timestamp).isoformat() +
+                         'Z')
 
 
 def validate_nmea_checksum(sentence):
@@ -182,8 +185,7 @@ def location_get(nmea_data_set, degrees_resolution=6):
                     loc.longitude *= -1
             loc.speed = float(rmc_speed_knots) if rmc_speed_knots != '' else 0.0  # multiply by 1.852 for kph
             loc.heading = float(rmc_heading_deg_true) if rmc_heading_deg_true != '' else 0.0
-            # Update human-readable attributes
-            loc.time_readable = datetime.utcfromtimestamp(loc.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            loc.isotime()
 
         elif sentence_type == 'GSA':                    # GSA is used for DOP and active satellites
             gsa = nmea_data.split(',')                  # $GPGSA,A,3,04,05,,09,12,,,24,,,,,2.5,1.3,2.1*39

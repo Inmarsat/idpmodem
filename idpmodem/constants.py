@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""IsatData Pro modem constants.
+
+This module provides mapping of constants used within an IDP modem.
+
+"""
+
 from collections import OrderedDict
 
 # Message Priorities and Data Formats

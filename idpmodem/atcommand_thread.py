@@ -1,8 +1,10 @@
-"""
-AT command protocol factory for Inmarsat IDP satellite messaging modems.
+# -*- coding: utf-8 -*-
+"""AT command protocol (threaded) for Inmarsat IDP satellite messaging modems.
 
-A threaded serial interface that sends and receives AT commands, 
-decoding/abstracting typically used operations.
+This module provides a threaded serial interface that sends and receives 
+AT commands, decoding/abstracting typically used operations.
+Based on the PySerial threaded protocol factory, using a byte reader.
+
 """
 
 from base64 import b64decode, b64encode
@@ -20,11 +22,11 @@ except ImportError:
     import Queue as queue
 
 try:
-    import crcxmodem
+    from crcxmodem import get_crc, validate_crc
     import constants
     import nmea
 except ImportError:
-    from idpmodem import crcxmodem
+    from idpmodem.crcxmodem import get_crc, validate_crc
     from idpmodem import constants
     from idpmodem import nmea
 
@@ -69,7 +71,7 @@ class AtProtocol(LineReader):
         responses (Queue): Queued responses to be processed as a line.
         unsolicited (Queue): Unexpected data received if no pending command.
         unsolicited_callback (Callable): optional callback function for 
-            unexpected data
+        unexpected data
     """
 
     ERROR_CODES = constants.AT_ERROR_CODES
@@ -232,7 +234,7 @@ class AtProtocol(LineReader):
             The command with CRC appended after *
 
         """
-        return '{}*{:04X}'.format(command, crcxmodem.crc(command, 0xffff))
+        return get_crc(command)
     
     @staticmethod
     def _validate_crc(lines: list, crc: str) -> bool:
@@ -240,8 +242,7 @@ class AtProtocol(LineReader):
         validate = ''
         for line in lines:
             validate += '{}'.format(line)
-        expected_crc = '{:04X}'.format(crcxmodem.crc(validate, 0xffff))
-        return expected_crc == crc
+        return validate_crc(validate, crc)
 
     def command(
         self, command: str, timeout: int = DEFAULT_AT_TIMEOUT
@@ -270,7 +271,7 @@ class AtProtocol(LineReader):
         with self._lock:  # ensure that just one thread is sending commands at once
             if timeout < self.default_at_timeout:
                 timeout = self.default_at_timeout
-            command = self._get_crc(command) if self.crc else command
+            command = get_crc(command) if self.crc else command
             self.pending_command = command
             command_sent = time()
             self.write_line(command)
@@ -282,18 +283,23 @@ class AtProtocol(LineReader):
                     content = line.strip()
                     if content == command:
                         pass   # ignore echo
-                    elif ((content == 'OK' or content == 'ERROR')
-                          and not self.crc):
+                    elif content == 'OK':
                         if response_received is None:
                             response_received = time()
                         lines.append(line)
-                        return self._clean_response(lines,
-                                                    command_sent,
-                                                    response_received)
+                        if not (self.crc or '%CRC=1' in self.pending_command):
+                            return self._clean_response(lines,
+                                                        command_sent,
+                                                        response_received)
+                    elif content == 'ERROR':
+                        if response_received is None:
+                            response_received = time()
+                        lines.append(line)
+                        # wait in case CRC is following
                     elif content.startswith('*'):
                         if response_received is None:
                             response_received = time()
-                        if self.crc:
+                        if self.crc or '%CRC=1' in self.pending_command:
                             self.pending_command = None
                             crc = content.replace('*', '')
                             if self._validate_crc(lines, crc):
@@ -302,16 +308,21 @@ class AtProtocol(LineReader):
                                                             response_received)
                             else:
                                 raise AtCrcError(
-                                    'INVALID_CRC for {}'.format(command))
+                                    'INVALID_CRC_RESPONSE {}'.format(command))
                         else:
-                            raise AtCrcConfigError('CRC_DETECTED')
+                            raise AtCrcConfigError('UNEXPECTED_CRC_DETECTED')
                     else:
                         if response_received is None:
                             response_received = time()
                         lines.append(line)
                 except queue.Empty:
-                    raise AtTimeout(
-                        'TIMEOUT ({!r})'.format(command))
+                    if not response_received:
+                        raise AtTimeout('TIMEOUT ({!r})'.format(command))
+                    if self.crc:
+                        self.crc = False
+                    return self._clean_response(lines,
+                                                command_sent,
+                                                response_received)
 
 
 class ByteReaderThread(ReaderThread):
@@ -1141,6 +1152,7 @@ if __name__ == '__main__':
         except AtCrcConfigError:
             idp_modem.crc = True
             idp_modem.config_restore_nvm()
+        crc_enabled = idp_modem.crc_enable()
         mobile_id = idp_modem.device_mobile_id()
         print('Mobile ID: {}'.format(mobile_id))
         versions = idp_modem.device_version()

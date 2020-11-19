@@ -1,37 +1,39 @@
-.. idp-modem documentation master file, created by
-   sphinx-quickstart on Sat Aug 11 07:18:53 2018.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 Welcome to idpmodem's documentation!
-*************************************
+====================================
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
 
-idpmodem
-========
+atcommand_async
+===============
 
-.. automodule:: idpmodem
-   :members: Modem, Message, MobileOriginatedMessage, MobileTerminatedMessage
-
-
-crcxmodem
-=========
-
-.. automodule:: crcxmodem
+.. automodule:: idpmodem.atcommand_async
    :members:
 
 
-idpmodemsample
-==============
+nmea
+====
 
-.. automodule:: idpmodemsample
+.. automodule:: idpmodem.nmea
    :members:
 
 
+atcommand_thread
+================
+
+.. automodule:: idpmodem.atcommand_thread
+   :members:
+
+
+ST2100 demo
+===========
+
+.. automodule:: examples.st2100_demo
+   :members:
+
+   
 Indices and tables
 ==================
 
