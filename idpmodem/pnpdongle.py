@@ -73,7 +73,7 @@ class PnpDongle:
             self.pps_enable()
         self.mode = None
         self.mode_set(mode)
-        self.modem = IdpModemAsyncioClient(port='dev/ttyAMA0',
+        self.modem = IdpModemAsyncioClient(port='/dev/ttyAMA0',
                                            crc=True,
                                            logger=self._logger)
         self.modem.lowpower_notifications_enable()
