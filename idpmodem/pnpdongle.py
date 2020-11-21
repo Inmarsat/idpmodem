@@ -4,7 +4,7 @@
 from __future__ import absolute_import
 
 # from atexit import register as on_exit
-from logging import Logger
+from logging import Logger, INFO
 from typing import Callable
 
 try:
@@ -45,12 +45,13 @@ class PnpDongle:
 
     def __init__(self,
                  logger: Logger = None,
+                 log_level: int = INFO,
                  modem_event_callback: Callable = None,
                  external_reset_callback: Callable = None,
                  pps_pulse_callback: Callable = None,
                  mode: str = 'master'):
         """Initializes the dongle."""
-        self._logger = logger or get_wrapping_logger()
+        self._logger = logger or get_wrapping_logger(log_level=log_level)
         self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_CTRL)
         self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_CTRL)
         self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_CTRL)
