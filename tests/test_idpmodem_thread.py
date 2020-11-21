@@ -6,7 +6,7 @@ import sys
 import time
 import unittest
 
-from idpmodem.atcommand_async import IdpModemAsyncioClient
+from idpmodem.atcommand_thread import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
 
 
 DEFAULT_PORT = '/dev/ttyUSB1'
@@ -19,7 +19,9 @@ class IdpModemTestCase(unittest.TestCase):
         user_options = parse_args(sys.argv)
         port = user_options['port']
         print("Setting up modem for test cases...")
-        cls.modem = IdpModemAsyncioClient()
+        (modem, thread) = get_modem_thread()
+        cls.modem = modem
+        cls.modem_thread = thread
         cls.event_callback = None
         cls.new_mt_messages = False
         cls.mt_message_being_retrieved = None
@@ -147,7 +149,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_01_connection',
+        'test_02_sregisters',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

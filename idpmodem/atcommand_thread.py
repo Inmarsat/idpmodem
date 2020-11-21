@@ -22,6 +22,7 @@ except ImportError:
     import Queue as queue
 
 try:
+    from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
     from crcxmodem import get_crc, validate_crc
     import constants
     import nmea
@@ -30,7 +31,7 @@ except ImportError:
     from idpmodem import constants
     from idpmodem import nmea
 
-
+'''
 class AtException(Exception):
     """Base class for AT command exceptions."""
     pass
@@ -55,7 +56,7 @@ class AtCrcConfigError(AtException):
 class AtUnsolicited(AtException):
     """Indicates unsolicited data was received from the modem."""
     pass
-
+'''
 
 class AtProtocol(LineReader):
     """Threaded protocol factory for the IDP Modem.
@@ -497,7 +498,7 @@ class IdpModem(AtProtocol):
             return False
         return True
     
-    def config_nvm_report(self) -> Tuple[dict, dict]:
+    def config_report(self) -> Tuple[dict, dict]:
         """Sends the AT&V command to retrive S-register settings.
         
         Returns:
@@ -508,9 +509,8 @@ class IdpModem(AtProtocol):
         response = self.command('AT&V')
         if response[0] == 'ERROR':
             return (None, None)
-        response.remove('OK')
-        header, at_config, s_regs = response
-        del header  # unused
+        at_config = response[1]
+        s_regs = response[2]
         echo, quiet, verbose, crc = at_config.split(' ')
         at_config = {
             "crc": bool(int(crc[4])),

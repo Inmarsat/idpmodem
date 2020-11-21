@@ -16,6 +16,7 @@ import logging
 from time import time
 from typing import Callable, Tuple, Union
 
+from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
 from .crcxmodem import get_crc, validate_crc
 from .utils import get_wrapping_logger
 from . import constants
@@ -38,27 +39,6 @@ def _serial_asyncio_lost_bytes(response: str) -> bool:
     if ('AT' in response or '\r\r' in response):
         return True
     return False
-
-
-class AtException(Exception):
-    """Base class for AT command exceptions."""
-    pass
-
-
-class AtTimeout(AtException):
-    """Indicates a timeout waiting for response."""
-    pass
-
-
-class AtCrcError(AtException):
-    """Indicates a detected CRC mismatch on a response."""
-    pass
-
-
-class AtCrcConfigError(AtException):
-    """Indicates a CRC response was received when none expected or vice versa.
-    """
-    pass
 
 
 class IdpModemAsyncioClient():

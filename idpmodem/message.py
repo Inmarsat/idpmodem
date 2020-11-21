@@ -4,15 +4,12 @@
 
 from base64 import b64decode, b64encode
 import binascii
+from logging import Logger
 from string import printable
 from time import time
 
-try:
-    from utils import get_wrapping_logger, is_logger
-    from constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
-except ImportError:
-    from idpmodem.utils import get_wrapping_logger, is_logger
-    from idpmodem.constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
+from .utils import get_wrapping_logger
+from .constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
 
 
 def _is_hex_string(s):
@@ -62,13 +59,17 @@ class Message(object):
     MAX_NAME_LENGTH = 8
     MAX_HEX_SIZE = 100
 
-    def __init__(self, payload, name=None,
-                 msg_sin=None, msg_min=None, priority=PRIORITY_LOW,
-                 data_format=FORMAT_HEX, size=None, log=None, debug=False):
-        if is_logger(log):
-            self.log = log
-        else:
-            self.log = get_wrapping_logger(debug=debug)
+    def __init__(self,
+                 payload,
+                 name: str = None,
+                 msg_sin: int = None,
+                 msg_min: int = None,
+                 priority: int = PRIORITY_LOW,
+                 data_format: int = FORMAT_HEX,
+                 size: int = None,
+                 logger: Logger = None,
+                 debug: bool = False):
+        self.log = logger or get_wrapping_logger(debug=debug)
         if name is not None:
             self.name = str(name)[0:self.MAX_NAME_LENGTH - 1]
         else:
