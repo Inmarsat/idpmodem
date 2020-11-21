@@ -50,9 +50,9 @@ class PnpDongle:
                  pps_pulse_callback: Callable = None,
                  mode: str = 'master'):
         """Initializes the dongle."""
+        self._logger = logger or get_wrapping_logger()
         self.mode = None
         self.mode_set(mode)
-        self._logger = logger or get_wrapping_logger()
         self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_CTRL)
         self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_CTRL)
         self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_CTRL)
