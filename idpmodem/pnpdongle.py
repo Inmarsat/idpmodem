@@ -51,8 +51,6 @@ class PnpDongle:
                  mode: str = 'master'):
         """Initializes the dongle."""
         self._logger = logger or get_wrapping_logger()
-        self.mode = None
-        self.mode_set(mode)
         self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_CTRL)
         self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_CTRL)
         self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_CTRL)
@@ -73,6 +71,8 @@ class PnpDongle:
         self._gpio_pps_pulse.when_activated = pps_pulse_callback
         if pps_pulse_callback:
             self.pps_enable()
+        self.mode = None
+        self.mode_set(mode)
         self.modem = IdpModemAsyncioClient(port='dev/ttyAMA0',
                                            crc=True,
                                            logger=self._logger)
