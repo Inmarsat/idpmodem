@@ -17,7 +17,7 @@ import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 from threading import Thread, Event
-import time
+from time import gmtime
 from typing import Callable
 
 import serial.tools.list_ports as list_ports
@@ -273,7 +273,7 @@ def is_logger(log: object) -> bool:
     return isinstance(log, logging.Logger)
 
 
-def is_log_handler(logger: object, handler: object) -> bool:
+def is_log_handler(logger: logging.Logger, handler: object) -> bool:
     """Returns true if the handler is found in the logger.
     
     Args:
@@ -284,6 +284,8 @@ def is_log_handler(logger: object, handler: object) -> bool:
         True if the handler is in the logger.
 
     """
+    if not is_logger(logger):
+        return False
     found = False
     for h in logger.handlers:
         if h.name == handler.name:
@@ -354,7 +356,7 @@ def get_wrapping_logger(name: str = None,
               '%(module)s.%(funcName)s:%(lineno)d,%(message)s')
     log_formatter = logging.Formatter(fmt=FORMAT,
                                       datefmt='%Y-%m-%dT%H:%M:%S')
-    log_formatter.converter = time.gmtime
+    log_formatter.converter = gmtime
 
     if name is None:
         name = get_caller_name()

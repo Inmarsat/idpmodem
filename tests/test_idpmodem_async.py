@@ -6,7 +6,8 @@ import sys
 import time
 import unittest
 
-from idpmodem.atcommand_async import IdpModemAsyncioClient
+from idpmodem.atcommand_async import IdpModemAsyncioClient, GnssTimeout
+from idpmodem.nmea import Location
 
 
 DEFAULT_PORT = '/dev/ttyUSB1'
@@ -96,9 +97,14 @@ class IdpModemTestCase(unittest.TestCase):
 
     def test_07_location_get(self):
         self.display_tc_header()
-        location = self.modem.location_get()
-        print(pprint.pformat(vars(location), indent=2, width=1))
-        self.assertTrue(isinstance(location, object))
+        try:
+            location = self.modem.location_get()
+            if location is not None:
+                print(pprint.pformat(vars(location), indent=2, width=1))
+                self.assertTrue(isinstance(location, Location))
+        except GnssTimeout:
+            print('GNSS timeout occurred, check sky visibility')
+            self.assertTrue(True)
 
     def test_08_lowpower_notifications_set(self):
         self.display_tc_header()
@@ -147,7 +153,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_01_connection',
+        'test_07_location_get',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

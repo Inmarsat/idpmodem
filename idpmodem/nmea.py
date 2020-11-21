@@ -2,15 +2,26 @@
 
 """
 
+from calendar import timegm
 from datetime import datetime
 from functools import reduce
 from operator import xor
-from time import mktime
+#from time import mktime
 from typing import Tuple
 
 
 class NmeaException(Exception):
     """An exception triggered during NMEA sentence parsing."""
+    pass
+
+
+class NmeaInvalid(NmeaException):
+    """Invalid NMEA sentence."""
+    pass
+
+
+class NmeaChecksumError(NmeaException):
+    """NMEA sentence checksum error."""
     pass
 
 
@@ -144,10 +155,10 @@ def location_get(nmea_data_set: list, degrees_resolution: int = 6) -> Location:
     loc = Location()
     for sentence in nmea_data_set:
         if not sentence.startswith('$G'):
-            raise Exception('location_get found invalid NMEA string {}'.format(sentence))
+            raise NmeaInvalid('Invalid NMEA string {}'.format(sentence))
         valid, nmea_data = validate_nmea_checksum(sentence)
         if not valid:
-            raise Exception('Invalid NMEA checksum for {}'.format(sentence))
+            raise NmeaChecksumError('Invalid NMEA checksum for {}'.format(sentence))
         sentence_type = nmea_data[0:3]
         if sentence_type == 'GGA':          # GGA is essential fix information for 3D location and accuracy
             gga = nmea_data.split(',')      # $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*4
@@ -212,7 +223,7 @@ def location_get(nmea_data_set: list, degrees_resolution: int = 6) -> Location:
             minute = int(rmc_fixtime_utc_hhmmss[2:4])
             second = int(rmc_fixtime_utc_hhmmss[4:6])
             dt = datetime(year, month, day, hour, minute, second)
-            loc.timestamp = int(mktime(dt.timetuple()))
+            loc.timestamp = int(timegm(dt.timetuple()))
             # Convert to decimal degrees latitude/longitude
             if rmc_longitude_dms != '' and rmc_longitude_dms != '':
                 loc.latitude = round(float(rmc_latitude_dms[0:2]) + float(rmc_latitude_dms[2:]) / 60.0, degrees_resolution)

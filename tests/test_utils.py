@@ -1,16 +1,71 @@
 #!/usr/bin/python3
 """Basic test cases for utils."""
 
-import os 
+# TODO: adapt for unittest
+
+import os
 from time import sleep
+# import unittest
 
-try:
-    from utils import get_wrapping_logger, RepeatingTimer, validate_serial_port
-    from utils import get_caller_name
-except ImportError:
-    from idpmodem.utils import get_wrapping_logger, RepeatingTimer
-    from idpmodem.utils import validate_serial_port, get_caller_name
+from idpmodem.utils import RepeatingTimer, get_wrapping_logger, is_logger, is_log_handler, get_caller_name, validate_serial_port
 
+'''
+class UtilsTestCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.repeating_timer_count = 0
+
+    def repeating_timer_callable(self):
+        print('repeating timer triggered')
+        self.repeating_timer_count +=1
+
+    def test_01_repeating_timer_basic(self):
+        # TODO: not working, not sure why...
+        test_timer = RepeatingTimer(seconds=2, target=self.repeating_timer_callable)
+        test_timer.start()
+        test_timer.start_timer()
+        while self.repeating_timer_count < 3:
+            pass
+        self.assertTrue(True)
+
+    def test_02_get_wrapping_logger(self):
+        pass
+
+    def test_03_is_logger(self):
+        pass
+
+    def test_04_is_log_handler(self):
+        pass
+
+    def test_05_get_caller_name(self):
+        pass
+
+    def test_06_validate_serial_port(self):
+        pass
+
+
+def suite():
+    suite = unittest.TestSuite()
+    available_tests = unittest.defaultTestLoader.getTestCaseNames(UtilsTestCase)
+    tests = [
+        'test_01_repeating_timer',
+        # Add test cases above as strings or leave empty to test all cases
+    ]
+    if len(tests) > 0:
+        for test in tests:
+            for available_test in available_tests:
+                if test in available_test:
+                    suite.addTest(UtilsTestCase(available_test))
+    else:
+        for available_test in available_tests:
+            suite.addTest(UtilsTestCase(available_test))
+    return suite
+
+
+if __name__ == '__main__':
+    runner = unittest.TextTestRunner()
+    runner.run(suite())
+'''
 
 global log
 

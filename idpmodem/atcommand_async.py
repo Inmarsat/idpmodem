@@ -41,7 +41,11 @@ def _serial_asyncio_lost_bytes(response: str) -> bool:
     return False
 
 
-class IdpModemAsyncioClient():
+class GnssTimeout(Exception):
+    pass
+
+
+class IdpModemAsyncioClient:
     """A satellite IoT messaging modem on Inmarsat's IsatData Pro service.
 
     Attributes:
@@ -406,6 +410,7 @@ class IdpModemAsyncioClient():
 
         Raises:
             ValueError if parameter out of range
+            AtException logged and re-raised
 
         """
         NMEA_SUPPORTED = ['RMC', 'GGA', 'GSA', 'GSV']
@@ -432,8 +437,9 @@ class IdpModemAsyncioClient():
             response.remove('OK')
             response[0] = response[0].replace('%GPS: ', '')
             return response
-        except AtException:
-            return None
+        except AtException as e:
+            self._log.error('gnss_nmea_get: {}'.format(e))
+            raise e
 
     def location_get(self, stale_secs: int = 1, wait_secs: int = 35):
         """Returns a location object
@@ -444,12 +450,20 @@ class IdpModemAsyncioClient():
         
         Returns:
             nmea.Location object
+        
+        Raises:
+            GnssTimeout if no location is returned
+            Exception(s) logged and re-raised
+
         """
-        nmea_sentences = self.gnss_nmea_get(stale_secs, wait_secs)
-        if nmea_sentences is None or isinstance(nmea_sentences, str):
-            return None
-        location = nmea.location_get(nmea_sentences)
-        return location
+        try:
+            nmea_sentences = self.gnss_nmea_get(stale_secs, wait_secs)
+            if nmea_sentences == constants.AT_ERROR_CODES['108']:
+                raise GnssTimeout()
+            return nmea.location_get(nmea_sentences)
+        except Exception as e:
+            self._log('location_get: {}'.format(e))
+            raise e
 
     def lowpower_notifications_enable(self) -> bool:
         """Sets up monitoring of satellite status and notification assertion.
