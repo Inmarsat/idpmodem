@@ -105,6 +105,9 @@ class PnpDongle:
             self._gpio_rl2a.on()
         else:
             self._gpio_rl2a.off()
+        self._logger.debug('RL1A: {} | RL1B: {} | RL2A: {}'.format(
+            self._gpio_rl1a.value, self._gpio_rl1b.value, self._gpio_rl2a.value
+        ))
 
     def _event_activated(self):
         self._logger.info('Modem event notification asserted')
