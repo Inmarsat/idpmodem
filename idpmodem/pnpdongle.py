@@ -3,7 +3,7 @@
 
 from __future__ import absolute_import
 
-# from atexit import register as on_exit
+from atexit import register as on_exit
 from logging import Logger, INFO
 from typing import Callable
 
@@ -33,15 +33,15 @@ class PnpDongle:
     PPS_PULSE = 10
     EXTERNAL_RESET = 11
     MODEM_RESET = 26
-    RL1A_CTRL = 27
-    RL1B_CTRL = 22
-    RL2A_CTRL = 23
+    RL1A_DIR = 27
+    RL1B_DIR = 22
+    RL2A_DIR = 23
+    RL2B_DIR = 24
+    TRS3221E_ON = 7
+    TRS3221E_OFF = 8
+    TRS3221E_INVALID_NOT = 25
 
-    MODES = {
-        'master': {'rl1a': 'ON', 'rl1b': 'OFF', 'rl2a': 'OFF'},
-        'transparent': {'rl1a': 'OFF', 'rl1b': 'OFF', 'rl2a': 'OFF'},
-        'proxy': {'rl1a': 'OFF', 'rl1b': 'OFF', 'rl2a': 'ON'}
-    }
+    MODES = ['master', 'proxy', 'transparent']
 
     def __init__(self,
                  logger: Logger = None,
@@ -51,10 +51,18 @@ class PnpDongle:
                  pps_pulse_callback: Callable = None,
                  mode: str = 'master'):
         """Initializes the dongle."""
+        on_exit(self._cleanup)
         self._logger = logger or get_wrapping_logger(log_level=log_level)
-        self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_CTRL)
-        self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_CTRL)
-        self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_CTRL)
+        self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_DIR)
+        self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_DIR)
+        self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_DIR)
+        self._gpio_rl2b = DigitalOutputDevice(pin=self.RL2B_DIR)
+        self._gpio_232on = DigitalOutputDevice(pin=self.TRS3221E_ON)
+        self._gpio_232notoff = DigitalOutputDevice(pin=self.TRS3221E_OFF)
+        self._gpio_232valid = DigitalInputDevice(pin=self.TRS3221E_INVALID_NOT,
+                                                 pull_up=None,
+                                                 active_state=True)
+        # self._gpio_232valid.when_activated = self._rs232valid
         self._gpio_modem_event = DigitalInputDevice(pin=self.EVENT_NOTIFY,
                                                     pull_up=None,
                                                     active_state=True)
@@ -74,11 +82,29 @@ class PnpDongle:
             self.pps_enable()
         self.mode = None
         self.mode_set(mode)
+        # self._rs232_configure()
         self.modem = IdpModemAsyncioClient(port='/dev/ttyAMA0',
                                            crc=True,
                                            logger=self._logger)
         self.modem.lowpower_notifications_enable()
     
+    def _cleanup(self):
+        self._gpio_rl2b.blink(n=1)
+        self._gpio_rl1b.blink(n=1)
+
+    def _rs232_configure(self, on=True, notoff=True):
+        if on:
+            self._gpio_232on.on()
+        else:
+            self._gpio_232on.off()
+        if notoff:
+            self._gpio_232notoff.on()
+        else:
+            self._gpio_232notoff.off()
+
+    def _rs232valid(self):
+        self._logger.debug('RS232 active')
+
     def mode_set(self, mode: str = 'master'):
         """Configures the dongle (default: master)
         
@@ -93,21 +119,14 @@ class PnpDongle:
             raise Exception('Unsupported mode: {}'.format(mode))
         self._logger.debug('Setting Raspberry Pi UART as {}'.format(mode))
         self.mode = mode
-        if self.MODES[mode]['rl1a'] == 'ON':
-            self._gpio_rl1a.on()
-        else:
-            self._gpio_rl1a.off()
-        if self.MODES[mode]['rl1b'] == 'ON':
-            self._gpio_rl1b.on()
-        else:
-            self._gpio_rl1b.off()
-        if self.MODES[mode]['rl2a'] == 'ON':
-            self._gpio_rl2a.on()
-        else:
-            self._gpio_rl2a.off()
-        self._logger.debug('RL1A: {} | RL1B: {} | RL2A: {}'.format(
-            self._gpio_rl1a.value, self._gpio_rl1b.value, self._gpio_rl2a.value
-        ))
+        if mode == 'master':
+            self._gpio_rl1a.blink(n=1)
+        elif mode == 'transparent':
+            self._gpio_rl1b.blink(n=1)
+            self._gpio_rl2b.blink(n=1)
+        else:   #: mode == 'proxy'
+            self._gpio_rl1b.blink(n=1)
+            self._gpio_rl2b.blink(n=1)
 
     def _event_activated(self):
         self._logger.info('Modem event notification asserted')
