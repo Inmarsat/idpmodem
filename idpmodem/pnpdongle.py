@@ -97,6 +97,8 @@ class PnpDongle:
     
     def _cleanup(self):
         """Resets the dongle to transparent mode and enables RS232 shutdown."""
+        self._logger.debug('Reverting to transparent mode' +
+                           ' and RS232 auto-shutdown')
         self._gpio_rl2b.blink(n=1)
         self._gpio_rl1b.blink(n=1)
         self._gpio_232on.off()
