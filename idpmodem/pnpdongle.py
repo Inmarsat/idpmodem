@@ -49,7 +49,8 @@ class PnpDongle:
                  modem_event_callback: Callable = None,
                  external_reset_callback: Callable = None,
                  pps_pulse_callback: Callable = None,
-                 mode: str = 'master'):
+                 mode: str = 'master',
+                 modem_crc: bool = False):
         """Initializes the dongle."""
         on_exit(self._cleanup)
         self._logger = logger or get_wrapping_logger(log_level=log_level)
@@ -90,7 +91,7 @@ class PnpDongle:
         self.mode = None
         self.mode_set(mode)
         self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
-                                           crc=True,
+                                           crc=modem_crc,
                                            logger=self._logger)
         self.modem.lowpower_notifications_enable()
     
@@ -120,15 +121,22 @@ class PnpDongle:
         self._logger.debug('Setting Raspberry Pi UART as {}'.format(mode))
         self.mode = mode
         if mode == 'master':
-            self._gpio_rl1a.blink(n=1)
+            self._logger.debug('Energizing RL1A/RL1B')
+            self._gpio_rl1a.blink(n=1, background=False)
+            self._logger.debug('Forcing on RS232')
             self._gpio_232on.on()
         elif mode == 'transparent':
-            self._gpio_rl1b.blink(n=1)
-            self._gpio_rl2b.blink(n=1)
+            self._logger.debug('Resetting RL1/RL2')
+            self._gpio_rl1b.blink(n=1, background=False)
+            self._gpio_rl2b.blink(n=1, background=False)
+            self._logger.debug('Enabling RS232 auto-shutdown')
             self._gpio_232on.off()
         else:   #: mode == 'proxy'
-            self._gpio_rl1b.blink(n=1)
-            self._gpio_rl2b.blink(n=1)
+            self._logger.debug('Resetting RL1')
+            self._gpio_rl1b.blink(n=1, background=False)
+            self._logger.debug('Energizing RL2A')
+            self._gpio_rl2a.blink(n=1, background=False)
+            self._logger.debug('Forcing on RS232')
             self._gpio_232on.on()
 
     def _event_activated(self):
