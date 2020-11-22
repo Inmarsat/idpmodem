@@ -53,12 +53,18 @@ class PnpDongle:
         """Initializes the dongle."""
         on_exit(self._cleanup)
         self._logger = logger or get_wrapping_logger(log_level=log_level)
-        self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_DIR)
-        self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_DIR)
-        self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_DIR)
-        self._gpio_rl2b = DigitalOutputDevice(pin=self.RL2B_DIR)
-        self._gpio_232on = DigitalOutputDevice(pin=self.TRS3221E_ON)
-        self._gpio_232notoff = DigitalOutputDevice(pin=self.TRS3221E_OFF)
+        self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_DIR,
+                                              initial_value=None)
+        self._gpio_rl1b = DigitalOutputDevice(pin=self.RL1B_DIR,
+                                              initial_value=None)
+        self._gpio_rl2a = DigitalOutputDevice(pin=self.RL2A_DIR,
+                                              initial_value=None)
+        self._gpio_rl2b = DigitalOutputDevice(pin=self.RL2B_DIR,
+                                              initial_value=None)
+        self._gpio_232on = DigitalOutputDevice(pin=self.TRS3221E_ON,
+                                               initial_value=None)
+        self._gpio_232offnot = DigitalOutputDevice(pin=self.TRS3221E_OFF,
+                                                   initial_value=None)
         self._gpio_232valid = DigitalInputDevice(pin=self.TRS3221E_INVALID_NOT,
                                                  pull_up=None,
                                                  active_state=True)
@@ -68,7 +74,8 @@ class PnpDongle:
                                                     active_state=True)
         self._gpio_modem_event.when_activated = (
             modem_event_callback or self._event_activated)
-        self._gpio_modem_reset = DigitalOutputDevice(pin=self.MODEM_RESET)
+        self._gpio_modem_reset = DigitalOutputDevice(pin=self.MODEM_RESET,
+                                                     initial_value=False)
         self._gpio_external_reset = DigitalInputDevice(pin=self.EXTERNAL_RESET,
                                                        pull_up=None,
                                                        active_state=True)
@@ -82,28 +89,21 @@ class PnpDongle:
             self.pps_enable()
         self.mode = None
         self.mode_set(mode)
-        # self._rs232_configure()
-        self.modem = IdpModemAsyncioClient(port='/dev/ttyAMA0',
+        self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
                                            crc=True,
                                            logger=self._logger)
         self.modem.lowpower_notifications_enable()
     
     def _cleanup(self):
+        """Resets the dongle to transparent mode and enables RS232 shutdown."""
         self._gpio_rl2b.blink(n=1)
         self._gpio_rl1b.blink(n=1)
-
-    def _rs232_configure(self, on=True, notoff=True):
-        if on:
-            self._gpio_232on.on()
-        else:
-            self._gpio_232on.off()
-        if notoff:
-            self._gpio_232notoff.on()
-        else:
-            self._gpio_232notoff.off()
+        self._gpio_232on.off()
+        self._gpio_232offnot.on()
 
     def _rs232valid(self):
-        self._logger.debug('RS232 active')
+        """Detects reception of RS232 data."""
+        self._logger.debug('RS232 data received')
 
     def mode_set(self, mode: str = 'master'):
         """Configures the dongle (default: master)
@@ -121,12 +121,15 @@ class PnpDongle:
         self.mode = mode
         if mode == 'master':
             self._gpio_rl1a.blink(n=1)
+            self._gpio_232on.on()
         elif mode == 'transparent':
             self._gpio_rl1b.blink(n=1)
             self._gpio_rl2b.blink(n=1)
+            self._gpio_232on.off()
         else:   #: mode == 'proxy'
             self._gpio_rl1b.blink(n=1)
             self._gpio_rl2b.blink(n=1)
+            self._gpio_232on.on()
 
     def _event_activated(self):
         self._logger.info('Modem event notification asserted')
