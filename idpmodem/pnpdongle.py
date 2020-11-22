@@ -99,10 +99,10 @@ class PnpDongle:
         """Resets the dongle to transparent mode and enables RS232 shutdown."""
         self._logger.debug('Reverting to transparent mode' +
                            ' and RS232 auto-shutdown')
-        self._gpio_rl2b.blink(n=1)
-        self._gpio_rl1b.blink(n=1)
-        self._gpio_232on.off()
-        self._gpio_232offnot.on()
+        self.mode_set(mode='transparent')
+        # self._gpio_rl2b.blink(n=1, background=False)
+        # self._gpio_rl1b.blink(n=1, background=False)
+        # self._gpio_232on.off()
 
     def _rs232valid(self):
         """Detects reception of RS232 data."""
@@ -128,8 +128,9 @@ class PnpDongle:
             self._logger.debug('Forcing on RS232')
             self._gpio_232on.on()
         elif mode == 'transparent':
-            self._logger.debug('Resetting RL1/RL2')
+            self._logger.debug('Resetting RL1')
             self._gpio_rl1b.blink(n=1, background=False)
+            self._logger.debug('Resetting RL2')
             self._gpio_rl2b.blink(n=1, background=False)
             self._logger.debug('Enabling RS232 auto-shutdown')
             self._gpio_232on.off()
