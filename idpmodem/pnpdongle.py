@@ -51,7 +51,18 @@ class PnpDongle:
                  pps_pulse_callback: Callable = None,
                  mode: str = 'master',
                  modem_crc: bool = False):
-        """Initializes the dongle."""
+        """Initializes the dongle.
+        
+        Args:
+            logger: Optional logger, one will be created if not supplied.
+            log_level: The default logging level.
+            modem_event_callback: Optional callback when notification asserts.
+            external_reset_callback: Optional callback triggered by remote reset.
+            pps_pulse_callback: Optional receiver for GNSS pulse per second.
+            mode: `master`, `proxy` or `transparent`.
+            modem_crc: Enables CRC-16 on modem interactions.
+            
+        """
         on_exit(self._cleanup)
         self._logger = logger or get_wrapping_logger(log_level=log_level)
         self._gpio_rl1a = DigitalOutputDevice(pin=self.RL1A_DIR,
@@ -100,9 +111,6 @@ class PnpDongle:
         self._logger.debug('Reverting to transparent mode' +
                            ' and RS232 auto-shutdown')
         self.mode_set(mode='transparent')
-        # self._gpio_rl2b.blink(n=1, background=False)
-        # self._gpio_rl1b.blink(n=1, background=False)
-        # self._gpio_232on.off()
 
     def _rs232valid(self):
         """Detects reception of RS232 data."""
@@ -151,7 +159,7 @@ class PnpDongle:
     def modem_reset(self):
         """Resets the IDP modem."""
         self._logger.warning('Resetting IDP modem')
-        self._gpio_modem_reset.blink(n=1)
+        self._gpio_modem_reset.blink(n=1, background=False)
     
     def pps_enable(self, enable=True):
         """Enables 1 pulse-per-second GNSS time output from the IDP modem."""

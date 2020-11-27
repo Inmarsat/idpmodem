@@ -77,6 +77,15 @@ CONTROL_STATES = {
     14: 'Connect to confirmed beam'
 }
 
+MO_STATES = {
+    0: 'UNAVAILABLE',
+    4: 'TX_READY',
+    5: 'TX_SENDING',
+    6: 'TX_COMPLETE',
+    7: 'TX_FAILED',
+    8: 'TX_CANCELLED'
+}
+
 AT_ERROR_CODES = {
     '0': 'OK',
     '4': 'ERROR',
