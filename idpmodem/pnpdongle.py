@@ -3,8 +3,10 @@
 
 from __future__ import absolute_import
 
+from asyncio import AbstractEventLoop, run
 from atexit import register as on_exit
 from logging import Logger, INFO
+from time import sleep
 from typing import Callable
 
 try:
@@ -50,7 +52,8 @@ class PnpDongle:
                  external_reset_callback: Callable = None,
                  pps_pulse_callback: Callable = None,
                  mode: str = 'master',
-                 modem_crc: bool = False):
+                 modem_crc: bool = False,
+                 loop: AbstractEventLoop = None):
         """Initializes the dongle.
         
         Args:
@@ -149,10 +152,11 @@ class PnpDongle:
             self._gpio_rl2a.blink(n=1, background=False)
             self._logger.debug('Forcing on RS232')
             self._gpio_232on.on()
+        sleep(0.25)
 
     def _event_activated(self):
         self._logger.info('Modem event notification asserted')
-        notifications = self.modem.lowpower_notification_check()
+        notifications = run(self.modem.lowpower_notification_check())
         for notification in notifications:
             self._logger.debug('Notification: {}'.format(notification))
     
@@ -165,7 +169,8 @@ class PnpDongle:
         """Enables 1 pulse-per-second GNSS time output from the IDP modem."""
         self._logger.info('{} pulse per second IDP modem output'.format(
             'Enabling' if enable else 'Disabling'))
-        response = self.modem.command('AT%TRK={}'.format(1 if enable else 0))
+        response = run(self.modem.command('AT%TRK={}'.format(
+            1 if enable else 0)))
         if response[0] == 'OK':
             return True
         self._logger.error('Failed to {} 1s GNSS update'.format(
@@ -180,6 +185,7 @@ def main():
         start_time = time()
         pnpdongle = PnpDongle()
         modem = pnpdongle.modem
+        run(modem.initialize())
         while time() - start_time > RUN_TIME:
             pass
     except KeyboardInterrupt:

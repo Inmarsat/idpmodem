@@ -266,7 +266,7 @@ class IdpModemAsyncioClient:
                 self.serialport.close()
                 self.serialport = None
     
-    async def initialize(self, crc: bool) -> bool:
+    async def initialize(self, crc: bool = False) -> bool:
         """Initializes the modem using ATZ and sets up CRC.
 
         Args:
@@ -838,13 +838,6 @@ class IdpModemAsyncioClient:
         except:
             return False
 
-    # TODO: move this out of class
-    @staticmethod
-    def _to_signed32(n):
-        """Converts an integer to signed 32-bit format."""
-        n = n & 0xffffffff
-        return (n ^ 0x80000000) - 0x80000000
-
     async def event_get(self,
                         event: tuple,
                         raw: bool = True) -> Union[str, dict, None]:
@@ -896,6 +889,7 @@ class IdpModemAsyncioClient:
             return None
 
     # TODO: move this out of class
+    '''
     @staticmethod
     def _notifications_dict(sreg_value: int = None) -> OrderedDict:
         """Returns an OrderedDictionary as an abstracted bitmask of notifications.
@@ -919,7 +913,7 @@ class IdpModemAsyncioClient:
                 template[key] = True if bitmask[i] == '1' else False
                 i += 1
         return template
-
+    '''
     async def notification_control_set(self, event_map: list) -> bool:
         """Sets the event notification bitmask.
 
@@ -931,27 +925,30 @@ class IdpModemAsyncioClient:
         """
         self._log.debug('Setting event notifications: {}'.format(event_map))
         #: ATS88=bitmask
-        # TODO REMOVE old_notifications = self.notifications.copy()
         notifications_changed = False
-        old_notifications = self.notification_control_get()
+        old_notifications = await self.notification_control_get()
         if old_notifications is None:
             return False
+        bitmask = list('0' * len(old_notifications))
+        i = 0
         for event in event_map:
-            if event in old_notifications:
-                binary = '0b'
-                for key in reversed(old_notifications):
-                    bit = '1' if old_notifications[key] else '0'
-                    if key == event:
-                        notify = event_map[event]
-                        if old_notifications[key] != notify:
-                            bit = '1' if notify else '0'
-                            notifications_changed = True
-                            # self.notifications[key] = notify
-                    binary += bit
+            if event[0] not in NOTIFICATION_BITMASK:
+                raise ValueError('Invalid event {}'.format(event[0]))
+            i = 0
+            for key in reversed(old_notifications):
+                bit = '1' if old_notifications[key] or bitmask[i] == '1' else '0'
+                if key == event[0]:
+                    notify = event[1]
+                    if old_notifications[key] != notify:
+                        bit = '1' if notify else '0'
+                        notifications_changed = True
+                        # self.notifications[key] = notify
+                bitmask[i] = bit
+                i += 1
         if notifications_changed:
-            bitmask = int(binary, 2)
+            bitmask_int = int('0b' + ''.join(bitmask), 2)
             try:
-                result = await self.command('ATS88={}'.format(bitmask))
+                result = await self.command('ATS88={}'.format(bitmask_int))
                 if result is None or result[0] == 'ERROR':
                     return False
             except AtException:
@@ -980,8 +977,7 @@ class IdpModemAsyncioClient:
             result = await self.command('ATS89?')
             if result is None or result[0] == 'ERROR':
                 return None
-            template = _notifications_dict(int(result[0]))
-            return template
+            return _notifications_dict(int(result[0]))
         except AtException:
             return None
 
@@ -1005,7 +1001,7 @@ class IdpModemAsyncioClient:
             return (None, None)
 
     @staticmethod
-    def sat_status_name(self, ctrl_state: int) -> str:
+    def sat_status_name(ctrl_state: int) -> str:
         """Returns human-readable definition of a control state value.
         
         Raises:
@@ -1027,7 +1023,7 @@ class IdpModemAsyncioClient:
         except AtException:
             return False
 
-    async def utc_time(self) -> Union[str, None]:
+    async def time_utc(self) -> Union[str, None]:
         """Returns current UTC time of the modem in ISO format."""
         self._log.debug('Requesting UTC network time')
         try:
@@ -1038,29 +1034,26 @@ class IdpModemAsyncioClient:
         except AtException:
             return None
 
-    async def s_register_get(self, register: str) -> Union[int, None]:
+    async def s_register_get(self, register: int) -> Union[int, None]:
         """Returns the value of the S-register requested.
 
         Args:
-            register: The register name/number (e.g. S80)
+            register: The S-register number
 
         Returns:
             integer value or None
 
         """
         self._log.debug('Querying register value S{}'.format(register))
-        if not register.startswith('S'):
-            # TODO: better Exception handling
-            raise Exception('Invalid S-register {}'.format(register))
         try:
-            response = await self.command('AT{}?'.format(register))
+            response = await self.command('ATS{}?'.format(register))
             if response is None or response[0] == 'ERROR':
                 return None
             return int(response[0])
         except AtException:
             return None
 
-    async def sreg_get_all(self) -> Union[list, None]:
+    async def s_register_get_all(self) -> Union[list, None]:
         """Returns a list of S-register definitions.
         R=read-only, S=signed, V=volatile
         

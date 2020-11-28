@@ -247,6 +247,73 @@ class IdpModemTestCase(unittest.TestCase):
         success = run(mock_message_mt_delete(name=msg_name))
         self.assertTrue(success)
 
+    def test_18_event_monitor_set(self):
+        self.display_tc_header()
+        events_to_monitor = [(3, 1), (3, 2)]
+        success = run(self.modem.event_monitor_set(events_to_monitor))
+        self.assertTrue(success)
+
+    def test_19_event_monitor_get(self):
+        self.display_tc_header()
+        events_monitored = run(self.modem.event_monitor_get())
+        pprint.pprint(events_monitored)
+        self.assertTrue(isinstance(events_monitored, list))
+
+    def test_20_event_get(self):
+        self.display_tc_header()
+        event_to_get = (3, 1)
+        event_data = run(self.modem.event_get(event=event_to_get, raw=False))
+        pprint.pprint(event_data)
+        self.assertTrue(isinstance(event_data, dict))
+
+    def test_21_notification_control_set(self):
+        self.display_tc_header()
+        event_map = {
+            ('message_mt_received', True),
+            ('message_mo_complete', True),
+            ('event_cached', True),
+        }
+        success = run(self.modem.notification_control_set(event_map))
+        self.assertTrue(success)
+
+    def test_22_notification_control_get(self):
+        self.display_tc_header()
+        event_map = run(self.modem.notification_control_get())
+        pprint.pprint(event_map)
+        self.assertTrue(isinstance(event_map, dict))
+
+    def test_23_notification_check(self):
+        self.display_tc_header()
+        notifications = run(self.modem.notification_check())
+        pprint.pprint(notifications)
+        self.assertTrue(isinstance(notifications, dict))
+
+    def test_24_sat_status_snr(self):
+        self.display_tc_header()
+        (state, cno) = run(self.modem.sat_status_snr())
+        print('State: {} | C/N0: {} dB'.format(
+            self.modem.sat_status_name(state), cno))
+        self.assertTrue(state is not None and cno is not None)
+
+    def test_25_time_utc(self):
+        self.display_tc_header()
+        time = run(self.modem.time_utc())
+        print('Time: {}'.format(time))
+        self.assertTrue(time is not None)
+
+    def test_26_s_register_get(self):
+        self.display_tc_header()
+        reg = 54
+        value = run(self.modem.s_register_get(reg))
+        print('S{}: {}'.format(reg, value))
+        self.assertTrue(value is not None)
+
+    def test_27_s_register_get_all(self):
+        self.display_tc_header()
+        registers = run(self.modem.s_register_get_all())
+        pprint.pprint(registers)
+        self.assertTrue(registers is not None)
+
     def test_end(self):
         pass
 
@@ -271,8 +338,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_151_mock_message_mt_waiting',
-        'test_171_mock_message_mt_delete',
+        'test_27_s_register_get_all',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:
