@@ -15,6 +15,7 @@ def main():
             if pnpdongle.modem_event_callback is None:
                 pnpdongle._process_event_queue()
             sleep(5)
+        print('Run time {} seconds complete'.format(RUN_TIME))
     except KeyboardInterrupt:
         print('Interrupted by user input')
 

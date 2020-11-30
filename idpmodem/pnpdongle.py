@@ -3,7 +3,7 @@
 
 from __future__ import absolute_import
 
-from asyncio import AbstractEventLoop, Queue, gather, run, QueueEmpty
+from asyncio import AbstractEventLoop, Queue, gather, run, QueueEmpty, get_event_loop
 from atexit import register as on_exit
 from logging import Logger, INFO, DEBUG
 from time import sleep
@@ -11,8 +11,8 @@ from typing import Callable
 
 try:
     from gpiozero import DigitalInputDevice, DigitalOutputDevice
-except ImportError:
-    raise Exception('Missing dependency')
+except ImportError as e:
+    raise Exception('Missing dependency {}'.format(e))
 
 from .atcommand_async import IdpModemAsyncioClient
 from .constants import NOTIFICATION_BITMASK, FORMAT_B64, CONTROL_STATES, BEAMSEARCH_STATES
@@ -92,7 +92,6 @@ class PnpDongle:
         self._gpio_modem_event.when_activated = (
             modem_event_callback or self._event_activated)
         self.event_queue = Queue()
-        self._event_tasks = []
         self._event_data_last = None
         self._gpio_modem_reset = DigitalOutputDevice(pin=self.MODEM_RESET,
                                                      initial_value=False)
@@ -118,9 +117,6 @@ class PnpDongle:
         self._logger.debug('Reverting to transparent mode' +
                            ' and RS232 auto-shutdown')
         self.mode_set(mode='transparent')
-        for task in self._event_tasks:
-            task.cancel()
-        run(gather(*self._event_tasks, return_exceptions=True))
 
     def _rs232valid(self):
         """Detects reception of RS232 data."""
