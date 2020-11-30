@@ -172,7 +172,7 @@ class PnpDongle:
     
     def _process_event_queue(self):
         try:
-            event_type = self.event_queue.get()
+            event_type = run(self.event_queue.get())
             if event_type == 'message_mt_received':
                 messages = self.process_message_mt_waiting()
                 for message in messages:
