@@ -3,7 +3,9 @@
 
 from __future__ import absolute_import
 
-from asyncio import AbstractEventLoop, Queue, gather, run, QueueEmpty, get_event_loop
+from asyncio import AbstractEventLoop, gather, run
+from queue import Queue
+from queue import Empty as QueueEmpty
 from atexit import register as on_exit
 from logging import Logger, INFO, DEBUG
 from time import sleep
@@ -107,8 +109,8 @@ class PnpDongle:
             self.pps_enable()
         self.mode = None
         self.mode_set(mode)
-        self.loop = loop or get_event_loop()
-        self.event_queue = Queue(loop=self.loop)
+        self.loop = loop
+        self.event_queue = Queue()
         self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
                                            crc=modem_crc,
                                            logger=self._logger,
@@ -174,7 +176,7 @@ class PnpDongle:
     
     def _process_event_queue(self):
         try:
-            event_type = run(self.event_queue.get())
+            event_type = self.event_queue.get()
             if event_type == 'message_mt_received':
                 messages = self.process_message_mt_waiting()
                 for message in messages:
