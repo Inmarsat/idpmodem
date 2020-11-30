@@ -91,7 +91,6 @@ class PnpDongle:
         self.modem_event_callback = modem_event_callback
         self._gpio_modem_event.when_activated = (
             modem_event_callback or self._event_activated)
-        self.event_queue = Queue()
         self._event_data_last = None
         self._gpio_modem_reset = DigitalOutputDevice(pin=self.MODEM_RESET,
                                                      initial_value=False)
@@ -108,9 +107,12 @@ class PnpDongle:
             self.pps_enable()
         self.mode = None
         self.mode_set(mode)
+        self.loop = loop or get_event_loop()
+        self.event_queue = Queue(loop=self.loop)
         self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
                                            crc=modem_crc,
-                                           logger=self._logger)
+                                           logger=self._logger,
+                                           loop=self.loop)
     
     def _cleanup(self):
         """Resets the dongle to transparent mode and enables RS232 shutdown."""
