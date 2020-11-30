@@ -77,8 +77,21 @@ CONTROL_STATES = {
     14: 'Connect to confirmed beam'
 }
 
-MO_STATES = {
+BEAMSEARCH_STATES = {
+    0: 'Idle',
+    1: 'Search for any traffic channel',
+    2: 'Search for last acquired traffic channel',
+    3: 'reserved',
+    4: 'Search for another traffic channel',
+    5: 'Search for bulletin board',
+    6: 'Delay traffic channel search'
+}
+
+MESSAGE_STATES = {
     0: 'UNAVAILABLE',
+    1: 'RX_PENDING',
+    2: 'RX_COMPLETE',
+    3: 'RX_RETRIEVED',
     4: 'TX_READY',
     5: 'TX_SENDING',
     6: 'TX_COMPLETE',
@@ -160,4 +173,63 @@ NOTIFICATION_BITMASK = (
     'gnss_fix_timeout',
     'event_cached',
     'network_ping_acknowledged'
+)
+
+SATELLITE_GENERAL_TRACE = (
+    {'subframe_number': 'uint'},
+    {'traffic_channel_id': 'uint'},
+    {'configuration_id': 'uint'},
+    {'beam_number': 'uint'},
+    {'reserved04': 'uint'},
+    {'reserved05': 'uint'},
+    {'operator_tx_access': 'uint'},
+    {'user_tx_mute': 'uint'},
+    {'tx_suspend_flags': {0: 'beam_registration', 1: 'beam_switch', 2: 'reserved', 3: 'blocked'}},
+    {'active_tx_messages': 'uint'},
+    {'total_tx_messages': 'uint'},
+    {'tx_state': ('active', 'suspending', 'suspended')},
+    {'active_rx_messages': 'uint'},
+    {'beamswitch_averaging_window': 'uint'},
+    {'beamswitch_averaging_count': 'uint'},
+    {'c_n_x100': 'uint'},
+    {'beamsample_threshold': 'uint'},
+    {'beamsample_timer': 'uint'},
+    {'flags': {
+        0: 'registered',
+        1: 'sending_beam_registration',
+        4: 'beam_search',
+        5: 'need_beam_sample',
+        6: 'beam_switch_pending',
+        8: 'gnss_valid',
+        9: 'need_gnss',
+        10: 'requested_gnss'
+    }},
+    {'gnss_state_timer': 'uint'},
+    {'reserved21': 'uint'},
+    {'satellite_control_state': (
+        'stopped',
+        'gnss_wait',
+        'beam_search_start',
+        'beam_search',
+        'beam_found',
+        'beam_acquired',
+        'beam_switch_pending',
+        'registration_pending',
+        'receive_only',
+        'bulletinboard_receive',
+        'active',
+        'blocked',
+        'confirm_previous_registered_beam',
+        'confirm_requested_beam',
+        'connect_confirmed_beam'
+    )},
+    {'beam_search_state': (
+        'idle',
+        'search_any_traffic',
+        'search_last_traffic',
+        'reserved',
+        'search_other_traffic',
+        'search_bulletinboard',
+        'delay_search_traffic'
+    )}
 )

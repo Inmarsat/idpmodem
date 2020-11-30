@@ -123,9 +123,9 @@ class IdpModemTestCase(unittest.TestCase):
         notifications = run(self.modem.lowpower_notifications_enable())
         self.assertTrue(notifications)
 
-    def test_10_lowpower_notification_check(self):
+    def test_10_lowpower_notifications_check(self):
         self.display_tc_header()
-        notifications = run(self.modem.lowpower_notification_check())
+        notifications = run(self.modem.lowpower_notifications_check())
         print('{}'.format(notifications))
         self.assertTrue(isinstance(notifications, list))
 
@@ -288,11 +288,12 @@ class IdpModemTestCase(unittest.TestCase):
         pprint.pprint(notifications)
         self.assertTrue(isinstance(notifications, dict))
 
-    def test_24_sat_status_snr(self):
+    def test_24_satellite_status(self):
         self.display_tc_header()
-        (state, cno) = run(self.modem.sat_status_snr())
-        print('State: {} | C/N0: {} dB'.format(
-            self.modem.sat_status_name(state), cno))
+        (state, cno, beamsearch) = run(self.modem.satellite_status())
+        print('State: {} | C/N0: {} dB | Beam search: {}'.format(
+            self.modem.sat_status_name(state), cno,
+            self.modem.sat_beamsearch_name(beamsearch)))
         self.assertTrue(state is not None and cno is not None)
 
     def test_25_time_utc(self):
@@ -338,7 +339,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_27_s_register_get_all',
+        'test_24_satellite_status',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

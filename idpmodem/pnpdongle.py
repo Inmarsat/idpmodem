@@ -3,9 +3,9 @@
 
 from __future__ import absolute_import
 
-from asyncio import AbstractEventLoop, run
+from asyncio import AbstractEventLoop, Queue, gather, run, QueueEmpty
 from atexit import register as on_exit
-from logging import Logger, INFO
+from logging import Logger, INFO, DEBUG
 from time import sleep
 from typing import Callable
 
@@ -15,6 +15,7 @@ except ImportError:
     raise Exception('Missing dependency')
 
 from .atcommand_async import IdpModemAsyncioClient
+from .constants import NOTIFICATION_BITMASK, FORMAT_B64, CONTROL_STATES, BEAMSEARCH_STATES
 from .utils import get_wrapping_logger
 
 
@@ -87,8 +88,12 @@ class PnpDongle:
         self._gpio_modem_event = DigitalInputDevice(pin=self.EVENT_NOTIFY,
                                                     pull_up=None,
                                                     active_state=True)
+        self.modem_event_callback = modem_event_callback
         self._gpio_modem_event.when_activated = (
             modem_event_callback or self._event_activated)
+        self.event_queue = Queue()
+        self._event_tasks = []
+        self._event_data_last = None
         self._gpio_modem_reset = DigitalOutputDevice(pin=self.MODEM_RESET,
                                                      initial_value=False)
         self._gpio_external_reset = DigitalInputDevice(pin=self.EXTERNAL_RESET,
@@ -107,13 +112,15 @@ class PnpDongle:
         self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
                                            crc=modem_crc,
                                            logger=self._logger)
-        self.modem.lowpower_notifications_enable()
     
     def _cleanup(self):
         """Resets the dongle to transparent mode and enables RS232 shutdown."""
         self._logger.debug('Reverting to transparent mode' +
                            ' and RS232 auto-shutdown')
         self.mode_set(mode='transparent')
+        for task in self._event_tasks:
+            task.cancel()
+        run(gather(*self._event_tasks, return_exceptions=True))
 
     def _rs232valid(self):
         """Detects reception of RS232 data."""
@@ -155,11 +162,90 @@ class PnpDongle:
         sleep(0.25)
 
     def _event_activated(self):
+        """Queues an event triggered by modem event notification pin.
+        
+        Spawns a dummy thread to query which notifications asserted the pin
+        and stores in self.event_queue.
+
+        """
         self._logger.info('Modem event notification asserted')
-        notifications = run(self.modem.lowpower_notification_check())
+        notifications = run(self.modem.lowpower_notifications_check())
         for notification in notifications:
             self._logger.debug('Notification: {}'.format(notification))
+            self.event_queue.put_nowait(notification)
     
+    def _process_event_queue(self):
+        try:
+            event_type = self.event_queue.get()
+            if event_type == 'message_mt_received':
+                messages = self.process_message_mt_waiting()
+                for message in messages:
+                    self._logger.info('Message received: {}'.format(message))
+            elif event_type == 'message_mo_complete':
+                messages = self.process_message_mo_complete()
+                for message in messages:
+                    if message['state'] > 5:
+                        self._logger.info('Message completed: {}'.format(message))
+            elif event_type == 'event_cached':
+                changed = False
+                event_data = self.process_event_cached()
+                if self._event_data_last is not None:
+                    for event in event_data:
+                        if event not in self._event_data_last:
+                            changed = True
+                            self._logger.info('New event cached: {}'.format(event))
+                if changed or self._event_data_last is None:
+                    self._event_data_last = event_data
+        except QueueEmpty:
+            pass
+
+    def process_message_mt_waiting(self):
+        self._logger.debug('Request to process forward message event')
+        messages = None
+        messages_waiting = run(self.modem.message_mt_waiting())
+        if not isinstance(messages_waiting, list):
+            self._logger.warning('No MT messages waiting')
+        else:
+            messages = []
+            for meta in messages_waiting:
+                message = run(self.modem.message_mt_get(name=meta['name'],
+                                                        data_format=FORMAT_B64,
+                                                        verbose=True))
+                messages.append(message)
+        return messages
+
+    def process_message_mo_complete(self):
+        self._logger.debug('Request to process return message event')
+        messages_queued = run(self.modem.message_mo_state())
+        if not isinstance(messages_queued, list):
+            self._logger.warning('No MO messages queued or completed')
+        return messages_queued
+
+    def process_event_cached(self, class_subclass: tuple = None):
+        self._logger.debug('Request to process cached modem event')
+        event_data = None
+        if class_subclass is not None:
+            event_data = [run(self.modem.event_get(class_subclass))]
+        else:
+            event_data = []
+            events_available = run(self.modem.event_monitor_get())
+            for event in events_available:
+                if event.endswith('*'):
+                    tup = event.replace('*', '').split('.')
+                    if tup == (3, 1):
+                        event_data.append(self.satellite_status)
+                    else:
+                        event_data.append(run(self.modem.event_get(event=tup)))
+        return event_data
+
+    def satellite_status(self):
+        ctrl_state, c_n, beamsearch_state = run(self.modem.satellite_status())
+        return {
+            'ctrl_state': CONTROL_STATES[ctrl_state],
+            'c_n': c_n,
+            'beamsearch_state': BEAMSEARCH_STATES[beamsearch_state]
+        }
+
     def modem_reset(self):
         """Resets the IDP modem."""
         self._logger.warning('Resetting IDP modem')
@@ -183,11 +269,13 @@ def main():
     try:
         from time import time
         start_time = time()
-        pnpdongle = PnpDongle()
+        pnpdongle = PnpDongle(log_level=DEBUG)
         modem = pnpdongle.modem
         run(modem.initialize())
         while time() - start_time > RUN_TIME:
-            pass
+            if pnpdongle.modem_event_callback is None:
+                pnpdongle._process_event_queue()
+            sleep(5)
     except KeyboardInterrupt:
         print('Interrupted by user input')
 

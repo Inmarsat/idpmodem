@@ -16,7 +16,7 @@ from time import time
 from typing import Callable, Tuple, Union
 
 from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
-from .constants import AT_ERROR_CODES, CONTROL_STATES, FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, MO_STATES, NOTIFICATION_BITMASK
+from .constants import AT_ERROR_CODES, BEAMSEARCH_STATES, CONTROL_STATES, FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, MESSAGE_STATES, NOTIFICATION_BITMASK
 from .crcxmodem import get_crc, validate_crc
 from .nmea import location_get, Location
 from .utils import get_wrapping_logger
@@ -534,7 +534,7 @@ class IdpModemAsyncioClient:
         except AtException:
             return False
 
-    async def lowpower_notification_check(self) -> list:
+    async def lowpower_notifications_check(self) -> list:
         """Returns a list of relevant events or None."""
         self._log.debug('Querying low power notifications')
         reason = await self.notification_check()
@@ -607,7 +607,7 @@ class IdpModemAsyncioClient:
             name: The unique message name in the modem queue
 
         Returns:
-            State: UNAVAILABLE, TX_READY, TX_SENDING, TX_COMPLETE, TX_FAILED or None
+            `list` of `dict` with `name`, `state`, `size` and `sent`
 
         """
         self._log.debug('Querying transmit message state{}'.format(
@@ -629,14 +629,20 @@ class IdpModemAsyncioClient:
                     del sin
                     states.append({
                         'name': name,
-                        'state': MO_STATES[int(state)],
-                        'size': size,
-                        'sent': sent,
+                        'state': int(state),
+                        'size': int(size),
+                        'acknowledged': int(sent),
                         })
             return states
         except AtException:
             return None
     
+    @staticmethod
+    def message_state_name(state: int):
+        if state not in MESSAGE_STATES:
+            raise ValueError('Message state {} not defined'.format(state))
+        return MESSAGE_STATES[state]
+
     async def message_mo_cancel(self, name: str) -> bool:
         """Cancels a mobile-originated message in the Tx ready state."""
         self._log.debug('Cancelling message {}'.format(name))
@@ -888,32 +894,6 @@ class IdpModemAsyncioClient:
         except AtException:
             return None
 
-    # TODO: move this out of class
-    '''
-    @staticmethod
-    def _notifications_dict(sreg_value: int = None) -> OrderedDict:
-        """Returns an OrderedDictionary as an abstracted bitmask of notifications.
-        
-        Args:
-            sreg_value: (optional) the integer value stored in S88 or S89
-        
-        Returns:
-            ordered dictionary corresponding to bitmask
-        """
-        template = OrderedDict([
-            (bit, False) for bit in NOTIFICATION_BITMASK])
-        if sreg_value is not None:
-            bitmask = bin(int(sreg_value))[2:]
-            if len(bitmask) > len(template):
-                bitmask = bitmask[:len(template) - 1]
-            while len(bitmask) < len(template):
-                bitmask = '0' + bitmask
-            i = 0
-            for key in reversed(template):
-                template[key] = True if bitmask[i] == '1' else False
-                i += 1
-        return template
-    '''
     async def notification_control_set(self, event_map: list) -> bool:
         """Sets the event notification bitmask.
 
@@ -981,24 +961,27 @@ class IdpModemAsyncioClient:
         except AtException:
             return None
 
-    async def sat_status_snr(self) -> Tuple[str, float]:
+    async def satellite_status(self) -> Tuple[str, float]:
         """Returns the control state and C/No.
         
         Returns:
             Tuple with (state: int, C/No: float) or None if error.
+
         """
         self._log.debug('Querying satellite status/SNR')
+        cmd = 'ATS90=3 S91=1 S92=1 S116? S122? S123?'
         try:
-            response = await self.command("ATS90=3 S91=1 S92=1 S122? S116?")
+            response = await self.command(cmd)
             if response is None or response[0] == 'ERROR':
                 return (None, None)
             response.remove('OK')
-            ctrl_state, cn_0 = response
-            ctrl_state = int(ctrl_state)
+            cn_0, ctrl_state, beamsearch_state = response
             cn_0 = int(cn_0) / 100.0
-            return (ctrl_state, cn_0)
+            ctrl_state = int(ctrl_state)
+            beamsearch_state = int(beamsearch_state)
+            return (ctrl_state, cn_0, beamsearch_state)
         except AtException:
-            return (None, None)
+            return (None, None, None)
 
     @staticmethod
     def sat_status_name(ctrl_state: int) -> str:
@@ -1007,10 +990,15 @@ class IdpModemAsyncioClient:
         Raises:
             ValueError if ctrl_state is not found.
         """
-        for s in CONTROL_STATES:
-            if int(s) == ctrl_state:
-                return CONTROL_STATES[s]
-        raise ValueError('Control state {} not found'.format(ctrl_state))
+        if ctrl_state not in CONTROL_STATES:
+            raise ValueError('Control state {} not found'.format(ctrl_state))
+        return CONTROL_STATES[ctrl_state]
+
+    @staticmethod
+    def sat_beamsearch_name(beamsearch_state: int) -> str:
+        if beamsearch_state not in BEAMSEARCH_STATES:
+            raise ValueError('Beam search state {} not found'.format(beamsearch_state))
+        return BEAMSEARCH_STATES[beamsearch_state]
 
     async def shutdown(self) -> bool:
         """Tell the modem to prepare for power-down."""
