@@ -168,13 +168,14 @@ class PnpDongle:
         and stores in self.event_queue.
 
         """
-        self._logger.info('Modem event notification asserted')
+        self._logger.debug('Modem event notification asserted')
         notifications = run(self.modem.lowpower_notifications_check())
         for notification in notifications:
-            self._logger.debug('Notification: {}'.format(notification))
+            self._logger.info('Notification: {}'.format(notification))
             self.event_queue.put_nowait(notification)
     
     def _process_event_queue(self):
+        self._logger.debug('Processing event queue')
         try:
             event_type = self.event_queue.get()
             if event_type == 'message_mt_received':
