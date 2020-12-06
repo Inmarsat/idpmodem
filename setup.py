@@ -17,6 +17,7 @@ setup(name='idpmodem',
       packages=find_packages(),
       install_requires=[
           'pyserial>=3.4',
+          'aioserial>=1.3',
       ],
       include_package_data=True,
       zip_safe=False)

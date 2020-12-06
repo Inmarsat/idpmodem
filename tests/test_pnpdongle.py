@@ -13,8 +13,6 @@ def main():
         run(modem.initialize())
         run(modem.lowpower_notifications_enable())
         while time() - start_time < RUN_TIME:
-            if pnpdongle.modem_event_callback is None:
-                pnpdongle._process_event_queue()
             sleep(5)
         print('Run time {} seconds complete'.format(RUN_TIME))
     except KeyboardInterrupt:

@@ -4,8 +4,6 @@
 from __future__ import absolute_import
 
 from asyncio import AbstractEventLoop, gather, run
-from queue import Queue
-from queue import Empty as QueueEmpty
 from atexit import register as on_exit
 from logging import Logger, INFO, DEBUG
 from time import sleep
@@ -14,11 +12,11 @@ from typing import Callable
 try:
     from gpiozero import DigitalInputDevice, DigitalOutputDevice
 except ImportError as e:
-    raise Exception('Missing dependency {}'.format(e))
+    raise Exception('Missing dependency: {}'.format(e))
 
-from .atcommand_async import IdpModemAsyncioClient
-from .constants import NOTIFICATION_BITMASK, FORMAT_B64, CONTROL_STATES, BEAMSEARCH_STATES
-from .utils import get_wrapping_logger
+from idpmodem.atcommand_async import IdpModemAsyncioClient
+from idpmodem.constants import NOTIFICATION_BITMASK, FORMAT_B64, CONTROL_STATES, BEAMSEARCH_STATES
+from idpmodem.utils import get_wrapping_logger
 
 
 class PnpDongle:
@@ -110,11 +108,13 @@ class PnpDongle:
         self.mode = None
         self.mode_set(mode)
         self.loop = loop
-        self.event_queue = Queue()
         self.modem = IdpModemAsyncioClient(port='/dev/ttyS0',
                                            crc=modem_crc,
                                            logger=self._logger,
                                            loop=self.loop)
+        self.idp = None
+        self.wifi = None
+        self.system = None
     
     def _cleanup(self):
         """Resets the dongle to transparent mode and enables RS232 shutdown."""
@@ -171,34 +171,29 @@ class PnpDongle:
         self._logger.debug('Modem event notification asserted')
         notifications = run(self.modem.lowpower_notifications_check())
         for notification in notifications:
-            self._logger.info('Notification: {}'.format(notification))
-            self.event_queue.put_nowait(notification)
+            self._process_event(notification)
     
-    def _process_event_queue(self):
-        self._logger.debug('Processing event queue')
-        try:
-            event_type = self.event_queue.get()
-            if event_type == 'message_mt_received':
-                messages = self.process_message_mt_waiting()
-                for message in messages:
-                    self._logger.info('Message received: {}'.format(message))
-            elif event_type == 'message_mo_complete':
-                messages = self.process_message_mo_complete()
-                for message in messages:
-                    if message['state'] > 5:
-                        self._logger.info('Message completed: {}'.format(message))
-            elif event_type == 'event_cached':
-                changed = False
-                event_data = self.process_event_cached()
-                if self._event_data_last is not None:
-                    for event in event_data:
-                        if event not in self._event_data_last:
-                            changed = True
-                            self._logger.info('New event cached: {}'.format(event))
-                if changed or self._event_data_last is None:
-                    self._event_data_last = event_data
-        except QueueEmpty:
-            pass
+    def _process_event(self, event_type: str):
+        self._logger.debug('Processing {} event'.format(event_type))
+        if event_type == 'message_mt_received':
+            messages = self.process_message_mt_waiting()
+            for message in messages:
+                self._logger.info('Message received: {}'.format(message))
+        elif event_type == 'message_mo_complete':
+            messages = self.process_message_mo_complete()
+            for message in messages:
+                if message['state'] > 5:
+                    self._logger.info('Message completed: {}'.format(message))
+        elif event_type == 'event_cached':
+            changed = False
+            event_data = self.process_event_cached()
+            if self._event_data_last is not None:
+                for event in event_data:
+                    if event not in self._event_data_last:
+                        changed = True
+                        self._logger.info('New event cached: {}'.format(event))
+            if changed or self._event_data_last is None:
+                self._event_data_last = event_data
 
     def process_message_mt_waiting(self):
         self._logger.debug('Request to process forward message event')

@@ -4,7 +4,7 @@
 | Borrowed from https://stackoverflow.com/questions/25239423/crc-ccitt-16-bit-python-manual-calculation.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 POLYNOMIAL = 0x1021
 PRESET = 0

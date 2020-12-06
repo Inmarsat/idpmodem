@@ -12,12 +12,14 @@ from .utils import get_wrapping_logger
 from .constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
 
 
-def _is_hex_string(s):
+def _is_hex_string(s: str) -> bool:
+    """Returns True if the string consists exclusively of hexadecimal chars."""
     hex_chars = '0123456789abcdefABCDEF'
     return all(c in hex_chars for c in s)
 
 
-def _bytearray_to_str(arr):
+def _bytearray_to_str(arr: bytearray) -> str:
+    """Converts a bytearray to a readable text string."""
     s = ''
     for b in bytearray(arr):
         if chr(b) in printable:
@@ -27,11 +29,13 @@ def _bytearray_to_str(arr):
     return s
 
 
-def _bytearray_to_hex_str(arr):
+def _bytearray_to_hex_str(arr: bytearray) -> str:
+    """Converts a bytearray to a hex string."""
     return binascii.hexlify(bytearray(arr)).decode()
 
 
-def _bytearray_to_b64_str(arr):
+def _bytearray_to_b64_str(arr: bytearray) -> str:
+    """Converts a bytearray to a base64 string."""
     return binascii.b2a_base64(bytearray(arr)).strip().decode()
 
 

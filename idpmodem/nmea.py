@@ -6,7 +6,6 @@ from calendar import timegm
 from datetime import datetime
 from functools import reduce
 from operator import xor
-#from time import mktime
 from typing import Tuple
 
 

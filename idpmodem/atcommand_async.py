@@ -961,11 +961,12 @@ class IdpModemAsyncioClient:
         except AtException:
             return None
 
-    async def satellite_status(self) -> Tuple[str, float]:
+    async def satellite_status(self) -> dict:
         """Returns the control state and C/No.
         
         Returns:
-            Tuple with (state: int, C/No: float) or None if error.
+            Dictionary with state (int), snr (float), beamsearch (int)
+                or None if error.
 
         """
         self._log.debug('Querying satellite status/SNR')
@@ -973,15 +974,19 @@ class IdpModemAsyncioClient:
         try:
             response = await self.command(cmd)
             if response is None or response[0] == 'ERROR':
-                return (None, None)
+                return None
             response.remove('OK')
             cn_0, ctrl_state, beamsearch_state = response
             cn_0 = int(cn_0) / 100.0
             ctrl_state = int(ctrl_state)
             beamsearch_state = int(beamsearch_state)
-            return (ctrl_state, cn_0, beamsearch_state)
+            return {
+                'state': ctrl_state,
+                'snr': cn_0,
+                'beamsearch': beamsearch_state,
+            }
         except AtException:
-            return (None, None, None)
+            return None
 
     @staticmethod
     def sat_status_name(ctrl_state: int) -> str:

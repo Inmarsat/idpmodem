@@ -290,11 +290,12 @@ class IdpModemTestCase(unittest.TestCase):
 
     def test_24_satellite_status(self):
         self.display_tc_header()
-        (state, cno, beamsearch) = run(self.modem.satellite_status())
+        status = run(self.modem.satellite_status())
         print('State: {} | C/N0: {} dB | Beam search: {}'.format(
-            self.modem.sat_status_name(state), cno,
-            self.modem.sat_beamsearch_name(beamsearch)))
-        self.assertTrue(state is not None and cno is not None)
+            self.modem.sat_status_name(status['state']),
+            status['snr'],
+            self.modem.sat_beamsearch_name(status['beamsearch'])))
+        self.assertTrue(status is not None)
 
     def test_25_time_utc(self):
         self.display_tc_header()
