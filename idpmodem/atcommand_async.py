@@ -18,7 +18,8 @@ from typing import Callable, Tuple, Union
 from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
 from .constants import AT_ERROR_CODES, BEAMSEARCH_STATES, CONTROL_STATES, FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, MESSAGE_STATES, NOTIFICATION_BITMASK
 from .crcxmodem import get_crc, validate_crc
-from .nmea import location_get, Location
+# from .message import MobileOriginatedMessage, MobileTerminatedMessage
+from .nmea import location_get, Location, NmeaException
 from .utils import get_wrapping_logger
 
 LOGGING_VERBOSE_LEVEL = 9

@@ -1,197 +1,255 @@
-#!/usr/bin/env python
-"""
-Codec functions for IDP Common Message Format supported by Inmarsat MGS
-"""
+"""Codec functions for IDP Common Message Format supported by Inmarsat MGS."""
 
 from binascii import b2a_base64
-import struct
+from math import log2, ceil
+from struct import pack, unpack
+from warnings import WarningMessage, warn
 
-try:
-    from idpmodem import FORMAT_HEX, FORMAT_BASE64
-except ImportError:
-    FORMAT_HEX = 2
-    FORMAT_BASE64 = 3
+from idpmodem.constants import FORMAT_HEX, FORMAT_B64
 
-__version__ = '1.0.0'
+__version__ = '2.0.0'
 
 
-class CommonMessageFormat(object):
+DATA_TYPES = (
+    'bool',
+    'int_8',
+    'uint_8',
+    'int_16',
+    'uint_16',
+    'int_32',
+    'uint_31',   # unique to SkyWave IDP-series Lua 5.3
+    'uint_32',   # not supported by all ORBCOMM/SkyWave terminals
+    'int_64',    # not supported by all ORBCOMM/SkyWave terminals
+    'uint_64',   # not supported by all ORBCOMM/SkyWave terminals
+    'float',     # not supported by ORBCOMM/SkyWave terminals
+    'double',    # not supported by ORBCOMM/SkyWave terminals
+    'string',
+    'data',
+    # 'array',   # TODO: support for array type
+    # 'enum',   #TODO: support for enum type
+)
 
-    data_types = (
-        'bool',
-        'int_8',
-        'uint_8',
-        'int_16',
-        'uint_16',
-        'int_32',
-        'uint_31',   # unique to SkyWave IDP-series Lua 5.3
-        'uint_32',   # not supported by all ORBCOMM/SkyWave terminals
-        'int_64',    # not supported by all ORBCOMM/SkyWave terminals
-        'uint_64',   # not supported by all ORBCOMM/SkyWave terminals
-        'float',     # not supported by ORBCOMM/SkyWave terminals
-        'double',    # not supported by ORBCOMM/SkyWave terminals
-        'string',
-        'data',
-        # 'array',   # TODO: support for array type
-        # 'enum',   #TODO: support for enum type
-    )
 
-    class Field(object):
-        def __init__(self, name, data_type, value, field_size, description=None):
-            self.name = name
-            if data_type in CommonMessageFormat.data_types:
-                self.data_type = data_type
-            else:
-                raise ValueError("Invalid data type, must be in: ({})".format(CommonMessageFormat.data_types))
-            self.value = value
-            self.field_size = field_size
-            self.description = description
+def _get_optimal_bits(value_range: tuple):
+    if not (isinstance(value_range, tuple) and len(value_range) == 2 and
+        value_range[0] <= value_range[1]):
+        #: non-compliant
+        raise ValueError('value_range must be of form (min, max)')
+    total_range = value_range[1] - value_range[0]
+    total_range += 1 if value_range[0] == 0 else 0
+    optimal_bits = max(1, ceil(log2(value_range[1] - value_range[0])))
+    return optimal_bits
 
-    def __init__(self, msg_sin, msg_min, name=None, description=None):
+
+class Field:
+    """A data field within a Common Message Format message.
+    
+    Attributes:
+        name (str): The field name
+        data_type (str): A supported data type for encoding/decoding
+        value (any): The value which is type dependent
+        value_range (tuple): The min, max of allowed values
+        bits (int): size in bits
+        description (str): An optional description
+        optional (bool): Indicates if the field is optional
+        fixed (bool): Indicates if the field size is fixed (or variable)
+    """
+    def __init__(self,
+                 name: str,
+                 data_type: str,
+                 value: any,
+                 value_range: tuple = None,
+                 bits: int = None,
+                 description: str = None,
+                 optional: bool = False,
+                 fixed: bool = True):
+        """Initialize the field.
+        
+        Raises:
+            ValueError for invalid data type
+        """
+        if not (isinstance(name, str) or name == ''):
+            raise ValueError("Field name must be non-empty string")
         self.name = name
         self.description = description
-        if isinstance(msg_sin, int) and msg_sin in range(16, 256):
-            self.sin = msg_sin
+        self.optional = optional
+        self.fixed = fixed
+        if not fixed or optional:
+            raise NotImplementedError('optional and fixed currently unsupported')
+        if not data_type in DATA_TYPES:
+            raise ValueError("Unsupported data_type {}".format(data_type))
+        self.data_type = data_type
+        if (data_type == 'bool'): # and isinstance(value, bool)
+            if bits is not None and bits != 1:
+                warn('bits must be 1 for boolean', WarningMessage)
+            self.bits = 1
+            self.value = bool(value)
+        elif 'int' in data_type:
+            default_bits = int(data_type.split('_')[1])
+            self.bits = bits or default_bits
+            self.value = int(value)
+        elif (data_type == 'string' and isinstance(value, str) or
+              data_type == 'data' and isinstance(value, bytearray)):
+            if bits is None:
+                raise ValueError('Number of bits must be specified for {}'
+                    .format(data_type))
+            self.bits = bits
+            self.value = str(value) if data_type == 'string' else value
+        elif ((data_type == 'float' or data_type == 'double') and
+              isinstance(value, float)):
+            self.bits = 32 if data_type == 'float' else 64
+            self.value = float(value)
+        elif (data_type == 'string' and isinstance(value, str)
+                or data_type == 'data' and isinstance(value, bytearray)):
+            if bits is None:
+                raise ValueError('bits must be specified for {}'
+                    .format(data_type))
+            self.bits = bits
         else:
-            raise ValueError("Invalid SIN ({}) must be in range 16..255".format(msg_sin))
-        if isinstance(msg_min, int) and msg_min in range (0, 256):
-            self.min = msg_min
+            raise ValueError("Unsupported data_type {} or type mismatch"
+                .format(data_type))
+        # optimize bits
+        self.value_range = None
+        if value_range is not None:
+            self.bits = _get_optimal_bits(value_range)
+            self.value_range = value_range
+        self._format = '0{}b'.format(self.bits)
+    
+    def __repr__(self):
+        from pprint import pformat
+        return pformat(vars(self), indent=4)
+
+    
+class Fields(list):
+    def __init__(self):
+        super(Fields, self).__init__()
+    
+    def add(self, field: Field) -> bool:
+        """Add a field to the list.
+
+        Args:
+            field (object): A valid Field
+        
+        Raises:
+            ValueError if there is a duplicate or invalid name,
+                invalid value_range or unsupported data_type
+
+        """
+        if not isinstance(field, Field):
+            raise ValueError('Invalid field definition')
+        for i in range(0, len(self)):
+            if self[i].name == field.name:
+                raise ValueError('Duplicate name found in message')
+        self.append(field)
+        return True
+
+    def delete(self, name: str):
+        for i in range(0, len(self)):
+            if self[i].name == name:
+                del self[i]
+                return True
+        return False
+
+
+class CommonMessageFormat:
+    """The structure for Message Definition Files uploaded to a Mailbox.
+    
+    Attributes:
+        name (str): The message name
+        SIN (int): The Service Identification Number
+        MIN (int): The Message Identification Number
+        fields (list): An array of Fields
+        description (str): Optional description
+        is_forward (bool): Indicates if the message is mobile-terminated
+
+    """
+
+    def __init__(self,
+                 name: str,
+                 SIN: int,
+                 MIN: int,
+                 description: str = None,
+                 is_forward: bool = False):
+        self.name = name
+        self.description = description
+        self.is_forward = is_forward
+        if isinstance(SIN, int) and SIN in range(16, 256):
+            self.SIN = SIN
         else:
-            raise ValueError("Invalid MIN ({}) must be integer type in range 0..255".format(msg_min))
-        self.fields = []
-        self.size = None
-
-    @staticmethod
-    def validate_type(value, data_type):
-        if data_type == 'bool':
-            return isinstance(value, bool)
-        # TODO: more validation
-
-    def add_field(self, name, data_type, value, bits=None, 
-                  value_range=None, description=None):
-        """
-        Add a field to the message.
-
-        :param name: (string)
-        :param data_type: (string) from supported types
-        :param value: the value (compliant with data_type)
-        :param bits: number of bits for message packing
-
-        """
-        # TODO: make it so fields cannot be added/deleted/modified without explicit class methods
-        # field = {}
-        field_size = None
-        if (isinstance(name, str) and name != ''):
-            for i in range(0, len(self.fields)):
-                if self.fields[i].name == name:
-                    raise ValueError("Duplicate name found in message")
-            if value_range is not None:
-                if isinstance(value_range, tuple) and len(value_range) == 2:
-                    # TODO: calculate optimal bits to encode
-                    pass
-                else:
-                    raise ValueError("Field value_range must be a tuple")
-            if data_type in self.data_types:
-                # field['data_type'] = data_type
-                if (data_type == 'bool' and isinstance(value, bool)
-                    or 'int' in data_type and isinstance(value, int)
-                    or data_type == 'string' and isinstance(value, str)
-                    or (data_type == 'float' or data_type == 'double') and isinstance(value, float)):
-                    # calculate field_size 
-                    if bits is None:
-                        if data_type == 'bool':
-                            field_size = '01b'
-                        elif 'int' in data_type:
-                            field_size = '0{}b'.format(data_type.split('_')[1])
-                        elif data_type == 'float':
-                            field_size = '032b'
-                        elif data_type == 'double':
-                            field_size = '064b'
-                    else:
-                        if isinstance(bits, int) and bits > 0:
-                            field_size = '0{}b'.format(bits)
-                        else:
-                            raise ValueError("Field bits must be int above 0")
-                elif (data_type == 'string' and isinstance(value, str)
-                        or data_type == 'data' and isinstance(value, bytearray)):
-                    if bits is not None:
-                        field_size = '0{}b'.format(bits)
-                    else:
-                        raise ValueError(
-                            "Number of bits must be specified for {}"
-                            .format(data_type))
-                else:
-                    raise ValueError("Unsupported data_type {} or type mismatch"
-                        .format(data_type))
-                #field['value'] = value
-                if field_size is None:
-                    raise ValueError("Could not determine field size in bits")
-                field = CommonMessageFormat.Field(name, data_type, value, 
-                                                  field_size, description)
-                self.fields.append(field)
-            else:
-                raise ValueError("Unsupported data_type {}".format(data_type))
+            raise ValueError('Invalid SIN ({})'.format(SIN) +
+                ' must be in range 16..255')
+        if isinstance(MIN, int) and MIN in range (0, 256):
+            self.MIN = MIN
         else:
-            raise ValueError("Field name must be non-empty string")
+            raise ValueError('Invalid MIN ({})'.format(MIN) + 
+                'must be integer type in range 0..255')
+        self.fields = Fields()
 
-    def delete_field(self, name):
-        """
-        Remove a field from the message.
+    def ota_size(self):
+        ota_bits = 2 * 8
+        for field in self.fields:
+            ota_bits += field.bits + (1 if field.optional else 0)
+        return ceil(ota_bits / 8)
 
-        :param name: of field (string)
+    def encode_at(self,
+                  data_format: int = FORMAT_B64,
+                  exclude: list = None) -> str:
+        """Encodes using the specified data format (base64 or hex).
 
-        """
-        # success = False
-        for i, field in enumerate(self.fields):
-            if field.name == name:
-                # success = True
-                del self.fields[i]
-                break
-
-    def encode_idp(self, data_format=FORMAT_BASE64):
-        """
-        Encodes the message using the specified data format (Text, Hex, base64).
-
-        :param data_format: 2=ASCII-Hex, 3=base64
-        :returns: encoded_payload (string) to pass into AT%MGRT
+        Args:
+            data_format (int): 2=ASCII-Hex, 3=base64
+        
+        Returns:
+            Stringified data to pass into AT%MGRT
 
         """
-        encoded_payload = ''
+        if data_format not in [FORMAT_B64, FORMAT_HEX]:
+            raise ValueError('data_format {} unsupported'.format(data_format))
+        encoded = '{}.{},{},'.format(self.SIN, self.MIN, data_format)
         bin_str = ''
         for field in self.fields:
-            # name = field.name
             data_type = field.data_type
             value = field.value
-            field_size = field.field_size
+            bits = field.bits
+            _format = field._format
             bin_field = ''
+            if field.optional:
+                if isinstance(exclude, list) and field.name in exclude:
+                    bin_field = '0'
+                    continue
+                bin_field = '1'
             if 'int' in data_type and isinstance(value, int):
                 if value < 0:
-                    inv_bin_field = format(-value, field_size)
+                    inv_bin_field = format(-value, _format)
                     comp_bin_field = ''
                     i = 0
                     while len(comp_bin_field) < len(inv_bin_field):
                         comp_bin_field += '1' if inv_bin_field[i] == '0' else '0'
                         i += 1
-                    bin_field = format(int(comp_bin_field, 2) + 1, field_size)
+                    bin_field = format(int(comp_bin_field, 2) + 1, _format)
                 else:
-                    bin_field = format(value, field_size)
+                    bin_field = format(value, _format)
             elif data_type == 'bool' and isinstance(value, bool):
                 bin_field = '1' if value else '0'
             elif data_type == 'float' and isinstance(value, float):
-                f = '{0:0%db}' % field_size
-                bin_field = f.format(int(hex(struct.unpack('!I', struct.pack('!f', value))[0]), 16))
+                f = '{0:0%db}' % bits
+                bin_field = f.format(
+                    int(hex(unpack('!I', pack('!f', value))[0]), 16))
             elif data_type == 'double' and isinstance(value, float):
-                f = '{0:0%db}' % field_size
-                bin_field = f.format(int(hex(struct.unpack('!Q', struct.pack('!d', value))[0]), 16))
+                f = '{0:0%db}' % bits
+                bin_field = f.format(
+                    int(hex(unpack('!Q', pack('!d', value))[0]), 16))
             elif data_type == 'string' and isinstance(value, str):
-                bin_field = bin(int(''.join(format(ord(c), '02x') for c in value), 16))[2:]
-                if len(bin_field) < field_size:
-                    # TODO: be careful on padding strings...this should pad with NULL
-                    bin_field += ''.join('0' for pad in range(len(bin_field), field_size))
+                bin_field = bin(int(''.join(
+                    format(ord(c), '02x') for c in value), 16))[2:]
+            elif data_type == 'data' and isinstance(value, bytearray):
+                bin_field = ''.join(format(b, '08b') for b in value)
             else:
-                pass
-                # TODO: handle other cases
-                # raise
+                raise NotImplementedError('data_type {} unsupported'.format(
+                    data_type))
+            if len(bin_field) < bits:
+                # TODO: check padding on strings...this should pad with NULL
+                bin_field += ''.join('0' for pad in range(len(bin_field), bits))
             bin_str += bin_field
         payload_pad_bits = len(bin_str) % 8
         while payload_pad_bits > 0:
@@ -200,26 +258,25 @@ class CommonMessageFormat(object):
         hex_str = ''
         index_byte = 0
         while len(hex_str) / 2 < len(bin_str) / 8:
-            hex_str += format(int(bin_str[index_byte:index_byte + 8], 2), '02X').upper()
+            hex_str += format(
+                int(bin_str[index_byte:index_byte + 8], 2), '02X').upper()
             index_byte += 8
-        self.size = len(hex_str) / 2 + 2
-        self.payload_b64 = b2a_base64(bytearray.fromhex(hex_str)).strip().decode()
+        #: %MGRT="<msgName>",<priority>,<sin[.<min>],<dataFormat>,<data>|<length>
         if data_format == FORMAT_HEX:
-            encoded_payload = hex_str
-        elif data_format == FORMAT_BASE64:
-            encoded_payload = self.payload_b64
+            return encoded + hex_str
         else:
-            raise ValueError("Message data_format {} unsupported".format(data_type))
-        return encoded_payload
+            return encoded + b2a_base64(
+                bytearray.fromhex(hex_str)).strip().decode()
 
     def get_xml(self):
+        """Returns the XML definition for a Message Definition File."""
         # TODO: create Message Definition File
-        return 'NOT IMPLEMENTED'
+        raise NotImplementedError
 
 
 class MessageDefinitions(object):
     """
-    TODO: docstring
+    TODO: Not Implemented
     """
 
     class Service(object):
@@ -228,96 +285,128 @@ class MessageDefinitions(object):
         """
         SIN_LOW = 16
         SIN_HIGH = 255
-        def __init__(self, sin, name, description=None, 
-                    return_messages=None, forward_messages=None):
-            if sin in range(self.SIN_LOW, self.SIN_HIGH+1):
-                self.sin = sin
-            else:
-                raise ValueError("Service must have SIN in range {}..{}"
+        def __init__(self,
+                     sin: int,
+                     name: str,
+                     description: str = '', 
+                     return_messages: list = [],
+                     forward_messages: list = []):
+            if not sin in range(self.SIN_LOW, self.SIN_HIGH + 1):
+                raise ValueError('Service must have SIN in range {}..{}'
                                 .format(self.SIN_LOW, self.SIN_HIGH))
-            if isinstance(name, str) and name != '':
-                self.name = name
-            else:
-                raise ValueError("Service description must be a non-empty string")
-            self.description = ''
+            self.sin = sin
+            if not isinstance(name, str) or name == '':
+                raise ValueError('Service name must be a non-empty string')
+            self.name = name
+            self.description = description
             self.messages_return = []
             self.messages_forward = []
             if isinstance(return_messages, list):
                 for msg in return_messages:
+                    if not isinstance(msg, CommonMessageFormat):
+                        raise ValueError('Invalid message structure')
                     self.add_return_message(msg)
             if isinstance(forward_messages, list):
                 for msg in forward_messages:
-                    self.add_forward_message
+                    if not isinstance(msg, CommonMessageFormat):
+                        raise ValueError('Invalid message structure')
+                    if not msg.is_forward:
+                        raise ValueError('Not defined as a forward message')
+                    self.add_forward_message(msg)
         
-        def _add_message(self, message, msg_list):
-            # TODO: error handling/returns
-            if (isinstance(message, CommonMessageFormat) 
-                and message.sin == self.sin):
-                # Check for conflict
-                conflict = False
-                for i in range(0, len(msg_list)):
-                    if msg_list[i].min == message.min:
-                        # TODO: overwrite log warning
-                        conflict = True
+        def _add_message(self,
+                         message: CommonMessageFormat,
+                         msg_list: list,
+                         overwrite: bool = True) -> bool:
+            if not isinstance(message, CommonMessageFormat):
+                raise TypeError('Invalid message')
+            if not message.sin == self.sin:
+                raise ValueError('SIN mismatch expected {} got {}'.format(
+                    self.sin, message.sin))
+            # Check for conflict
+            for i in range(0, len(msg_list)):
+                if msg_list[i].min == message.min:
+                    if overwrite:
                         msg_list[i] = message
-                        break
-                if not conflict:
-                    msg_list.append(message)
-            else:
-                raise TypeError('Message invalid')
+                        return True
+                    return False
+            msg_list.append(message)
+            return True
         
-        def _remove_message(self, min, msg_list):
+        def _remove_message(self, min: int, msg_list: list) -> bool:
             for i in range(0, len(msg_list)):
                 if msg_list[i].min == min:
                     msg_list.remove(msg_list[i])
-                    break
+                    return True
+            return False
 
-        def add_return_message(self, message):
-            self._add_message(message, self.messages_return)
+        def add_return_message(self, message: CommonMessageFormat) -> bool:
+            return self._add_message(message, self.messages_return)
         
-        def remove_return_message(self, min):
-            self._remove_message(min, self.messages_return)
+        def remove_return_message(self, min: int) -> bool:
+            return self._remove_message(min, self.messages_return)
             
-        def add_forward_message(self, message):
-            self._add_message(message, self.messages_forward)
+        def add_forward_message(self, message: CommonMessageFormat) -> bool:
+            if isinstance(message, CommonMessageFormat) and message.is_forward:
+                return self._add_message(message, self.messages_forward)
+            return False
         
-        def remove_forward_message(self, min):
-            self._remove_message(min, self.messages_forward)
+        def remove_forward_message(self, min: int) -> bool:
+            return self._remove_message(min, self.messages_forward)
 
         def get_xml(self):
             # TODO: return XML format compliant with Inmarsat MDF
-            return 'NOT IMPLEMENTED'
+            raise NotImplementedError
 
     def __init__(self):
         self.services = []
     
-    def add_service(self, sin, name, description):
-        conflict = False
+    def add_service(self,
+                    sin: int,
+                    name: str,
+                    description: str = '') -> bool:
+        """Adds a service if the SIN is not already defined.
+        
+        Args:
+            sin (int): Service Identification Number
+            name (str): Unique name of the service
+            description (str): Optional description
+        
+        Returns:
+            True if successful
+
+        """
+        # Check for conflict
         for i in range(0, len(self.services)):
             if self.services[i].sin == sin:
-                # TODO: conflict warning
-                conflict = True
-                break
-        if not conflict:
-            new_service = MessageDefinitions.Service(sin, name, description)
-            self.services.append(new_service)
+                return False
+        self.services.append(MessageDefinitions.Service(sin, name, description))
+        return True
     
     def get_mdf(self):
-        return 'NOT IMPLEMENTED'
+        raise NotImplementedError
 
-if __name__ == '__main__':
-    print('Self test run')
-    timestamp = 0
-    isat_lat_mmin = int(51.525678 * 60 * 60 * 1000)
-    isat_lng_mmin = int(-0.086872 * 60 * 60 * 1000)
-    payload = CommonMessageFormat(msg_sin=255, 
-                                  msg_min=255, 
-                                  name='location')
-    payload.add_field('timestamp', 'uint_32', timestamp, bits=31)
-    payload.add_field('latitude', 'int_32', isat_lat_mmin, bits=24)
-    payload.add_field('longitude', 'int_32', isat_lng_mmin, bits=25)
-    payload.add_field('altitude', 'int_16', 1000, bits=16)
-    payload.add_field('speed', 'int_16', 0, bits=8)
-    payload.add_field('heading', 'int_16', 0, bits=9)
-    print(payload.encode_idp(data_format=FORMAT_BASE64))
-    print(payload.encode_idp(data_format=FORMAT_HEX))
+
+def encode_at(return_message: CommonMessageFormat,
+              data_format: int = FORMAT_B64) -> str:
+    """Returns the partial AT%MGRS command string from <sin>."""
+    return return_message.encode_at(data_format=data_format)
+
+
+def decode_at(at_response: str,
+              definitions: MessageDefinitions) -> CommonMessageFormat:
+    """Decodes a common message format Forward message based on a given MDF.
+    
+    Args:
+        at_response (str): the AT command reponse from %MGFG
+        xml_file (object): the Message Definition File
+
+    Returns:
+        A CommonMessageFormat message structure
+    
+    Raises:
+        NotImplementedError
+
+    """
+    #: %MGFG:"<msgName>",<msgNum>,<priority>,<sin>,<state>,<length>,<dataFormat>[,<data>]
+    raise NotImplementedError

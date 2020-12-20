@@ -40,8 +40,7 @@ def _bytearray_to_b64_str(arr: bytearray) -> str:
 
 
 class Message(object):
-    """
-    Class intended for abstracting message attributes.
+    """Class intended for abstracting message attributes.
 
     :param payload: one of the following:
 
