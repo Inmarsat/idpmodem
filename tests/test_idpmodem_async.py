@@ -239,6 +239,35 @@ class IdpModemTestCase(unittest.TestCase):
         print('Data: {}'.format(data))
         self.assertTrue(isinstance(data, str))
 
+    def test_162_message_mt_parse(self):
+        self.display_tc_header()
+        hex_example = '%MGFG: "FM31.63",31.63,0,17,2,6,2,AD4F6C8221'
+        b64_example = '%MGFG: "FM31.63",31.63,0,17,2,6,3,rU9sgiE='
+        txt_example = '%MGFG: "FM31.63",31.63,0,17,2,6,1,"\\ADOl\\82!"'
+        common_expected = {
+            'name': 'FM31.63',
+            'system_message_number': 31,
+            'system_message_sequence': 63,
+            'priority': 0,
+            'sin': 17,
+            'min': 173,
+            'state': 2,
+            'length': 6,
+            'bytes': b'\x11\xadOl\x82!',
+        }
+        hex_expected = common_expected.copy()
+        hex_expected['data_format'] = 2
+        hex_expected['raw_payload'] = '11AD4F6C8221'
+        b64_expected = common_expected.copy()
+        b64_expected['data_format'] = 3
+        b64_expected['raw_payload'] = 'Ea1PbIIh'
+        txt_expected = common_expected.copy()
+        txt_expected['data_format'] = 1
+        txt_expected['raw_payload'] = '\\11\\ADOl\\82!'
+        self.assertTrue(txt_expected == self.modem._message_mt_parse(txt_example, 1))
+        self.assertTrue(hex_expected == self.modem._message_mt_parse(hex_example, 2))
+        self.assertTrue(b64_expected == self.modem._message_mt_parse(b64_example, 3))
+
     def test_171_mock_message_mt_delete(self):
         self.display_tc_header()
         msg_name = self.mt_messages[0]
@@ -340,7 +369,6 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_24_satellite_status',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

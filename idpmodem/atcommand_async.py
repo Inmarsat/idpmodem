@@ -725,10 +725,51 @@ class IdpModemAsyncioClient:
         except AtException:
             return None
 
+    @staticmethod
+    def _message_mt_parse(mgfg_response: str,
+                          data_format: int) -> dict:
+        #:%MGFG:"<msgName>",<msgNum>,<priority>,<sin>,<state>,<length>,<data_format>,<data>
+        parts = mgfg_response.replace('%MGFG:', '').strip().split(',')
+        sys_msg_num, sys_msg_seq = parts[1].split('.')
+        msg_sin = int(parts[3])
+        data_str_no_sin = parts[7]
+        if data_format == FORMAT_HEX:
+            data = '{:02X}'.format(msg_sin) + data_str_no_sin
+            databytes = bytes.fromhex(data)
+        elif data_format == FORMAT_B64:
+            databytes = bytes([msg_sin]) + b64decode(data_str_no_sin)
+            data = b64encode(databytes).decode('ascii')
+        elif data_format == FORMAT_TEXT:
+            data_str_no_sin = data_str_no_sin[1:len(data_str_no_sin) - 1]
+            data = '\\{:02x}'.format(msg_sin) + data_str_no_sin
+            databytes = bytes([msg_sin])
+            i = 0
+            while i < len(data_str_no_sin):
+                if data_str_no_sin[i] == '\\' and i < len(data_str_no_sin) - 1:
+                    if data_str_no_sin[i + 1] in '0123456789ABCDEF':
+                        databytes += bytes([int(data_str_no_sin[i+1:i+3], 16)])
+                        i += 3
+                else:
+                    databytes += data_str_no_sin[i].encode('utf-8')
+                    i += 1
+        return {
+            'name': parts[0].replace('"', ''),
+            'system_message_number': int(sys_msg_num),
+            'system_message_sequence': int(sys_msg_seq),
+            'priority': int(parts[2]),
+            'sin': msg_sin,
+            'min': databytes[1],
+            'state': int(parts[4]),
+            'length': int(parts[5]),
+            'data_format': data_format,
+            'raw_payload': data,
+            'bytes': databytes,
+        }
+
     async def message_mt_get(self,
                              name: str,
-                             data_format: int = 3,
-                             verbose: bool = False) -> Union[str, dict]:
+                             data_format: int = FORMAT_B64,
+                             verbose: bool = True) -> Union[dict, bytes]:
         """Returns the payload of a specified mobile-terminated message.
         
         Payload is presented as a string with encoding based on data_format. 
@@ -736,6 +777,7 @@ class IdpModemAsyncioClient:
         Args:
             name: The unique name in the modem queue e.g. FM01.01
             data_format: text=1, hex=2, base64=3 (default)
+            verbose: if True returns a dictionary, otherwise raw payload bytes
 
         Returns:
             The encoded data as a string
@@ -748,31 +790,8 @@ class IdpModemAsyncioClient:
             if response is None or response[0] == 'ERROR':
                 return None
             # response.remove('OK')
-            #: name, number, priority, sin, state, length, data_format, data
-            parts = response[0].split(',')
-            sys_msg_num, sys_msg_seq = parts[1].split('.')
-            msg_sin = int(parts[3])
-            data_str_no_sin = parts[7]
-            if data_format == FORMAT_HEX:
-                data = hex(msg_sin) + data_str_no_sin.lower()
-            elif data_format == FORMAT_B64:
-                # add SIN as base64
-                databytes = bytes([msg_sin]) + b64decode(data_str_no_sin)
-                data = b64encode(databytes).decode('ascii')
-            elif data_format == FORMAT_TEXT:
-                data = '\\{:02x}'.format(msg_sin) + data_str_no_sin
-            message = {
-                'name': parts[0],
-                'system_message_number': int(sys_msg_num),
-                'system_message_sequence': int(sys_msg_seq),
-                'priority': int(parts[2]),
-                'sin': msg_sin,
-                'state': int(parts[4]),
-                'length': int(parts[5]),
-                'data_format': data_format,
-                'data': data
-            }
-            return message if verbose else message['data']
+            message = self._message_mt_parse(response[0], data_format=data_format)
+            return message if verbose else message['bytes']
         except AtException:
             return None
 
@@ -834,11 +853,12 @@ class IdpModemAsyncioClient:
         #: AT%EVMON{ = <c1.s1>[, <c2.s2> ..]}
         cmd = ''
         try:
-            for monitor in eventlist:
-                if isinstance(monitor, tuple):
-                    if len(cmd) > 0:
-                        cmd += ','
-                    cmd += '{}.{}'.format(monitor[0], monitor[1])
+            if eventlist is not None:
+                for monitor in eventlist:
+                    if isinstance(monitor, tuple):
+                        if len(cmd) > 0:
+                            cmd += ','
+                        cmd += '{}.{}'.format(monitor[0], monitor[1])
             result = await self.command('AT%EVMON={}'.format(cmd))
             if result is None or result[0] == 'ERROR':
                 return False
