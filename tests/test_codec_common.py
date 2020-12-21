@@ -117,10 +117,10 @@ class CodecTestCase(TestCase):
         name = 'testMessage'
         SIN = 255
         MIN = 255
-        message = common.CommonMessageFormat(name=name, SIN=SIN, MIN=MIN)
+        message = common.CommonMessageFormat(name=name, sin=SIN, min=MIN)
         self.assertTrue(message.name == name and
-                        message.SIN == SIN and
-                        message.MIN == MIN)
+                        message.sin == SIN and
+                        message.min == MIN)
         if inspect.stack()[1][3] != '_callTestMethod':
             return message
     
@@ -168,24 +168,34 @@ class CodecTestCase(TestCase):
     
     def test_05_encode(self):
         message = self.test_03_add_field()
-        self.assertTrue(message.encode_at() == '255.255,3,AA==')
-        self.assertTrue(message.encode_at(data_format=2) == '255.255,2,00')
+        encoded_b64 = message.encode()
+        self.assertTrue(encoded_b64['sin'] == 255 and
+                        encoded_b64['min'] == 255 and
+                        encoded_b64['data_format'] == 3 and
+                        encoded_b64['data'] == 'AA==')
     
-    def test_06_all_field_types(self):
+    def test_06_encode_hex(self):
+        message = self.test_03_add_field()
+        encoded_hex = message.encode(data_format=2)
+        self.assertTrue(encoded_hex['sin'] == 255 and
+                        encoded_hex['min'] == 255 and
+                        encoded_hex['data_format'] == 2 and
+                        encoded_hex['data'] == '00')
+    
+    def test_07_all_field_types(self):
         message = self.test_01_create_message()
         for data_type in data_types:
             # if data_type['name'] != 'data': continue
             field = self.test_02_create_field(data_type)
             message.fields.add(field)
-        self.assertTrue(isinstance(message.encode_at(), str))
-        print('OTA size: {}'.format(message.ota_size()))
+        self.assertTrue(isinstance(message.encode(), dict))
+        print('Test 07 OTA size: {}'.format(message.ota_size()))
 
 
 def suite():
     suite = TestSuite()
     available_tests = defaultTestLoader.getTestCaseNames(CodecTestCase)
     tests = [
-        'test_06_all_field_types',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

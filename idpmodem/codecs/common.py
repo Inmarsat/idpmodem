@@ -156,8 +156,8 @@ class CommonMessageFormat:
     
     Attributes:
         name (str): The message name
-        SIN (int): The Service Identification Number
-        MIN (int): The Message Identification Number
+        sin (int): The Service Identification Number
+        min (int): The Message Identification Number
         fields (list): An array of Fields
         description (str): Optional description
         is_forward (bool): Indicates if the message is mobile-terminated
@@ -166,22 +166,22 @@ class CommonMessageFormat:
 
     def __init__(self,
                  name: str,
-                 SIN: int,
-                 MIN: int,
+                 sin: int,
+                 min: int,
                  description: str = None,
                  is_forward: bool = False):
         self.name = name
         self.description = description
         self.is_forward = is_forward
-        if isinstance(SIN, int) and SIN in range(16, 256):
-            self.SIN = SIN
+        if isinstance(sin, int) and sin in range(16, 256):
+            self.sin = sin
         else:
-            raise ValueError('Invalid SIN ({})'.format(SIN) +
+            raise ValueError('Invalid sin ({})'.format(sin) +
                 ' must be in range 16..255')
-        if isinstance(MIN, int) and MIN in range (0, 256):
-            self.MIN = MIN
+        if isinstance(min, int) and min in range (0, 256):
+            self.min = min
         else:
-            raise ValueError('Invalid MIN ({})'.format(MIN) + 
+            raise ValueError('Invalid min ({})'.format(min) + 
                 'must be integer type in range 0..255')
         self.fields = Fields()
 
@@ -191,21 +191,23 @@ class CommonMessageFormat:
             ota_bits += field.bits + (1 if field.optional else 0)
         return ceil(ota_bits / 8)
 
-    def encode_at(self,
-                  data_format: int = FORMAT_B64,
-                  exclude: list = None) -> str:
+    def encode(self,
+               data_format: int = FORMAT_B64,
+               exclude: list = None) -> dict:
         """Encodes using the specified data format (base64 or hex).
+
+        AT%MGRT="<msgName>",<priority>,<sin>[.<min>],<dataFormat>,<data>|<length>
 
         Args:
             data_format (int): 2=ASCII-Hex, 3=base64
         
         Returns:
-            Stringified data to pass into AT%MGRT
+            Dictionary with sin, min, data_format and data to pass into AT%MGRT
 
         """
         if data_format not in [FORMAT_B64, FORMAT_HEX]:
             raise ValueError('data_format {} unsupported'.format(data_format))
-        encoded = '{}.{},{},'.format(self.SIN, self.MIN, data_format)
+        # encoded = '{}.{},{},'.format(self.sin, self.min, data_format)
         bin_str = ''
         for field in self.fields:
             data_type = field.data_type
@@ -261,12 +263,16 @@ class CommonMessageFormat:
             hex_str += format(
                 int(bin_str[index_byte:index_byte + 8], 2), '02X').upper()
             index_byte += 8
-        #: %MGRT="<msgName>",<priority>,<sin[.<min>],<dataFormat>,<data>|<length>
         if data_format == FORMAT_HEX:
-            return encoded + hex_str
+            data = hex_str
         else:
-            return encoded + b2a_base64(
-                bytearray.fromhex(hex_str)).strip().decode()
+            data = b2a_base64(bytearray.fromhex(hex_str)).strip().decode()
+        return {
+            'sin': self.sin,
+            'min': self.min,
+            'data_format': data_format,
+            'data': data
+        }
 
     def get_xml(self):
         """Returns the XML definition for a Message Definition File."""
@@ -283,17 +289,17 @@ class MessageDefinitions(object):
         """
         TODO: docstring
         """
-        SIN_LOW = 16
-        SIN_HIGH = 255
+        sin_LOW = 16
+        sin_HIGH = 255
         def __init__(self,
                      sin: int,
                      name: str,
                      description: str = '', 
                      return_messages: list = [],
                      forward_messages: list = []):
-            if not sin in range(self.SIN_LOW, self.SIN_HIGH + 1):
-                raise ValueError('Service must have SIN in range {}..{}'
-                                .format(self.SIN_LOW, self.SIN_HIGH))
+            if not sin in range(self.sin_LOW, self.sin_HIGH + 1):
+                raise ValueError('Service must have sin in range {}..{}'
+                                .format(self.sin_LOW, self.sin_HIGH))
             self.sin = sin
             if not isinstance(name, str) or name == '':
                 raise ValueError('Service name must be a non-empty string')
@@ -321,7 +327,7 @@ class MessageDefinitions(object):
             if not isinstance(message, CommonMessageFormat):
                 raise TypeError('Invalid message')
             if not message.sin == self.sin:
-                raise ValueError('SIN mismatch expected {} got {}'.format(
+                raise ValueError('sin mismatch expected {} got {}'.format(
                     self.sin, message.sin))
             # Check for conflict
             for i in range(0, len(msg_list)):
@@ -365,7 +371,7 @@ class MessageDefinitions(object):
                     sin: int,
                     name: str,
                     description: str = '') -> bool:
-        """Adds a service if the SIN is not already defined.
+        """Adds a service if the sin is not already defined.
         
         Args:
             sin (int): Service Identification Number

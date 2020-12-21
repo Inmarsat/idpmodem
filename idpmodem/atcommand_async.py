@@ -455,6 +455,7 @@ class IdpModemAsyncioClient:
 
         Raises:
             ValueError if parameter out of range
+            GnssTimeout if no response from GNSS
             AtException logged and re-raised
 
         """
@@ -479,7 +480,10 @@ class IdpModemAsyncioClient:
                 'AT%GPS={},{},{}'.format(stale_secs, wait_secs, sentence_list),
                 timeout=wait_secs + BUFFER_SECONDS)
             if response[0] == 'ERROR':
-                return response[1]
+                if response[1] == '108':
+                    raise GnssTimeout(AT_ERROR_CODES[response[1]])
+                else:
+                    raise AtException(AT_ERROR_CODES[response[1]])
             response.remove('OK')
             response[0] = response[0].replace('%GPS: ', '')
             return response
@@ -500,15 +504,12 @@ class IdpModemAsyncioClient:
             nmea.Location object
         
         Raises:
-            GnssTimeout if no location is returned
             Exception(s) logged and re-raised
 
         """
         self._log.debug('Querying location')
         try:
             nmea_sentences = await self.gnss_nmea_get(stale_secs, wait_secs)
-            if nmea_sentences == AT_ERROR_CODES['108']:
-                raise GnssTimeout()
             return location_get(nmea_sentences)
         except Exception as e:
             self._log.error('nmea.location_get: {}'.format(e))
@@ -629,10 +630,10 @@ class IdpModemAsyncioClient:
                     del priority
                     del sin
                     states.append({
-                        'name': name,
+                        'name': name.replace('"', ''),
                         'state': int(state),
                         'size': int(size),
-                        'acknowledged': int(sent),
+                        'bytes_sent': int(sent),
                         })
             return states
         except AtException:
@@ -899,10 +900,11 @@ class IdpModemAsyncioClient:
         """Sets the event notification bitmask.
 
         Args:
-            event_map: list of dict{event_name, bool}
+            event_map: list of tuples (event_name, bool)
         
         Returns:
             True if successful.
+            
         """
         self._log.debug('Setting event notifications: {}'.format(event_map))
         #: ATS88=bitmask
@@ -966,8 +968,8 @@ class IdpModemAsyncioClient:
         """Returns the control state and C/No.
         
         Returns:
-            Dictionary with state (int), snr (float), beamsearch (int)
-                or None if error.
+            Dictionary with state (int), snr (float), beamsearch (int),
+                state_name (str), beamsearch_name (str), or None if error.
 
         """
         self._log.debug('Querying satellite status/SNR')
@@ -983,8 +985,10 @@ class IdpModemAsyncioClient:
             beamsearch_state = int(beamsearch_state)
             return {
                 'state': ctrl_state,
+                'state_name': CONTROL_STATES[ctrl_state],
                 'snr': cn_0,
                 'beamsearch': beamsearch_state,
+                'beamsearch_name': BEAMSEARCH_STATES[beamsearch_state],
             }
         except AtException:
             return None
