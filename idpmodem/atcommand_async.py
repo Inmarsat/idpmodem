@@ -715,7 +715,7 @@ class IdpModemAsyncioClient:
                     parts = msg.split(',')
                     name, number, priority, sin, state, length, received = parts
                     del number   #: unused
-                    waiting.append({'name': name,
+                    waiting.append({'name': name.replace('"', ''),
                                     'sin': int(sin),
                                     'priority': int(priority),
                                     'state': int(state),
