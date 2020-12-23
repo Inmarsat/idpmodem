@@ -785,7 +785,8 @@ class IdpModemAsyncioClient:
         """
         self._log.debug('Retrieving forward message {}'.format(name))
         try:
-            response = await self.command('AT%MGFG={},{}'.format(
+            #: AT%MGFG="<msgName>",<data_format>
+            response = await self.command('AT%MGFG="{}",{}'.format(
                 name, data_format))
             if response is None or response[0] == 'ERROR':
                 return None
