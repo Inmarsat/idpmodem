@@ -30,7 +30,7 @@ DATA_TYPES = (
 )
 
 
-def _get_optimal_bits(value_range: tuple):
+def _get_optimal_bits(value_range: tuple) -> int:
     if not (isinstance(value_range, tuple) and len(value_range) == 2 and
         value_range[0] <= value_range[1]):
         #: non-compliant
@@ -39,6 +39,18 @@ def _get_optimal_bits(value_range: tuple):
     total_range += 1 if value_range[0] == 0 else 0
     optimal_bits = max(1, ceil(log2(value_range[1] - value_range[0])))
     return optimal_bits
+
+
+def _twos_comp(val: int, bits: int) -> int:
+    """compute the 2's complement of int value val"""
+    if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
+        val = val - (1 << bits)        # compute negative value
+    return val                         # return positive value as is
+
+
+def _bits2string(bits: str) -> str:
+    stringbytes = int(bits, 2).to_bytes(int(len(bits) / 8), 'big')
+    return stringbytes.decode() or '\0'
 
 
 class Field:
@@ -89,9 +101,10 @@ class Field:
             self.bits = bits or default_bits
             self.value = int(value)
         elif (data_type == 'string' and isinstance(value, str) or
-              data_type == 'data' and isinstance(value, bytearray)):
-            if bits is None:
-                raise ValueError('Number of bits must be specified for {}'
+              (data_type == 'data' and
+              (isinstance(value, bytearray) or isinstance(value, bytes)))):
+            if bits is None or bits % 8 > 0:
+                raise ValueError('Multiple of 8 bits must be specified for {}'
                     .format(data_type))
             self.bits = bits
             self.value = str(value) if data_type == 'string' else value
@@ -99,12 +112,6 @@ class Field:
               isinstance(value, float)):
             self.bits = 32 if data_type == 'float' else 64
             self.value = float(value)
-        elif (data_type == 'string' and isinstance(value, str)
-                or data_type == 'data' and isinstance(value, bytearray)):
-            if bits is None:
-                raise ValueError('bits must be specified for {}'
-                    .format(data_type))
-            self.bits = bits
         else:
             raise ValueError("Unsupported data_type {} or type mismatch"
                 .format(data_type))
@@ -137,16 +144,21 @@ class Fields(list):
         """
         if not isinstance(field, Field):
             raise ValueError('Invalid field definition')
-        for i in range(0, len(self)):
-            if self[i].name == field.name:
+        for f in self:
+            if f.name == field.name:
                 raise ValueError('Duplicate name found in message')
         self.append(field)
         return True
 
+    def __getitem__(self, name: str) -> Field:
+        for field in self:
+            if field.name == name:
+                return field
+
     def delete(self, name: str):
-        for i in range(0, len(self)):
-            if self[i].name == name:
-                del self[i]
+        for f in self:
+            if f.name == name:
+                del f
                 return True
         return False
 
@@ -191,12 +203,33 @@ class CommonMessageFormat:
             ota_bits += field.bits + (1 if field.optional else 0)
         return ceil(ota_bits / 8)
 
+    def derive(self, databytes: bytes):
+        binary_str = ''
+        for b in databytes:
+            binary_str += '{:08b}'.format(int(b))
+        bit_offset = 16
+        for field in self.fields:
+            binary = binary_str[bit_offset:(bit_offset + field.bits)]
+            if field.data_type == 'bool':
+                field.value = True if binary == '1' else False
+            elif 'uint' in field.data_type:
+                field.value = int(binary, 2)
+            elif 'int' in field.data_type:
+                field.value = _twos_comp(int(binary, 2), len(binary))
+            elif field.data_type == 'float':
+                field.value = unpack('>f', int(binary, 2).to_bytes(4, 'big'))[0]
+            elif field.data_type == 'double':
+                field.value = unpack('>d', int(binary, 2).to_bytes(8, 'big'))[0]
+            elif field.data_type == 'string':
+                field.value = _bits2string(binary)
+            elif field.data_type == 'data':
+                field.value = int(binary, 2).to_bytes(int(field.bits / 8), 'big')
+            bit_offset += field.bits
+
     def encode(self,
                data_format: int = FORMAT_B64,
                exclude: list = None) -> dict:
         """Encodes using the specified data format (base64 or hex).
-
-        AT%MGRT="<msgName>",<priority>,<sin>[.<min>],<dataFormat>,<data>|<length>
 
         Args:
             data_format (int): 2=ASCII-Hex, 3=base64
@@ -232,7 +265,7 @@ class CommonMessageFormat:
                 else:
                     bin_field = format(value, _format)
             elif data_type == 'bool' and isinstance(value, bool):
-                bin_field = '1' if value else '0'
+                bin_field = '1' if value == True else '0'
             elif data_type == 'float' and isinstance(value, float):
                 f = '{0:0%db}' % bits
                 bin_field = f.format(
@@ -242,13 +275,16 @@ class CommonMessageFormat:
                 bin_field = f.format(
                     int(hex(unpack('!Q', pack('!d', value))[0]), 16))
             elif data_type == 'string' and isinstance(value, str):
-                bin_field = bin(int(''.join(
-                    format(ord(c), '02x') for c in value), 16))[2:]
-            elif data_type == 'data' and isinstance(value, bytearray):
+                bin_field = ''.join(format(ord(c), '08b') for c in value)
+            elif (data_type == 'data' and
+                  (isinstance(value, bytearray) or isinstance(value, bytes))):
                 bin_field = ''.join(format(b, '08b') for b in value)
             else:
                 raise NotImplementedError('data_type {} unsupported'.format(
                     data_type))
+            if len(bin_field) > bits:
+                raise ValueError('Field {} expected {} bits but processed {}'
+                    .format(field.name, bits, len(bin_field)))
             if len(bin_field) < bits:
                 # TODO: check padding on strings...this should pad with NULL
                 bin_field += ''.join('0' for pad in range(len(bin_field), bits))

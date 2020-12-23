@@ -1,3 +1,4 @@
+from copy import deepcopy
 import inspect
 from pprint import pprint, pformat
 from random import randrange, random, choice
@@ -190,12 +191,40 @@ class CodecTestCase(TestCase):
             message.fields.add(field)
         self.assertTrue(isinstance(message.encode(), dict))
         print('Test 07 OTA size: {}'.format(message.ota_size()))
+    
+    def test_08_derive(self):
+        name = 'fowardMessageTest'
+        SIN = 255
+        MIN = 1
+        message = common.CommonMessageFormat(name=name, sin=SIN, min=MIN, is_forward=True)
+        message.fields.add(common.Field(name='interval', data_type='uint_32', value=86400, value_range=(0, 86400), bits=17))
+        message.fields.add(common.Field(name='signed', data_type='int_8', value=-1, bits=3))
+        message.fields.add(common.Field(name='string', data_type='string', value='A', bits=8))
+        message.fields.add(common.Field(name='data', data_type='data', value=bytes([1, 2]), bits=16))
+        message.fields.add(common.Field(name='float', data_type='float', value=5.6, bits=32))
+        m_copy = deepcopy(message)
+        encoded = message.encode(data_format=2)
+        databytes = bytes([SIN, MIN]) + bytearray.fromhex(encoded['data'])
+        message.derive(databytes)
+        if round(message.fields['float'].value, 1) == m_copy.fields['float'].value:
+            message.fields['float'].value = m_copy.fields['float'].value
+        for attr in m_copy.__dict__:
+            if attr == 'fields':
+                for f in m_copy.fields:
+                    print('Testing field {}'.format(f.name))
+                    f_derived = message.fields[f.name]
+                    for f_attr in f.__dict__:
+                        self.assertTrue(f_derived.__dict__[f_attr] == f.__dict__[f_attr])
+            else:
+                print('Testing message {}'.format(attr))
+                self.assertTrue(message.__dict__[attr] == m_copy.__dict__[attr])
 
 
 def suite():
     suite = TestSuite()
     available_tests = defaultTestLoader.getTestCaseNames(CodecTestCase)
     tests = [
+        'test_08_derive',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:
