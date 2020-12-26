@@ -99,7 +99,15 @@ class Field:
         elif 'int' in data_type:
             default_bits = int(data_type.split('_')[1])
             self.bits = bits or default_bits
-            self.value = int(value)
+            if 'uint' in data_type and int(value >= 0):
+                self.value = min(int(value), 2**bits - 1)
+            else:
+                if int(value) < -int(2**bits / 2):
+                    self.value = -int(2** bits / 2)
+                elif int(value) > int(2**bits / 2 - 1):
+                    self.value = int(2**bits - 1)
+                else:
+                    self.value = int(value)
         elif (data_type == 'string' and isinstance(value, str) or
               (data_type == 'data' and
               (isinstance(value, bytearray) or isinstance(value, bytes)))):

@@ -25,3 +25,8 @@ class AtCrcConfigError(AtException):
 class AtUnsolicited(AtException):
     """Indicates unsolicited data was received from the modem."""
     pass
+
+
+class AtBusy(AtException):
+    """The modem is busy processing a prior AT command."""
+    pass
