@@ -197,7 +197,7 @@ def location_get(nmea_data_set: list, degrees_resolution: int = 6) -> Location:
                 # TODO: log this case; should be limited to GPS simulation in Modem Simulator (3 satellites)
                 pass
             loc.altitude = float(gga_altitude) if gga_altitude != '' else 0.0
-            loc.hdop = max(float(gga_hdop), 32.0) if gga_hdop != '' else 32.0
+            loc.hdop = min(float(gga_hdop), 32.0) if gga_hdop != '' else 32.0
 
         elif sentence_type == 'RMC':          # RMC Recommended Minimum is used for most location information
             rmc = nmea_data.split(',')        # $GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
@@ -254,8 +254,8 @@ def location_get(nmea_data_set: list, degrees_resolution: int = 6) -> Location:
             gsa_vdop = gsa[17]                          # Vertical DOP
             # Use GSA for fix_type, PDOP, VDOP (HDOP comes from GGA)
             loc.fix_type = int(gsa_fix_type) if gsa_fix_type != '' else 0
-            loc.pdop = max(float(gsa_pdop), 32.0) if gsa_pdop != '' else 32.0
-            loc.vdop = max(float(gsa_vdop), 32.0) if gsa_vdop != '' else 32.0
+            loc.pdop = min(float(gsa_pdop), 32.0) if gsa_pdop != '' else 32.0
+            loc.vdop = min(float(gsa_vdop), 32.0) if gsa_vdop != '' else 32.0
 
         elif sentence_type == 'GSV':         # Satellites in View
             gsv = nmea_data.split(',')       # $GPGSV,2,1,08,01,40,083,46,02,17,308,41,12,07,344,39,14,22,228,45*75
