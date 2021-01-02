@@ -488,7 +488,7 @@ class IdpModemAsyncioClient:
             response[0] = response[0].replace('%GPS: ', '')
             return response
         except AtException as e:
-            self._log.error('gnss_nmea_get: {}'.format(e))
+            self._log.error(e)
             raise e
 
     async def location(self,
@@ -512,7 +512,7 @@ class IdpModemAsyncioClient:
             nmea_sentences = await self.gnss_nmea_get(stale_secs, wait_secs)
             return location_get(nmea_sentences)
         except Exception as e:
-            self._log.error('nmea.location_get: {}'.format(e))
+            self._log.error(e)
             raise e
 
     async def lowpower_notifications_enable(self) -> bool:

@@ -369,6 +369,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
+        'test_01_initialize'
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:
