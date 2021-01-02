@@ -1,4 +1,6 @@
 """
+Under construction
+
 Data structure and operations for a SkyWave/ORBCOMM IsatData Pro (**IDP**) modem using AT commands.
 
 IDP is a store-and-forward satellite messaging technology with messages structured as:

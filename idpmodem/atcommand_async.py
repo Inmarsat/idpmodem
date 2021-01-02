@@ -12,6 +12,7 @@ from asyncio import AbstractEventLoop, gather, TimeoutError, wait_for
 from base64 import b64decode, b64encode
 from collections import OrderedDict
 import logging
+from threading import current_thread
 from time import time
 from typing import Callable, Tuple, Union
 
@@ -112,6 +113,7 @@ class IdpModemAsyncioClient:
         self.port = port
         self.baudrate = baudrate
         self.loop = loop
+        self._thread = current_thread()
         self.serialport = None
         self.pending_command = None
         self.pending_command_time = None
