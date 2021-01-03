@@ -1,11 +1,15 @@
+========
 idpmodem
-=========
+========
 
 Python library and samples for integrating with satellite Internet-of-Things 
 modems using the `Inmarsat <https://www.inmarsat.com>`_
 IsatData Pro ("IDP") network.
 
 `Documentation <https://inmarsat.github.io/idpmodem/>`_
+
+Overview
+--------
 
 IDP is a store-and-forward satellite messaging technology with
 messages up to 6400 bytes mobile-originated or 10000 bytes mobile-terminated.
@@ -28,15 +32,19 @@ structure on the network API.
 
 Terminology:
 
-    * MO = **Mobile Originated** aka *Return* aka *From-Mobile*
-    message sent from modem to cloud/enterprise application
-    * MT = **Mobile Terminated** aka *Forward message* aka *To-Mobile*
-    message sent from cloud/enterprise application to modem
+* MO = **Mobile Originated** aka *Return* aka *From-Mobile*
+  message sent from modem to cloud/enterprise application
+* MT = **Mobile Terminated** aka *Forward message* aka *To-Mobile*
+  message sent from cloud/enterprise application to modem
+
+Modem operation
+---------------
 
 Upon power-up or reset, the modem first acquires its location using 
 Global Navigation Satellite Systems (GNSS).
 After getting its location, the modem tunes to the correct frequency, then
-registers on the Inmarsat network.
+registers on the Inmarsat network.  Once registered it can communicate on the
+network.
 Prolonged obstruction of satellite signal will put the modem into a "blockage"
 state from which it will automatically try to recover based on an algorithm
 influenced by its *power mode* setting.
