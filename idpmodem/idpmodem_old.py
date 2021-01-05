@@ -174,7 +174,7 @@ class Modem(object):
         '112': 'ATTEMPT TO WRITE READ-ONLY PARAMETER'
     }
 
-    wakeup_intervals = {
+    WAKEUP_PERIODS = {
         '5 seconds': 0,
         '30 seconds': 1,
         '1 minute': 2,
@@ -188,7 +188,7 @@ class Modem(object):
         '20 minute': 10
     }
 
-    power_modes = {
+    POWER_MODES = {
         'Mobile Powered': 0,
         'Fixed Powered': 1,
         'Mobile Battery': 2,
@@ -197,7 +197,7 @@ class Modem(object):
         'Mobile Stationary': 5
     }
 
-    gnss_modes = {
+    GNSS_MODES = {
         'GPS': 0,               # HW v4
         'GLONASS': 1,           # HW v5
         'BEIDOU': 2,            # HW v5.2
@@ -206,7 +206,7 @@ class Modem(object):
         'GLONASS+BEIDOU': 12    # UBX-M80xx
     }
 
-    gnss_dpm_modes = {
+    GNSS_DPM_MODES = {
         'Portable': 0,
         'Stationary': 2,
         'Pedestrian': 3,
@@ -603,15 +603,15 @@ class Modem(object):
         self.crc_errors = 0
         self.sat_status = self._SatStatus()
         self.hw_event_notifications = self._init_hw_event_notifications()
-        self.wakeup_interval = self.wakeup_intervals['5 seconds']
-        self.power_mode = self.power_modes['Mobile Powered']
+        self.wakeup_interval = self.WAKEUP_PERIODS['5 seconds']
+        self.power_mode = self.POWER_MODES['Mobile Powered']
         self.asleep = False
         self.antenna_cut = False
         self._low_snr = False
         self.system_stats = self._init_system_stats()
-        self.gnss_mode = self.gnss_modes['GPS']
+        self.gnss_mode = self.GNSS_MODES['GPS']
         self.gnss_continuous = 0
-        self.gnss_dpm_mode = self.gnss_dpm_modes['Portable']
+        self.gnss_dpm_mode = self.GNSS_DPM_MODES['Portable']
         self.gnss_stats = self._init_gnss_stats()
         self.gpio = self._init_gpio()
         self.event_callbacks = self._init_event_callbacks()

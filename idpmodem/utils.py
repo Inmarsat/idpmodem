@@ -18,7 +18,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from threading import Thread, Event
 from time import gmtime
-from typing import Callable
+from typing import Callable, Union
 
 import serial.tools.list_ports as list_ports
 try:
@@ -329,6 +329,26 @@ def get_caller_name(depth: int = 2,
     return '.'.join(name)
 
 
+def get_key_by_value(dictionary: dict, value: any) -> str:
+    """Returns the key of the first matching value in the dictionary.
+    
+    Args:
+        dictionary: the dictionary being searched
+        value: the value being searched for
+    
+    Returns:
+        The first key with matching value
+    
+    Raises:
+        ValueError if value not found
+
+    """
+    for k, v in dictionary:
+        if v == value:
+            return k
+    raise ValueError('Value {} not found in dictionary'.format(value))
+
+
 def get_wrapping_logger(name: str = None,
                         filename: str = None,
                         file_size: int = 5,
@@ -409,7 +429,7 @@ def get_wrapping_logger(name: str = None,
     return logger
 
 
-def validate_serial_port(target: str):
+def validate_serial_port(target: str, verbose: bool = False) -> Union[bool, tuple]:
     """Validates a given serial port as available on the host.
 
     If target port is not found, a list of available ports is returned.
@@ -419,7 +439,8 @@ def validate_serial_port(target: str):
         target: Target port name e.g. '/dev/ttyUSB0'
     
     Returns:
-        (bool, str) Validity and descriptor
+        True or False if detail is False
+        (valid: bool, description: str) if detail is True
     """
     found = False
     detail = ''
@@ -441,7 +462,7 @@ def validate_serial_port(target: str):
                 detail += ','
             detail += " {}".format(port[0])
         detail = 'Available ports:' + detail
-    return found, detail
+    return (found, detail) if verbose else found
 
 
 if __name__ == '__main__':

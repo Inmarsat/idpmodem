@@ -32,7 +32,6 @@ def simulate(dte_name='./simdte', dce_name='./simdce'):
         def dce_write(data, delay=0):
             time.sleep(delay)
             dce.write(data.encode())
-        return dce_write
 
         mt_message_queue = []
         mo_message_queue = []
@@ -48,6 +47,7 @@ def simulate(dte_name='./simdte', dce_name='./simdce'):
                 elif rx_data in ok_responses:
                     dce_write('\r\nOK\r\n')
                 elif rx_data == 'AT&V':
+                    delay = 2
                     response = '\r\nACTIVE CONFIGURATION:' \
                         '\r\nE1 Q0 V1 CRC=0' \
                         '\r\nS0:000 S3:013 S4:010 S5:008 S6:000 S7:000 S8:000 S10:000 ' \
@@ -157,17 +157,17 @@ def simulate(dte_name='./simdte', dce_name='./simdce'):
                     parts = rx_data.split(',')
                     for part in parts:
                         if part == 'GGA':
-                            response += '\r\n' if response != '%GPS: '
+                            response += '\r\n' if response != '%GPS: ' else ''
                             response += '$GNGGA,221511.000,4517.1073,N,07550.9222,W,1,08,1.3,135.0,M,-34.3,M,,0000*7E\r\n'
                         elif part == 'RMC':
-                            response += '\r\n' if response != '%GPS: '
+                            response += '\r\n' if response != '%GPS: ' else ''
                             response += '$GNRMC,221511.000,A,4517.1073,N,07550.9222,W,0.07,0.00,150320,,,A,V*10\r\n'
                         elif part == 'GSA':
-                            response += '\r\n' if response != '%GPS: '
+                            response += '\r\n' if response != '%GPS: ' else ''
                             response += '$GNGSA,A,3,28,17,30,11,19,07,,,,,,,2.5,1.3,2.1,1*37\r\n' \
                                 '$GNGSA,A,3,87,81,,,,,,,,,,,2.5,1.3,2.1,2*32\r\n'
                         elif part == 'GSV':
-                            response += '\r\n' if response != '%GPS: '
+                            response += '\r\n' if response != '%GPS: ' else ''
                             response += '$GPGSV,2,1,08,01,,,42,07,18,181,35,11,32,056,29,17,48,265,35,0*5D\r\n' \
                                 '$GPGSV,2,2,08,19,24,256,37,28,71,317,30,30,42,209,45,51,29,221,40,0*69\r\n'
                     response += '\r\nOK\r\n'

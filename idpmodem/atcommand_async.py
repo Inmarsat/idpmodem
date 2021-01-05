@@ -17,11 +17,23 @@ from time import time
 from typing import Callable, Tuple, Union
 
 from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
-from .constants import AT_ERROR_CODES, BEAMSEARCH_STATES, CONTROL_STATES, FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, MESSAGE_STATES, NOTIFICATION_BITMASK
+from .constants import (
+    AT_ERROR_CODES,
+    BEAMSEARCH_STATES,
+    CONTROL_STATES,
+    FORMAT_B64,
+    FORMAT_HEX,
+    FORMAT_TEXT,
+    MESSAGE_STATES,
+    NOTIFICATION_BITMASK,
+    POWER_MODES,
+    TRANSMIT_STATUS,
+    WAKEUP_PERIODS,
+)
 from .crcxmodem import get_crc, validate_crc
-# from .message import MobileOriginatedMessage, MobileTerminatedMessage
+from .message import MobileOriginatedMessage, MobileTerminatedMessage
 from .nmea import location_get, Location, NmeaException
-from .utils import get_wrapping_logger
+from .utils import get_wrapping_logger, validate_serial_port
 
 LOGGING_VERBOSE_LEVEL = 9
 logging.addLevelName(LOGGING_VERBOSE_LEVEL, 'VERBOSE')
@@ -31,6 +43,7 @@ def verbose(self, message, *args, **kwargs):
 logging.Logger.verbose = verbose
 logging.VERBOSE = LOGGING_VERBOSE_LEVEL
 
+BAUDRATES = [2400, 9600, 19200, 115200]
 
 def _printable(string: str) -> str:
     return string.replace('\r', '<cr>').replace('\n', '<lf>')
@@ -121,6 +134,39 @@ class IdpModemAsyncioClient:
         self._retry_count = 0
         self._serial_async_error_count = 0
 
+    @property
+    def port(self):
+        return self._port
+    
+    @port.setter
+    def port(self, value):
+        valid, detail = validate_serial_port(value, verbose=True)
+        if not valid:
+            err_msg = 'Serial port {} not found'.format(value)
+            self._log.error(err_msg + ' {}'.format(detail) if detail != '' else '')
+            raise ValueError(err_msg)
+        self._port = value
+
+    @property
+    def baudrate(self):
+        return self._baudrate
+    
+    @baudrate.setter
+    def baudrate(self, value):
+        if value not in BAUDRATES:
+            raise ValueError('Unsupported baudrate {}'.format(value))
+        self._baudrate = value
+
+    def _handle_at_error(self,
+                         at_command: str,
+                         err_code: Union[str, int],
+                         return_value: any = None) -> any:
+        error_str = AT_ERROR_CODES[int(err_code)]
+        self._log.error("{} Exception: {}".format(at_command, error_str))
+        if return_value is None:
+            raise AtException(error_str)
+        return return_value
+
     async def _send(self, data: str) -> str:
         """Coroutine encodes and sends an AT command.
         
@@ -153,6 +199,7 @@ class IdpModemAsyncioClient:
         
         Raises:
             AtTimeout if the response timed out.
+
         """
         response = []
         verbose_response = ''
@@ -211,16 +258,27 @@ class IdpModemAsyncioClient:
             raise AtTimeout(err)
         return response
 
-    async def command(self, at_command: str, timeout: int = 5, retries: int = 0):
+    async def command(self,
+                      at_command: str,
+                      timeout: int = 5,
+                      retries: int = 0) -> list:
         """Submits an AT command and returns the response asynchronously.
         
+        TODO: defer requests from other threads than MainThread
+
         Args:
             at_command: The AT command string
             timeout: The maximum time in seconds to await a response.
             retries: Optional number of additional attempts on failure.
         
         Returns:
-            A list of response strings, or ['ERROR', '<error_code>']
+            A list of response strings finishing with 'OK', or 
+                ['ERROR', '<error_code>']
+        
+        Raises:
+            AtException if no response was received.
+            AtException if bad CRC response count exceeds retries
+
         """
         try:
             try:
@@ -244,7 +302,7 @@ class IdpModemAsyncioClient:
             echo, response = await gather(*tasks)
             if echo in response:
                 response.remove(echo)
-            if response is not None:
+            if len(response) > 0:
                 self._retry_count = 0
                 if response[0] == 'ERROR':
                     error_code = await self.command('ATS80?')
@@ -261,8 +319,10 @@ class IdpModemAsyncioClient:
                 return await self.command(
                     at_command, timeout=timeout, retries=retries)
             else:
+                error_message = 'Too many failed CRC ({})'.format(
+                    self._retry_count)
                 self._retry_count = 0
-                raise AtException('Too many failed CRC')
+                raise AtException(error_message)
         finally:
             if self.serialport:
                 self._log.verbose('Closing serial port {}'.format(self.port))
@@ -279,27 +339,24 @@ class IdpModemAsyncioClient:
             True if successful
         
         Raises:
-            AtException
+            AtException on errors other than CRC enabled
+
         """
         self._log.debug('Initializing modem{}'.format(' (CRC)' if crc else ''))
-        initialize_cmd = 'ATZ;E1;V1'
-        initialize_cmd += ';%CRC=1' if crc else ''
-        try:
-            success = await self.command(initialize_cmd)
-            if success[0] == 'ERROR':
-                if success[1] == '100':
-                    if crc and self.crc:
-                        self._log.debug('CRC already enabled')
-                        return True
-                    else:
-                        self.crc = True
-                        await self.initialize(crc)
+        cmd = 'ATZ;E1;V1'
+        cmd += ';%CRC=1' if crc else ''
+        success = await self.command(cmd)
+        if success[0] == 'ERROR':
+            if int(success[1]) == 100:
+                if crc and self.crc:
+                    self._log.debug('CRC already enabled')
+                    return True
                 else:
-                    raise AtException(AT_ERROR_CODES[success[1]])
-            return True
-        except Exception as e:
-            self._log.error('Error initializing: {}'.format(e))
-            raise e
+                    self.crc = True
+                    await self.initialize(crc)
+            else:
+                return self._handle_at_error(cmd, success[1], return_value=False)
+        return True
     
     async def config_restore_nvm(self) -> bool:
         """Sends the ATZ command to restore from non-volatile memory.
@@ -307,24 +364,21 @@ class IdpModemAsyncioClient:
         Returns:
             Boolean success.
         """
-        try:
-            response = await self.command('ATZ')
-            if response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        self._log.debug('Restoring non-volatile configuration')
+        cmd = 'ATZ'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], return_value=False)
+        return True
 
     async def config_restore_factory(self) -> bool:
         """Sends the AT&F command and returns True on success."""
         self._log.debug('Restoring factory defaults')
-        try:
-            response = await self.command('AT&F')
-            if response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        cmd = 'AT&F'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], return_value=False)
+        return True
     
     async def config_report(self) -> Tuple[dict, dict]:
         """Sends the AT&V command to retrive S-register settings.
@@ -333,39 +387,36 @@ class IdpModemAsyncioClient:
             A tuple with two dictionaries or both None if failed
             at_config with booleans crc, echo, quiet and verbose
             reg_config with S-register tags and integer values
+
         """
         self._log.debug('Querying configuration')
-        try:
-            response = await self.command('AT&V')
-            if response[0] == 'ERROR':
-                return (None, None)
-            at_config = response[1]
-            s_regs = response[2]
-            echo, quiet, verbose, crc = at_config.split(' ')
-            at_config = {
-                "crc": bool(int(crc[4])),
-                "echo": bool(int(echo[1])),
-                "quiet": bool(int(quiet[1])),
-                "verbose": bool(int(verbose[1])),
-            }
-            reg_config = {}
-            for reg in s_regs.split(' '):
-                name, value = reg.split(':')
-                reg_config[name] = int(value)
-            return (at_config, reg_config)
-        except AtException:
-            return (None, None)
+        cmd = 'AT&V'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], (None, None))
+        at_config = response[1]
+        s_regs = response[2]
+        echo, quiet, verbose, crc = at_config.split(' ')
+        at_config = {
+            "crc": bool(int(crc[4])),
+            "echo": bool(int(echo[1])),
+            "quiet": bool(int(quiet[1])),
+            "verbose": bool(int(verbose[1])),
+        }
+        reg_config = {}
+        for reg in s_regs.split(' '):
+            name, value = reg.split(':')
+            reg_config[name] = int(value)
+        return (at_config, reg_config)
 
     async def config_save(self) -> bool:
         """Sends the AT&W command and returns True if successful."""
         self._log.debug('Saving S-registers to non-volatile memory')
-        try:
-            response = await self.command('AT&W')
-            if response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        cmd = 'AT&W'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
     async def config_crc_enable(self, crc: bool) -> bool:
         """Enables or disables CRC error checking (for long serial cable).
@@ -374,47 +425,48 @@ class IdpModemAsyncioClient:
             crc: enable CRC if true
         """
         self._log.debug('{} CRC'.format('Enabling' if crc else 'Disabling'))
-        try:
-            response = await self.command('AT%CRC={}'.format(1 if crc else 0))
-            if response[0] == 'ERROR' and self.crc != crc:
-                raise AtException('Failed to {} crc'.format(
-                    'enable' if crc else 'disable'))
-            self.crc = crc
-            return True
-        except AtException:
-            return False
+        cmd = 'AT%CRC={}'.format(1 if crc else 0)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR' and self.crc != crc:
+            return self._handle_at_error(cmd, response[1], False)
+        self.crc = crc
+        return True
     
     async def device_mobile_id(self) -> str:
         """Returns the unique Mobile ID (Inmarsat serial number).
         
         Returns:
-            MobileID string or None if error.
+            MobileID string.
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying device Mobile ID')
-        try:
-            response = await self.command("AT+GSN")
-            if response[0] == 'ERROR':
-                return None 
-            return response[0].replace('+GSN:', '').strip()
-        except AtException:
-            return None
+        cmd = 'AT+GSN'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            self._handle_at_error(cmd, response[1])
+        return response[0].replace('+GSN:', '').strip()
 
     async def device_version(self) -> Tuple[str, str, str]:
         """Returns the hardware, firmware and AT versions.
         
         Returns:
-            Dict with hardware, firmware, at version or all None if error.
+            Dict with hardware, firmware, at version.
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying device version info')
-        try:
-            response = await self.command("AT+GMR")
-            if response[0] == 'ERROR':
-                return None
-            versions = response[0].replace('+GMR:', '').strip()
-            fw_ver, hw_ver, at_ver = versions.split(',')
-            return {'hardware': hw_ver, 'firmware': fw_ver, 'at': at_ver}
-        except AtException:
-            return None
+        cmd = 'AT+GMR'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            self._handle_at_error(cmd, response[1])
+        versions = response[0].replace('+GMR:', '').strip()
+        fw_ver, hw_ver, at_ver = versions.split(',')
+        return {'hardware': hw_ver, 'firmware': fw_ver, 'at': at_ver}
 
     async def gnss_continuous_set(self,
                                   interval: int=0,
@@ -427,18 +479,16 @@ class IdpModemAsyncioClient:
         
         Returns:
             True if successful setting.
+
         """
         self._log.debug('Setting GNSS refresh to {} seconds'.format(interval))
-        try:
-            if interval < 0 or interval > 30:
-                raise ValueError('GNSS continuous interval must be in range 0..30')
-            response = await self.command('AT%TRK={}{}'.format(
-                interval, ',{}'.format(1 if doppler else 0)))
-            if response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        cmd = 'AT%TRK={}{}'.format(interval, ',{}'.format(1 if doppler else 0))
+        if interval < 0 or interval > 30:
+            raise ValueError('GNSS continuous interval must be in range 0..30')
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
     async def gnss_nmea_get(self,
                             stale_secs: int = 1,
@@ -453,12 +503,12 @@ class IdpModemAsyncioClient:
             sentences: Optional list of NMEA sentence types to get
 
         Returns:
-            List of NMEA sentences or 'ERR_TIMEOUT_OCCURRED'
+            List of NMEA sentences
 
         Raises:
             ValueError if parameter out of range
             GnssTimeout if no response from GNSS
-            AtException logged and re-raised
+            AtException
 
         """
         self._log.debug('Requesting GNSS fix information')
@@ -477,21 +527,16 @@ class IdpModemAsyncioClient:
             else:
                 raise ValueError('Unsupported NMEA sentence: {}'
                                  .format(sentence))
-        try:
-            response = await self.command(
-                'AT%GPS={},{},{}'.format(stale_secs, wait_secs, sentence_list),
-                timeout=wait_secs + BUFFER_SECONDS)
-            if response[0] == 'ERROR':
-                if response[1] == '108':
-                    raise GnssTimeout(AT_ERROR_CODES[response[1]])
-                else:
-                    raise AtException(AT_ERROR_CODES[response[1]])
-            response.remove('OK')
-            response[0] = response[0].replace('%GPS: ', '')
-            return response
-        except AtException as e:
-            self._log.error(e)
-            raise e
+        cmd = 'AT%GPS={},{},{}'.format(stale_secs, wait_secs, sentence_list)
+        response = await self.command(cmd, timeout=wait_secs + BUFFER_SECONDS)
+        if response[0] == 'ERROR':
+            if int(response[1]) == 108:
+                raise GnssTimeout
+            else:
+                return self._handle_at_error(cmd, response[1], None)
+        response.remove('OK')
+        response[0] = response[0].replace('%GPS: ', '')
+        return response
 
     async def location(self,
                        stale_secs: int = 1,
@@ -505,20 +550,92 @@ class IdpModemAsyncioClient:
         Returns:
             nmea.Location object
         
-        Raises:
-            Exception(s) logged and re-raised
-
         """
         self._log.debug('Querying location')
-        try:
-            nmea_sentences = await self.gnss_nmea_get(stale_secs, wait_secs)
-            return location_get(nmea_sentences)
-        except Exception as e:
-            self._log.error(e)
-            raise e
+        nmea_sentences = await self.gnss_nmea_get(stale_secs, wait_secs)
+        return location_get(nmea_sentences)
+
+    async def lowpower_mode_set(self, power_mode: int) -> bool:
+        """Sets the modem power mode (for blockage recovery).
+
+        Args:
+            power_mode (int): The new power mode
+
+        Returns:
+            True if successful
+        
+        Raises:
+            ValueError on invalid power_mode
+        """
+        if power_mode not in POWER_MODES:
+            raise ValueError('Invalid power mode {}'.format(power_mode))
+        self._log.debug('Setting power mode {}'.format(
+            POWER_MODES[power_mode]))
+        cmd = 'ATS50={}'.format(power_mode)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
+
+    async def lowpower_mode_get(self) -> int:
+        """Gets the modem power mode.
+
+        Returns:
+            The integer value of the power mode
+        
+        Raises:
+            AtException if an error was returned
+
+        """
+        self._log.debug('Getting power mode')
+        cmd = 'ATS50?'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], None)
+        return int(response[0])
+
+    async def lowpower_wakeup_set(self, wakeup_period: int) -> bool:
+        """Sets the modem wakeup period.
+
+        Args:
+            wakeup_period (int): The new wakeup period
+
+        Returns:
+            True if successful
+        
+        Raises:
+            ValueError on invalid wakeup_period
+
+        """
+        if wakeup_period not in WAKEUP_PERIODS:
+            raise ValueError('Invalid wakeup period {}'.format(wakeup_period))
+        self._log.debug('Setting wakeup period {}'.format(
+            WAKEUP_PERIODS[wakeup_period]))
+        cmd = 'ATS51={}'.format(wakeup_period)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
+
+    async def lowpower_wakeup_get(self) -> int:
+        """Gets the modem wakeup period.
+
+        Returns:
+            The integer value of the wakeup period
+        
+        Raises:
+            AtException if an error was returned
+
+        """
+        self._log.debug('Getting wakeup period')
+        cmd = 'ATS51?'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], None)
+        return int(response[0])
 
     async def lowpower_notifications_enable(self) -> bool:
-        """Sets up monitoring of satellite status and notification assertion.
+        """Configures low power satellite status and notification assertion.
 
         The following events trigger assertion of the notification output:
         - New Forward Message received
@@ -530,28 +647,28 @@ class IdpModemAsyncioClient:
         """
         self._log.debug('Enabling low power notifications')
         cmd = 'AT%EVMON=3.1;S88=1030'
-        try:
-            response = await self.command(cmd)
-            if response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
     async def lowpower_notifications_check(self) -> list:
-        """Returns a list of relevant events or None."""
+        """Returns a list of relevant events."""
         self._log.debug('Querying low power notifications')
-        reason = await self.notification_check()
         relevant = []
-        if reason is None:
-            return None
-        if reason['event_cached'] == True:
-            relevant.append('event_cached')
-        if reason['message_mt_received'] == True:
-            relevant.append('message_mt_received')
-        if reason['message_mo_complete'] == True:
-            relevant.append('message_mo_complete')
-        return relevant if len(relevant) > 0 else None
+        try:
+            reason = await self.notification_check()
+            if reason is not None:
+                if reason['event_cached'] == True:
+                    relevant.append('event_cached')
+                if reason['message_mt_received'] == True:
+                    relevant.append('message_mt_received')
+                if reason['message_mo_complete'] == True:
+                    relevant.append('message_mo_complete')
+        except AtException:
+            self._log.warning('Notification check returned AT exception')
+        finally:
+            return relevant
 
     async def message_mo_send(self,
                               data: str,
@@ -574,32 +691,44 @@ class IdpModemAsyncioClient:
             Name of the message if successful, or the error string
         """
         self._log.debug('Submitting message named {}'.format(name))
-        try:
-            if name is None:
-                # Use the 8 least-signficant numbers of unix timestamp as unique
-                name = str(int(time()))[-8:]
-                self._log.debug('Assigned name {}'.format(name))
-            elif len(name) > 8:
-                name = name[0:8]   # risk duplicates create an ERROR resposne
-                self._log.warning('Truncated name to {}'.format(name))
-            if min is not None:
-                _min = '.{}'.format(min)
-            else:
-                _min = ''
-            if data_format == 1:
-                data = '"{}"'.format(data)
-            cmd = ('AT%MGRT="{}",{},{}{},{},{}'.format(name,
-                                                       priority,
-                                                       sin,
-                                                       _min,
-                                                       data_format,
-                                                       data))
-            response = await self.command(cmd)
-            if response[0] == 'ERROR':
-                raise AtException(AT_ERROR_CODES[response[1]])
-            return name
-        except AtException as e:
-            raise e
+        if name is None:
+            # Use the 8 least-signficant numbers of unix timestamp as unique
+            name = str(int(time()))[-8:]
+            self._log.debug('Assigned name {}'.format(name))
+        elif len(name) > 8:
+            name = name[0:8]   # risk duplicates create an ERROR resposne
+            self._log.warning('Truncated name to {}'.format(name))
+        if min is not None:
+            _min = '.{}'.format(min)
+        else:
+            _min = ''
+        if data_format == 1:
+            data = '"{}"'.format(data)
+        cmd = ('AT%MGRT="{}",{},{}{},{},{}'.format(name,
+                                                    priority,
+                                                    sin,
+                                                    _min,
+                                                    data_format,
+                                                    data))
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], None)
+        return name
+
+    async def message_mo_formatted_send(self,
+                              message: MobileOriginatedMessage) -> str:
+        """Submits a MobileOriginatedMessage.
+
+        TODO: not implemented
+        
+        Args:
+            message: A MobileOriginatedMessage object
+
+        Returns:
+            Name of the message if successful, or the error string
+        """
+        self._log.debug('Submitting MobileOriginatedMessage')
+        raise NotImplementedError
 
     async def message_mo_state(self, name: str = None) -> list:
         """Returns the message state(s) requested.
@@ -613,33 +742,33 @@ class IdpModemAsyncioClient:
         Returns:
             `list` of `dict` with `name`, `state`, `size` and `sent`
 
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying transmit message state{}'.format(
             ' ={}'.format(name) if name else 's'))
         cmd = 'AT%MGRS{}'.format('="{}"'.format(name) if name else '')
-        try:
-            response = await self.command(cmd)
-            if response[0] == 'ERROR':
-                return None
-            # %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
-            response.remove('OK')
-            states = []
-            for res in response:
-                res = res.replace('%MGRS:', '').strip()
-                if len(res) > 0:
-                    name, number, priority, sin, state, size, sent = res.split(',')
-                    del number
-                    del priority
-                    del sin
-                    states.append({
-                        'name': name.replace('"', ''),
-                        'state': int(state),
-                        'size': int(size),
-                        'bytes_sent': int(sent),
-                        })
-            return states
-        except AtException:
-            return None
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], None)
+        # %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
+        response.remove('OK')
+        states = []
+        for res in response:
+            res = res.replace('%MGRS:', '').strip()
+            if len(res) > 0:
+                name, number, priority, sin, state, size, sent = res.split(',')
+                del number
+                del priority
+                del sin
+                states.append({
+                    'name': name.replace('"', ''),
+                    'state': int(state),
+                    'size': int(size),
+                    'bytes_sent': int(sent),
+                    })
+        return states
     
     @staticmethod
     def message_state_name(state: int):
@@ -650,82 +779,80 @@ class IdpModemAsyncioClient:
     async def message_mo_cancel(self, name: str) -> bool:
         """Cancels a mobile-originated message in the Tx ready state."""
         self._log.debug('Cancelling message {}'.format(name))
-        try:
-            response = await self.command('AT%MGRC="{}"'.format(name))
-            if response[0] == 'ERROR':
-                self._log.error('Error cancelling message {} - {}'.format(
-                    name, AT_ERROR_CODES[response[1]]))
-                return False
-            return True
-        except AtException:
-            return False
+        cmd = 'AT%MGRC="{}"'.format(name)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
     async def message_mo_clear(self) -> int:
         """Clears the modem transmit queue.
         
         Returns:
-            Count of messages deleted, or -1 in case of error
+            Count of messages deleted
+        
+        Raises:
+            AtException
 
         """
         self._log.debug('Clearing transmit queue of return messages')
         cancelled_count = 0
         open_count = 0
-        try:
-            response = await self.command('AT%MGRSC')
-            if response[0] == 'ERROR':
-                return -1
-            response.remove('OK')
-            if '%MGRS:' in response:
-                response.remove('%MGRS:')
-            for message in response:
-                if '%MGRS:' in message:
-                    message = message.replace('%MGRS:', '').strip()
-                parts = message.split(',')
-                status = int(parts[4])
-                name = parts[0].replace('"', '')
-                if status == 8:
-                    cancelled_count += 1
-                elif status < 6:
-                    cancel_explicit = await self.message_mo_cancel(name)
-                    if not cancel_explicit:
-                        open_count += 1
-            if open_count > 0:
-                self._log.warning('{} messages still in transmit queue'.format(
-                    open_count))
-            return cancelled_count
-        except AtException:
-            return -1
+        cmd = 'AT%MGRSC'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        response.remove('OK')
+        if '%MGRS:' in response:
+            response.remove('%MGRS:')
+        for message in response:
+            if '%MGRS:' in message:
+                message = message.replace('%MGRS:', '').strip()
+            parts = message.split(',')
+            status = int(parts[4])
+            name = parts[0].replace('"', '')
+            if status == 8:
+                cancelled_count += 1
+            elif status < 6:
+                cancel_explicit = await self.message_mo_cancel(name)
+                if not cancel_explicit:
+                    open_count += 1
+        if open_count > 0:
+            self._log.warning('{} messages still in transmit queue'.format(
+                open_count))
+        return cancelled_count
 
-    async def message_mt_waiting(self) -> Union[list, None]:
+    async def message_mt_waiting(self) -> list:
         """Returns a list of received mobile-terminated message information.
         
         Returns:
             List of (name, number, priority, sin, state, length, received)
+        
+        Raises:
+            AtException
 
         """
         self._log.debug('Checking receive queue for forward messages')
-        try:
-            response = await self.command('AT%MGFN')
-            if response[0] == 'ERROR':
-                return None
-            response.remove('OK')
-            waiting = []
-            #: %MGFN: name, number, priority, sin, state, length, bytes_received
-            for res in response:
-                msg = res.replace('%MGFN:', '').strip()
-                if msg.startswith('"FM'):
-                    parts = msg.split(',')
-                    name, number, priority, sin, state, length, received = parts
-                    del number   #: unused
-                    waiting.append({'name': name.replace('"', ''),
-                                    'sin': int(sin),
-                                    'priority': int(priority),
-                                    'state': int(state),
-                                    'length': int(length),
-                                    'received': int(received)})
-            return waiting
-        except AtException:
-            return None
+        cmd = 'AT%MGFN'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        response.remove('OK')
+        waiting = []
+        #: %MGFN: name, number, priority, sin, state, length, bytes_received
+        for res in response:
+            msg = res.replace('%MGFN:', '').strip()
+            if msg.startswith('"FM'):
+                parts = msg.split(',')
+                name, number, priority, sin, state, length, received = parts
+                del number   #: unused
+                waiting.append({'name': name.replace('"', ''),
+                                'sin': int(sin),
+                                'priority': int(priority),
+                                'state': int(state),
+                                'length': int(length),
+                                'received': int(received)})
+        return waiting
 
     @staticmethod
     def _message_mt_parse(mgfg_response: str,
@@ -783,20 +910,33 @@ class IdpModemAsyncioClient:
 
         Returns:
             The encoded data as a string
+        
+        Raises:
+            AtException
 
         """
         self._log.debug('Retrieving forward message {}'.format(name))
-        try:
-            #: AT%MGFG="<msgName>",<data_format>
-            response = await self.command('AT%MGFG="{}",{}'.format(
-                name, data_format))
-            if response is None or response[0] == 'ERROR':
-                return None
-            # response.remove('OK')
-            message = self._message_mt_parse(response[0], data_format=data_format)
-            return message if verbose else message['bytes']
-        except AtException:
-            return None
+        cmd = 'AT%MGFG="{}",{}'.format(name, data_format)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        # response.remove('OK')
+        message = self._message_mt_parse(response[0], data_format=data_format)
+        return message if verbose else message['bytes']
+
+    async def message_mt_formatted_get(self,
+                             name: str) -> MobileTerminatedMessage:
+        """Retreives a decoded mobile-terminated message from the receive queue.
+        
+        Args:
+            name: The unique name in the modem queue e.g. FM01.01
+
+        Returns:
+            The MobileTerminatedMessage
+
+        """
+        self._log.debug('Retrieving forward message {}'.format(name))
+        raise NotImplementedError
 
     async def message_mt_delete(self, name: str) -> bool:
         """Marks a Return message for deletion by the modem.
@@ -809,39 +949,42 @@ class IdpModemAsyncioClient:
 
         """
         self._log.debug('Marking forward message {} for deletion'.format(name))
+        cmd = 'AT%MGFM="{}"'.format(name)
         try:
-            response = await self.command('AT%MGFM="{}"'.format(name))
-            if response is None or response[0] == 'ERROR':
-                return False
+            response = await self.command(cmd)
+            if response[0] == 'ERROR':
+                return self._handle_at_error(cmd, response[1], False)
             return True
         except:
             return False
 
-    async def event_monitor_get(self) -> Union[list, None]:
+    async def event_monitor_get(self) -> list:
         """Returns a list of monitored/cached events.
         As a list of <class.subclass> strings which includes an asterisk
         for each new event that can be retrieved.
 
         Returns:
             list of strings <class.subclass[*]> or None
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying monitored events')
-        try:
-            result = await self.command('AT%EVMON')
-            if result is None or result[0] == 'ERROR':
-                return None
-            events = result[0].replace('%EVMON: ', '').split(',')
-            '''
-            for i in range(len(events)):
-                c, s = events[i].strip().split('.')
-                if s[-1] == '*':
-                    s = s.replace('*', '')
-                    # TODO flag change for retrieval
-                events[i] = (int(c), int(s))
-            '''
-            return events
-        except AtException:
-            return None
+        cmd = 'AT%EVMON'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        events = response[0].replace('%EVMON: ', '').split(',')
+        '''
+        for i in range(len(events)):
+            c, s = events[i].strip().split('.')
+            if s[-1] == '*':
+                s = s.replace('*', '')
+                # TODO flag change for retrieval
+            events[i] = (int(c), int(s))
+        '''
+        return [event for event in events if event != '']
 
     async def event_monitor_set(self, eventlist: list) -> bool:
         """Sets trace events to monitor.
@@ -851,27 +994,25 @@ class IdpModemAsyncioClient:
 
         Returns:
             True if successfully set
+
         """
         self._log.debug('Setting event monitors: {}'.format(eventlist))
         #: AT%EVMON{ = <c1.s1>[, <c2.s2> ..]}
-        cmd = ''
-        try:
-            if eventlist is not None:
-                for monitor in eventlist:
-                    if isinstance(monitor, tuple):
-                        if len(cmd) > 0:
-                            cmd += ','
-                        cmd += '{}.{}'.format(monitor[0], monitor[1])
-            result = await self.command('AT%EVMON={}'.format(cmd))
-            if result is None or result[0] == 'ERROR':
-                return False
-            return True
-        except:
-            return False
+        cmd = 'AT%EVMON='
+        if eventlist is not None:
+            for monitor in eventlist:
+                if isinstance(monitor, tuple):
+                    if len(cmd) > 9:
+                        cmd += ','
+                    cmd += '{}.{}'.format(monitor[0], monitor[1])
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
     async def event_get(self,
                         event: tuple,
-                        raw: bool = True) -> Union[str, dict, None]:
+                        raw: bool = True) -> Union[str, dict]:
         """Gets the cached event by class/subclass.
 
         Args:
@@ -879,7 +1020,11 @@ class IdpModemAsyncioClient:
             raw: Returns the raw text string if True
         
         Returns:
-            String if raw=True, dictionary if raw=False or None
+            String if raw=True, dictionary if raw=False
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying events: {}'.format(event))
         #: AT%EVNT=c,s
@@ -887,37 +1032,34 @@ class IdpModemAsyncioClient:
         # <class>,<subclass>,<priority>,<data0>,<data1>,..,<dataN>
         if not (isinstance(event, tuple) and len(event) == 2):
             raise AtException('event_get expects (class, subclass)')
-        try:
-            result = await self.command('AT%EVNT={},{}'.format(
-                event[0], event[1]))
-            if result is None or result[0] == 'ERROR':
-                return None
-            eventdata = result[0].replace('%EVNT: ', '').split(',')
-            event = {
-                'data_count': int(eventdata[0]),
-                'signed_bitmask': bin(int(eventdata[1]))[2:],
-                'mobile_id': eventdata[2],
-                'timestamp': eventdata[3],
-                'class': eventdata[4],
-                'subclass': eventdata[5],
-                'priority': eventdata[6],
-                'data': eventdata[7:]
-            }
-            bitmask = event['signed_bitmask']
-            while len(bitmask) < event['data_count']:
-                bitmask = '0' + bitmask
-            i = 0
-            for bit in reversed(bitmask):
-                #: 32-bit signed conversion redundant since response is string
-                if bit == '1':
-                    event['data'][i] = _to_signed32(int(event['data'][i]))
-                else:
-                    event['data'][i] = int(event['data'][i])
-                i += 1
-            # TODO lookup class/subclass definitions
-            return result[0] if raw else event
-        except AtException:
-            return None
+        cmd = 'AT%EVNT={},{}'.format(event[0], event[1])
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        eventdata = response[0].replace('%EVNT: ', '').split(',')
+        event = {
+            'data_count': int(eventdata[0]),
+            'signed_bitmask': bin(int(eventdata[1]))[2:],
+            'mobile_id': eventdata[2],
+            'timestamp': eventdata[3],
+            'class': eventdata[4],
+            'subclass': eventdata[5],
+            'priority': eventdata[6],
+            'data': eventdata[7:]
+        }
+        bitmask = event['signed_bitmask']
+        while len(bitmask) < event['data_count']:
+            bitmask = '0' + bitmask
+        i = 0
+        for bit in reversed(bitmask):
+            #: 32-bit signed conversion redundant since response is string
+            if bit == '1':
+                event['data'][i] = _to_signed32(int(event['data'][i]))
+            else:
+                event['data'][i] = int(event['data'][i])
+            i += 1
+        # TODO lookup class/subclass definitions
+        return response[0] if raw else event
 
     async def notification_control_set(self, event_map: list) -> bool:
         """Sets the event notification bitmask.
@@ -952,40 +1094,47 @@ class IdpModemAsyncioClient:
                 bitmask[i] = bit
                 i += 1
         if notifications_changed:
-            bitmask_int = int('0b' + ''.join(bitmask), 2)
-            try:
-                result = await self.command('ATS88={}'.format(bitmask_int))
-                if result is None or result[0] == 'ERROR':
-                    return False
-            except AtException:
-                return False
+            cmd = 'ATS88={}'.format(int('0b' + ''.join(bitmask), 2))
+            response = await self.command(cmd)
+            if response[0] == 'ERROR':
+                return self._handle_at_error(cmd, response[1], False)
         return True
     
-    async def notification_control_get(self) -> Union[OrderedDict, None]:
-        """Returns the current notification configuration bitmask."""
+    async def notification_control_get(self) -> OrderedDict:
+        """Returns the current notification configuration bitmask.
+        
+        Returns:
+            OrderedDict
+        
+        Raises:
+            AtException
+
+        """
         self._log.debug('Querying event notification controls')
-        #: ATS88?
-        try:
-            result = await self.command('ATS88?')
-            if result is None or result[0] == 'ERROR':
-                return None
-            return _notifications_dict(int(result[0]))
-        except AtException:
-            return None
+        cmd =  'ATS88?'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        return _notifications_dict(int(response[0]))
 
     async def notification_check(self) -> OrderedDict:
-        """Returns the current active event notification bitmask.
-        Clears the value of S89 upon reading.
+        """Returns the current active event notification bitmask (S89).
+        
+        The value of S89 register is cleared upon reading.
+
+        Returns:
+            OrderedDict
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying event notification triggers')
-        #: ATS89?
-        try:
-            result = await self.command('ATS89?')
-            if result is None or result[0] == 'ERROR':
-                return None
-            return _notifications_dict(int(result[0]))
-        except AtException:
-            return None
+        cmd = 'ATS89?'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        return _notifications_dict(int(response[0]))
 
     async def satellite_status(self) -> dict:
         """Returns the control state and C/No.
@@ -994,27 +1143,27 @@ class IdpModemAsyncioClient:
             Dictionary with state (int), snr (float), beamsearch (int),
                 state_name (str), beamsearch_name (str), or None if error.
 
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying satellite status/SNR')
         cmd = 'ATS90=3 S91=1 S92=1 S116? S122? S123?'
-        try:
-            response = await self.command(cmd)
-            if response is None or response[0] == 'ERROR':
-                return None
-            response.remove('OK')
-            cn_0, ctrl_state, beamsearch_state = response
-            cn_0 = int(cn_0) / 100.0
-            ctrl_state = int(ctrl_state)
-            beamsearch_state = int(beamsearch_state)
-            return {
-                'state': ctrl_state,
-                'state_name': CONTROL_STATES[ctrl_state],
-                'snr': cn_0,
-                'beamsearch': beamsearch_state,
-                'beamsearch_name': BEAMSEARCH_STATES[beamsearch_state],
-            }
-        except AtException:
-            return None
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        response.remove('OK')
+        cn_0, ctrl_state, beamsearch_state = response
+        cn_0 = int(cn_0) / 100.0
+        ctrl_state = int(ctrl_state)
+        beamsearch_state = int(beamsearch_state)
+        return {
+            'state': ctrl_state,
+            'state_name': CONTROL_STATES[ctrl_state],
+            'snr': cn_0,
+            'beamsearch': beamsearch_state,
+            'beamsearch_name': BEAMSEARCH_STATES[beamsearch_state],
+        }
 
     @staticmethod
     def sat_status_name(ctrl_state: int) -> str:
@@ -1033,27 +1182,56 @@ class IdpModemAsyncioClient:
             raise ValueError('Beam search state {} not found'.format(beamsearch_state))
         return BEAMSEARCH_STATES[beamsearch_state]
 
+    async def transmit_status(self) -> dict:
+        """Returns the transmitter status.
+        
+        Returns:
+            Transmit status (5 = OK)
+
+        Raises:
+            AtException if error returned by modem
+
+        """
+        self._log.debug('Querying transmitter status')
+        cmd = 'ATS54?'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        status = int(response[0])
+        if status in TRANSMIT_STATUS:
+            #: if status != 5
+            if TRANSMIT_STATUS[status] != 'OK':
+                self._log.warning('Transmit status {}'.format(
+                    TRANSMIT_STATUS[status]))
+        else:
+            self._log.warning('Undocumented transmit status {}'.format(status))
+        return status
+
     async def shutdown(self) -> bool:
         """Tell the modem to prepare for power-down."""
         self._log.debug('Requesting power down')
-        try:
-            response = await self.command('AT%OFF')
-            if response is None or response[0] == 'ERROR':
-                return False
-            return True
-        except AtException:
-            return False
+        cmd = 'AT%OFF'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1], False)
+        return True
 
-    async def time_utc(self) -> Union[str, None]:
-        """Returns current UTC time of the modem in ISO format."""
+    async def time_utc(self) -> str:
+        """Returns current UTC time of the modem in ISO format.
+        
+        Returns:
+            UTC as ISO-formatted string
+        
+        Raises:
+            AtException
+
+        """
         self._log.debug('Requesting UTC network time')
-        try:
-            response = await self.command('AT%UTC')
-            if response is None or response[0] == 'ERROR':
-                return None
-            return response[0].replace('%UTC: ', '').replace(' ', 'T') + 'Z'
-        except AtException:
-            return None
+        cmd = 'AT%UTC'
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        return response[0].replace('%UTC: ', '').replace(' ', 'T') + 'Z'
 
     async def s_register_get(self, register: int) -> Union[int, None]:
         """Returns the value of the S-register requested.
@@ -1062,39 +1240,41 @@ class IdpModemAsyncioClient:
             register: The S-register number
 
         Returns:
-            integer value or None
+            integer value of register
+        
+        Raises:
+            AtException
 
         """
         self._log.debug('Querying register value S{}'.format(register))
-        try:
-            response = await self.command('ATS{}?'.format(register))
-            if response is None or response[0] == 'ERROR':
-                return None
-            return int(response[0])
-        except AtException:
-            return None
+        cmd = 'ATS{}?'.format(register)
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[1])
+        return int(response[0])
 
-    async def s_register_get_all(self) -> Union[list, None]:
+    async def s_register_get_all(self) -> list:
         """Returns a list of S-register definitions.
         R=read-only, S=signed, V=volatile
         
         Returns:
-            tuple(register, RSV, current, default, minimum, maximum) or None
+            tuple(register, RSV, current, default, minimum, maximum)
+        
+        Raises:
+            AtException
+
         """
         self._log.debug('Querying S-register values')
-        #: AT%SREG
+        cmd = 'AT%SREG'
         #: Sreg, RSV, CurrentVal, DefaultVal, MinimumVal, MaximumVal
-        try:
-            result = await self.command('AT%SREG')
-            if result is None or result[0] == 'ERROR':
-                return None
-            result.remove('OK')
-            reg_defs = result[2:]
-            registers = []
-            for row in reg_defs:
-                reg_def = row.split(' ')
-                reg_def = tuple(filter(None, reg_def))
-                registers.append(reg_def)
-            return registers
-        except AtException:
-            return None
+        response = await self.command(cmd)
+        if response[0] == 'ERROR':
+            return self._handle_at_error(cmd, response[0])
+        response.remove('OK')
+        reg_defs = response[2:]
+        registers = []
+        for row in reg_defs:
+            reg_def = row.split(' ')
+            reg_def = tuple(filter(None, reg_def))
+            registers.append(reg_def)
+        return registers

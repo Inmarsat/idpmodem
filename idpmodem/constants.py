@@ -100,47 +100,47 @@ MESSAGE_STATES = {
 }
 
 AT_ERROR_CODES = {
-    '0': 'OK',
-    '4': 'ERROR',
-    '100': 'ERR_INVALID_CRC_SEQUENCE',
-    '101': 'ERR_UNKNOWN_COMMAND',
-    '102': 'ERR_INVALID_COMMAND_PARAMETERS',
-    '103': 'ERR_MESSAGE_LENGTH_EXCEEDS_FORMAT_SIZE',
-    '104': 'ERR_RESERVED_104',
-    '105': 'ERR_SYSTEM_ERROR',
-    '106': 'ERR_QUEUE_INSUFFICIENT_RESOURCES',
-    '107': 'ERR_MESSAGE_NAME_ALREADY_IN_USE',
-    '108': 'ERR_TIMEOUT_OCCURRED',
-    '109': 'ERR_UNAVAILABLE',
-    '110': 'ERR_RESERVED_110',
-    '111': 'ERR_RESERVED_111',
-    '112': 'ERR_ATTEMPT_TO_WRITE_READ_ONLY_PARAMETER'
+    0: 'OK',
+    4: 'ERROR',
+    100: 'ERR_INVALID_CRC_SEQUENCE',
+    101: 'ERR_UNKNOWN_COMMAND',
+    102: 'ERR_INVALID_COMMAND_PARAMETERS',
+    103: 'ERR_MESSAGE_LENGTH_EXCEEDS_FORMAT_SIZE',
+    104: 'ERR_RESERVED_104',
+    105: 'ERR_SYSTEM_ERROR',
+    106: 'ERR_QUEUE_INSUFFICIENT_RESOURCES',
+    107: 'ERR_MESSAGE_NAME_ALREADY_IN_USE',
+    108: 'ERR_TIMEOUT_OCCURRED',
+    109: 'ERR_UNAVAILABLE',
+    110: 'ERR_RESERVED_110',
+    111: 'ERR_RESERVED_111',
+    112: 'ERR_ATTEMPT_TO_WRITE_READ_ONLY_PARAMETER'
 }
 
-wakeup_intervals = {
-    '5 seconds': 0,
-    '30 seconds': 1,
-    '1 minute': 2,
-    '3 minute': 3,
-    '10 minute': 4,
-    '30 minute': 5,
-    '60 minute': 6,
-    '2 minute': 7,
-    '5 minute': 8,
-    '15 minute': 9,
-    '20 minute': 10
+WAKEUP_PERIODS = {
+    0: 'SECONDS_5',
+    1: 'SECONDS_30',
+    2: 'MINUTES_1',
+    3: 'MINUTES_3',
+    4: 'MINUTES_10',
+    5: 'MINUTES_30',
+    6: 'MINUTES_60',
+    7: 'MINUTES_2',
+    8: 'MINUTES_5',
+    9: 'MINUTES_15',
+    10: 'MINUTES_20'
 }
 
-power_modes = {
-    'Mobile Powered': 0,
-    'Fixed Powered': 1,
-    'Mobile Battery': 2,
-    'Fixed Battery': 3,
-    'Mobile Minimal': 4,
-    'Mobile Stationary': 5
+POWER_MODES = {
+    0: 'MOBILE_POWERED',
+    1: 'FIXED_POWERED',
+    2: 'MOBILE_BATTERY',
+    3: 'FIXED_BATTERY',
+    4: 'MOBILE_MINIMAL',
+    5: 'MOBILE_PARKED'
 }
 
-gnss_modes = {
+GNSS_MODES = {
     'GPS': 0,               # HW v4
     'GLONASS': 1,           # HW v5
     'BEIDOU': 2,            # HW v5.2
@@ -149,15 +149,15 @@ gnss_modes = {
     'GLONASS+BEIDOU': 12    # UBX-M80xx
 }
 
-gnss_dpm_modes = {
-    'Portable': 0,
-    'Stationary': 2,
-    'Pedestrian': 3,
-    'Automotive': 4,
-    'Sea': 5,
-    'Air 1g': 6,
-    'Air 2g': 7,
-    'Air 4g': 8
+GNSS_DPM_MODES = {
+    0: 'PORTABLE',
+    2: 'STATIONARY',
+    3: 'PEDESTRIAN',
+    4: 'AUTOMOTIVE',
+    5: 'SEA',
+    6: 'AIR_1G',
+    7: 'AIR_2G',
+    8: 'AIR_4G'
 }
 
 NOTIFICATION_BITMASK = (
@@ -174,6 +174,29 @@ NOTIFICATION_BITMASK = (
     'event_cached',
     'network_ping_acknowledged'
 )
+
+NOTIFICATION_BITMASK_2 = {
+    0: 'GNSS_NEW_FIX',
+    1: 'MESSAGE_MT_RECEIVED',
+    2: 'MESSAGE_MO_COMPLETE',
+    3: 'NETWORK_REGISTERED',
+    4: 'MODEM_RESET',
+    5: 'JAMMING_ANTENNA_CHANGE',
+    6: 'MODEM_RESET_PENDING',
+    7: 'WAKEUP_PERIOD_CHANGED',
+    8: 'TIME_UTC_SYNC',
+    9: 'GNSS_TIMEOUT',
+    10: 'TRACE_EVENT_CACHED',
+    11: 'NETWORK_PING_ACKNOWLEDGED'
+}
+
+TRANSMIT_STATUS = {
+    4: 'RX_ONLY_NOT_REGISTERED',
+    5: 'OK',
+    6: 'SUSPENDED',
+    7: 'MUTED',
+    8: 'BLOCKED'
+}
 
 SATELLITE_GENERAL_TRACE = (
     {'subframe_number': 'uint'},
