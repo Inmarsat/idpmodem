@@ -3,6 +3,7 @@
 from binascii import b2a_base64
 from math import log2, ceil
 from struct import pack, unpack
+from typing import Union
 from warnings import WarningMessage, warn
 
 from idpmodem.constants import FORMAT_HEX, FORMAT_B64
@@ -100,12 +101,12 @@ class Field:
             default_bits = int(data_type.split('_')[1])
             self.bits = bits or default_bits
             if 'uint' in data_type and int(value >= 0):
-                self.value = min(int(value), 2**bits - 1)
+                self.value = min(int(value), 2**self.bits - 1)
             else:
-                if int(value) < -int(2**bits / 2):
-                    self.value = -int(2** bits / 2)
-                elif int(value) > int(2**bits / 2 - 1):
-                    self.value = int(2**bits - 1)
+                if int(value) < -int(2**self.bits / 2):
+                    self.value = -int(2**self.bits / 2)
+                elif int(value) > int(2**self.bits / 2 - 1):
+                    self.value = int(2**self.bits - 1)
                 else:
                     self.value = int(value)
         elif (data_type == 'string' and isinstance(value, str) or
@@ -158,15 +159,18 @@ class Fields(list):
         self.append(field)
         return True
 
-    def __getitem__(self, name: str) -> Field:
-        for field in self:
-            if field.name == name:
-                return field
+    def __getitem__(self, n: Union[str, int]) -> Field:
+        if isinstance(n, str):
+            for field in self:
+                if field.name == n:
+                    return field
+            raise ValueError('Field name {} not found'.format(n))
+        return super(Fields, self).__getitem__(n)
 
     def delete(self, name: str):
         for f in self:
             if f.name == name:
-                del f
+                self.remove(f)
                 return True
         return False
 

@@ -201,6 +201,7 @@ class IdpModemAsyncioClient:
             AtTimeout if the response timed out.
 
         """
+        CRC_DELAY = 1   #: seconds after response body
         response = []
         verbose_response = ''
         msg = ''
@@ -229,10 +230,8 @@ class IdpModemAsyncioClient:
                         try:
                             response_crc = (await wait_for(
                                 self.serialport.read_until_async(b'\r\n'),
-                                timeout=1)).decode()
+                                timeout=CRC_DELAY)).decode()
                             if response_crc:
-                                if not self.crc:
-                                    self.crc = True
                                 response_crc = response_crc.strip()
                                 if _serial_asyncio_lost_bytes(verbose_response):
                                     self._serial_async_error_count += 1
@@ -247,7 +246,12 @@ class IdpModemAsyncioClient:
                                     self._log.verbose('CRC {} ok for {}'.format(
                                         response_crc,
                                         _printable(verbose_response)))
+                                if not self.crc:
+                                    # raise AtCrcConfigError #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                    self.crc = True
                         except TimeoutError:
+                            if self.crc:
+                                raise AtCrcConfigError   #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                             self.crc = False
                         break
                     msg = ''
@@ -280,6 +284,8 @@ class IdpModemAsyncioClient:
             AtException if bad CRC response count exceeds retries
 
         """
+        if current_thread != self._thread:
+            self._log.warning('Call from external thread may crash')
         try:
             try:
                 self._log.verbose('Opening serial port {}'.format(self.port))
@@ -356,6 +362,7 @@ class IdpModemAsyncioClient:
                     await self.initialize(crc)
             else:
                 return self._handle_at_error(cmd, success[1], return_value=False)
+        self.crc = crc
         return True
     
     async def config_restore_nvm(self) -> bool:
@@ -549,6 +556,9 @@ class IdpModemAsyncioClient:
         
         Returns:
             nmea.Location object
+        
+        Raises:
+            GnssTimeout if no location data is available
         
         """
         self._log.debug('Querying location')

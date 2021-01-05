@@ -224,7 +224,6 @@ def suite():
     suite = TestSuite()
     available_tests = defaultTestLoader.getTestCaseNames(CodecTestCase)
     tests = [
-        'test_08_derive',
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

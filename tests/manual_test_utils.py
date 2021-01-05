@@ -101,7 +101,7 @@ def main():
     if not test_autostart:
         loop.start()
         loop.start_timer()
-    valid, desc = validate_serial_port('COM1')
+    valid, desc = validate_serial_port('COM1', verbose=True)
     del valid   #: unused
     log.info(desc)
     cycles = 0
