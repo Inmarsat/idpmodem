@@ -8,11 +8,14 @@ Based on the AioSerial package.
 """
 
 from aioserial import AioSerial
-from asyncio import AbstractEventLoop, gather, TimeoutError, wait_for
+from asyncio import AbstractEventLoop, gather, TimeoutError, wait_for, sleep
+from asyncio import get_running_loop, set_event_loop
+from asyncio import run_coroutine_threadsafe, wrap_future
+from atexit import register as on_exit
 from base64 import b64decode, b64encode
 from collections import OrderedDict
 import logging
-from threading import current_thread
+from threading import current_thread, Event
 from time import time
 from typing import Callable, Tuple, Union
 
@@ -125,8 +128,9 @@ class IdpModemAsyncioClient:
         self._log = logger or get_wrapping_logger(log_level=log_level)
         self.port = port
         self.baudrate = baudrate
-        self.loop = loop
+        self.loop = loop # or get_event_loop()
         self._thread = current_thread()
+        self._event = Event()
         self.serialport = None
         self.pending_command = None
         self.pending_command_time = None
@@ -268,7 +272,7 @@ class IdpModemAsyncioClient:
                       retries: int = 0) -> list:
         """Submits an AT command and returns the response asynchronously.
         
-        TODO: defer requests from other threads than MainThread
+        Proxies a private function to allow for multi-threaded operation.
 
         Args:
             at_command: The AT command string
@@ -284,9 +288,42 @@ class IdpModemAsyncioClient:
             AtException if bad CRC response count exceeds retries
 
         """
-        if current_thread != self._thread:
+        if current_thread() != self._thread:
             self._log.warning('Call from external thread may crash')
+            loop = get_running_loop()
+            set_event_loop(loop)
+            await sleep(1)   #: add a slight delay to mitigate race condition
+            while self._event.is_set():
+                pass
+            concurrentfuture = run_coroutine_threadsafe(
+                self._command(at_command, timeout, retries), loop)
+            asyncfuture = wrap_future(concurrentfuture)
+            return await asyncfuture
+        else:
+            return await self._command(at_command, timeout, retries)
+
+    async def _command(self,
+                       at_command: str,
+                       timeout: int,
+                       retries: int) -> list:
+        """Submits an AT command and returns the response asynchronously.
+        
+        Args:
+            at_command: The AT command string
+            timeout: The maximum time in seconds to await a response.
+            retries: Optional number of additional attempts on failure.
+        
+        Returns:
+            A list of response strings finishing with 'OK', or 
+                ['ERROR', '<error_code>']
+        
+        Raises:
+            AtException if no response was received.
+            AtException if bad CRC response count exceeds retries
+
+        """
         try:
+            self._event.set()
             try:
                 self._log.verbose('Opening serial port {}'.format(self.port))
                 self.serialport = AioSerial(port=self.port,
@@ -334,6 +371,7 @@ class IdpModemAsyncioClient:
                 self._log.verbose('Closing serial port {}'.format(self.port))
                 self.serialport.close()
                 self.serialport = None
+            self._event.clear()
     
     async def initialize(self, crc: bool = False) -> bool:
         """Initializes the modem using ATZ and sets up CRC.

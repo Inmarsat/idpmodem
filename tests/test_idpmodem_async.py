@@ -1,10 +1,13 @@
+from asyncio import run, run_coroutine_threadsafe, AbstractEventLoop, wrap_future, get_event_loop, new_event_loop
 from asynctest import CoroutineMock
 from logging import DEBUG, INFO
 import pytest
 from pytest_mock import MockerFixture
+from threading import Thread
+from time import sleep
 
 import idpmodem
-from idpmodem.utils import get_wrapping_logger
+from idpmodem.utils import get_wrapping_logger, validate_serial_port
 from idpmodem.constants import AT_ERROR_CODES
 from idpmodem.atcommand_async import IdpModemAsyncioClient, AtException, GnssTimeout
 from idpmodem.atcommand_async import LOGGING_VERBOSE_LEVEL as VERBOSE
@@ -15,8 +18,12 @@ DEFAULT_PORT = '/dev/ttyUSB0'
 LOG_LEVEL = VERBOSE
 
 #TODO: mock serial port
+
 @pytest.fixture
-def modem():
+def modem(mocker: MockerFixture):
+    if not validate_serial_port(DEFAULT_PORT):
+        mocker.patch('idpmodem.atcommand_async.validate_serial_port',
+            return_value=(True, 'mockSerial'))
     return IdpModemAsyncioClient(port=DEFAULT_PORT, log_level=LOG_LEVEL)
 
 def test_invalid_port():
@@ -31,6 +38,17 @@ def mock_command_ok(monkeypatch):
     )
     monkeypatch.setattr(idpmodem.atcommand_async.IdpModemAsyncioClient,
         'command', mock)
+    return mock
+
+@pytest.fixture
+def mock_command_ok_delay(monkeypatch):
+    mock = CoroutineMock(
+        idpmodem.atcommand_async.IdpModemAsyncioClient.command,
+        return_value=['OK']
+    )
+    monkeypatch.setattr(idpmodem.atcommand_async.IdpModemAsyncioClient,
+        'command', mock)
+    sleep(3)
     return mock
 
 @pytest.fixture
@@ -62,6 +80,19 @@ async def test_initialize_crc(mock_command_ok, modem):
 async def test_initialize_no_crc(mock_command_ok, modem):
     assert await modem.initialize(crc=False)
     assert modem.crc == False
+
+@pytest.mark.asyncio
+async def test_multithread(modem):
+    
+    def parallel_command():
+        assert run(modem.initialize()) is not None
+    
+    if not validate_serial_port(DEFAULT_PORT):
+        pytest.skip("Test irrelevant if not connected to real modem/serial")
+    t = Thread(target=parallel_command)
+    t.start()
+    assert await modem.initialize()
+    t.join()
 
 @pytest.fixture
 def mock_lowpower_mode_get(monkeypatch):
