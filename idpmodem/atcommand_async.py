@@ -14,6 +14,7 @@ from asyncio import run_coroutine_threadsafe, wrap_future
 from atexit import register as on_exit
 from base64 import b64decode, b64encode
 from collections import OrderedDict
+from glob import glob
 import logging
 from threading import current_thread, Event
 from time import time
@@ -144,10 +145,10 @@ class IdpModemAsyncioClient:
     
     @port.setter
     def port(self, value):
-        valid, detail = validate_serial_port(value, verbose=True)
+        valid = len(glob(value)) == 1
         if not valid:
             err_msg = 'Serial port {} not found'.format(value)
-            self._log.error(err_msg + ' {}'.format(detail) if detail != '' else '')
+            self._log.error(err_msg)
             raise ValueError(err_msg)
         self._port = value
 
