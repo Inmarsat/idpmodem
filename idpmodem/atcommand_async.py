@@ -20,7 +20,14 @@ from threading import current_thread, Event
 from time import time
 from typing import Callable, Tuple, Union
 
-from .aterror import AtCrcConfigError, AtCrcError, AtException, AtTimeout, AtUnsolicited
+from .aterror import (
+    AtCrcConfigError,
+    AtCrcError,
+    AtException,
+    AtGnssTimeout,
+    AtTimeout,
+    AtUnsolicited
+)
 from .constants import (
     AT_ERROR_CODES,
     BEAMSEARCH_STATES,
@@ -87,14 +94,6 @@ def _notifications_dict(sreg_value: int = None) -> OrderedDict:
             template[key] = True if bitmask[i] == '1' else False
             i += 1
     return template
-
-
-class IdpModemBusy(Exception):
-    pass
-
-
-class GnssTimeout(Exception):
-    pass
 
 
 class IdpModemAsyncioClient:
@@ -553,7 +552,7 @@ class IdpModemAsyncioClient:
 
         Raises:
             ValueError if parameter out of range
-            GnssTimeout if no response from GNSS
+            AtGnssTimeout if no response from GNSS
             AtException
 
         """
@@ -577,7 +576,7 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd, timeout=wait_secs + BUFFER_SECONDS)
         if response[0] == 'ERROR':
             if int(response[1]) == 108:
-                raise GnssTimeout
+                raise AtGnssTimeout('Timed out waiting for GNSS fix')
             else:
                 return self._handle_at_error(cmd, response[1], None)
         response.remove('OK')
@@ -597,7 +596,7 @@ class IdpModemAsyncioClient:
             nmea.Location object
         
         Raises:
-            GnssTimeout if no location data is available
+            AtGnssTimeout if no location data is available
         
         """
         self._log.debug('Querying location')

@@ -11,6 +11,11 @@ class AtTimeout(AtException):
     pass
 
 
+class AtGnssTimeout(AtException):
+    """Indicates a timeout waiting for a GNSS fix."""
+    pass
+
+
 class AtCrcError(AtException):
     """Indicates a detected CRC mismatch on a response."""
     pass
