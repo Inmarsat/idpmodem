@@ -9,7 +9,7 @@ from unittest.mock import create_autospec
 
 from idpmodem.utils import get_wrapping_logger
 import idpmodem.atcommand_async
-from idpmodem.atcommand_async import IdpModemAsyncioClient, GnssTimeout
+from idpmodem.atcommand_async import IdpModemAsyncioClient, AtGnssTimeout
 from idpmodem.nmea import Location
 
 
@@ -27,7 +27,7 @@ class IdpModemTestCase(unittest.TestCase):
         user_options = parse_args(sys.argv)
         port = user_options['port']
         print("Setting up modem for test cases...")
-        cls.modem = IdpModemAsyncioClient(log_level=10)
+        cls.modem = IdpModemAsyncioClient(port=DEFAULT_PORT, log_level=10)
         cls.event_callback = None
         cls.new_mt_messages = False
         cls.mt_message_being_retrieved = None
@@ -136,7 +136,7 @@ class IdpModemTestCase(unittest.TestCase):
             if location is not None:
                 print(pprint.pformat(vars(location), indent=2, width=1))
                 self.assertTrue(isinstance(location, Location))
-        except GnssTimeout:
+        except AtGnssTimeout:
             print('GNSS timeout occurred, check sky visibility')
             self.assertTrue(True)
 
@@ -391,7 +391,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
-        'test_999_multithread_fail'
+        'test_14_message_mo_clear'
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:

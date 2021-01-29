@@ -9,7 +9,7 @@ from time import sleep
 import idpmodem
 from idpmodem.utils import get_wrapping_logger, validate_serial_port
 from idpmodem.constants import AT_ERROR_CODES
-from idpmodem.atcommand_async import IdpModemAsyncioClient, AtException, GnssTimeout
+from idpmodem.atcommand_async import IdpModemAsyncioClient, AtException, AtGnssTimeout
 from idpmodem.atcommand_async import LOGGING_VERBOSE_LEVEL as VERBOSE
 from idpmodem.nmea import Location
 
@@ -199,5 +199,5 @@ async def test_location_mock(mock_command_gnss_nmea_get, modem):
 
 @pytest.mark.asyncio
 async def test_location_timeout(mock_command_gnss_timeout, modem):
-    with pytest.raises(GnssTimeout):
+    with pytest.raises(AtGnssTimeout):
         await modem.location()

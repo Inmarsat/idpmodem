@@ -579,7 +579,8 @@ class IdpModemAsyncioClient:
                 raise AtGnssTimeout('Timed out waiting for GNSS fix')
             else:
                 return self._handle_at_error(cmd, response[1], None)
-        response.remove('OK')
+        if 'OK' in response:
+            response.remove('OK')
         response[0] = response[0].replace('%GPS: ', '')
         return response
 
@@ -801,7 +802,8 @@ class IdpModemAsyncioClient:
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1], None)
         # %MGRS: "<name>",<msg_no>,<priority>,<sin>,<state>,<size>,<sent_bytes>
-        response.remove('OK')
+        if 'OK' in response:
+            response.remove('OK')
         states = []
         for res in response:
             res = res.replace('%MGRS:', '').strip()
@@ -846,11 +848,12 @@ class IdpModemAsyncioClient:
         self._log.debug('Clearing transmit queue of return messages')
         cancelled_count = 0
         open_count = 0
-        cmd = 'AT%MGRSC'
+        cmd = 'AT%MGRS'
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        response.remove('OK')
+        if 'OK' in response:
+            response.remove('OK')
         if '%MGRS:' in response:
             response.remove('%MGRS:')
         for message in response:
@@ -859,12 +862,12 @@ class IdpModemAsyncioClient:
             parts = message.split(',')
             status = int(parts[4])
             name = parts[0].replace('"', '')
-            if status == 8:
-                cancelled_count += 1
-            elif status < 6:
+            if status < 6:
                 cancel_explicit = await self.message_mo_cancel(name)
                 if not cancel_explicit:
                     open_count += 1
+                else:
+                    cancelled_count += 1
         if open_count > 0:
             self._log.warning('{} messages still in transmit queue'.format(
                 open_count))
@@ -885,7 +888,8 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        response.remove('OK')
+        if 'OK' in response:
+            response.remove('OK')
         waiting = []
         #: %MGFN: name, number, priority, sin, state, length, bytes_received
         for res in response:
@@ -968,7 +972,6 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        # response.remove('OK')
         message = self._message_mt_parse(response[0], data_format=data_format)
         return message if verbose else message['bytes']
 
@@ -1200,7 +1203,6 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        response.remove('OK')
         cn_0, ctrl_state, beamsearch_state = response
         cn_0 = int(cn_0) / 100.0
         ctrl_state = int(ctrl_state)
@@ -1318,7 +1320,8 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[0])
-        response.remove('OK')
+        if 'OK' in response:
+            response.remove('OK')
         reg_defs = response[2:]
         registers = []
         for row in reg_defs:
