@@ -1203,6 +1203,8 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
+        if 'OK' in response:
+            response.remove('OK')
         cn_0, ctrl_state, beamsearch_state = response
         cn_0 = int(cn_0) / 100.0
         ctrl_state = int(ctrl_state)
