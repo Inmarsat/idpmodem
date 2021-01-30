@@ -17,7 +17,7 @@ import inspect
 import logging
 from logging.handlers import RotatingFileHandler
 from threading import Thread, Event
-from time import gmtime
+from time import gmtime, time
 from typing import Callable, Union
 
 import serial.tools.list_ports as list_ports
@@ -49,6 +49,7 @@ class RepeatingTimer(Thread):
                  name: str = None,
                  log: object = None,
                  sleep_chunk: float = 0.25,
+                 max_drift: int = None,
                  auto_start: bool = False,
                  defer: bool = True,
                  debug: bool = False,
@@ -62,6 +63,7 @@ class RepeatingTimer(Thread):
             name: Optional thread name.
             log: Optional external logger to use.
             sleep_chunk: Tick seconds between expiry checks.
+            max_drift: Number of seconds clock drift to tolerate.
             auto_start: Starts the thread and timer when created.
             defer: Set if first target waits for timer expiry.
             debug: verbose logging of tick count
@@ -91,6 +93,8 @@ class RepeatingTimer(Thread):
         self._args = args
         self._kwargs = kwargs
         self.sleep_chunk = sleep_chunk
+        self._timesync = time()
+        self.max_drift = max_drift
         self._defer = defer
         self._debug = debug
         self._terminate_event = Event()
@@ -101,12 +105,21 @@ class RepeatingTimer(Thread):
             self.start()
             self.start_timer()
 
+    def _resync(self, max_drift: int = None) -> int:
+        if max_drift is not None:
+            drift = time() - self._timesync % self.interval
+            max_drift = 0 if max_drift < 1 else max_drift
+            if drift > max_drift:
+                self.log.warning('Detected drift of {}s'.format(drift))
+                return drift
+        return 0
+
     def run(self):
         """Counts down the interval, checking every sleep_chunk for expiry."""
         while not self._terminate_event.is_set():
             while (self._count > 0
-                and self._start_event.is_set()
-                and self.interval > 0):
+                   and self._start_event.is_set()
+                   and self.interval > 0):
                 if self._debug:
                     if (self._count * self.sleep_chunk
                         - int(self._count * self.sleep_chunk)
@@ -124,12 +137,15 @@ class RepeatingTimer(Thread):
                 if self._count <= 0:
                     try:
                         self._target(*self._args, **self._kwargs)
-                        self._count = self.interval / self.sleep_chunk
+                        drift_adjust = (self.interval
+                                        - self._resync(self.max_drift))
+                        self._count = drift_adjust / self.sleep_chunk
                     except BaseException as e:
                         self._exception = e
 
     def start_timer(self):
         """Initially start the repeating timer."""
+        self._timesync = time()
         if not self._defer and self.interval > 0:
             self._target(*self._args, **self._kwargs)
         self._start_event.set()

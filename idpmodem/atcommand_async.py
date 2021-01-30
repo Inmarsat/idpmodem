@@ -289,7 +289,7 @@ class IdpModemAsyncioClient:
 
         """
         if current_thread() != self._thread:
-            self._log.warning('Call from external thread may crash')
+            self._log.warning('Call from external thread may crash or hang')
             loop = get_running_loop()
             set_event_loop(loop)
             await sleep(1)   #: add a slight delay to mitigate race condition
@@ -349,7 +349,6 @@ class IdpModemAsyncioClient:
                 self._retry_count = 0
                 if response[0] == 'ERROR':
                     self._log.debug('AT error detected - getting reason')
-                    self._event.clear()
                     error_code = await self.command('ATS80?')
                     if error_code is not None:
                         response.append(error_code[0])
