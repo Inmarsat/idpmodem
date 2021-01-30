@@ -1,58 +1,47 @@
 """Helpers for operating a headless device for example Raspberry Pi.
 
-Logging is crucial for debugging embedded systems.  However you don't want
-to fill up an embedded drive with log files, so a *wrapping_logger* is useful.
-
-For debugging/logging it is often helpful to have a sense of the parentage/flow 
-indicated by *caller_name*.
-
-Embedded tasks can use threading for repeated operations.  A
-*RepeatingTimer* can be started, stopped, restarted and reconfigured.
-
-When working with different OS and platforms, using a serial port to connect to 
-a modem can be simplified by *validate_serial_port*.
 """
 
 import inspect
 import logging
+from logging import Logger
 from logging.handlers import RotatingFileHandler
 from threading import Thread, Event
 from time import gmtime, time
 from typing import Callable, Union
 
 import serial.tools.list_ports as list_ports
-try:
-    import queue
-except ImportError:
-    import Queue as queue
+import queue
 
 
 class RepeatingTimer(Thread):
     """A repeating thread to call a function, can be stopped/restarted/changed.
     
+    Embedded tasks can use threading for continuous repeated operations.  A
+    *RepeatingTimer* can be started, stopped, restarted and reconfigured.
+
     A Thread that counts down seconds using sleep increments, then calls back 
     to a function with any provided arguments.
     Optional auto_start feature starts the thread and the timer, in this case 
     the user doesn't need to explicitly start() then start_timer().
 
     Attributes:
-        interval: Repeating timer interval in seconds (0=disabled).
-        log: A logger, with name inherited from calling function.
-        defer: Set (default=True) if the function call waits
-            for the first cycle expiry before calling back.
-        sleep_chunk: The fraction of seconds between processing ticks.
+        name (str): An optional descriptive name for the Thread.
+        interval (int): Repeating timer interval in seconds (0=disabled).
+        sleep_chunk (float): The fraction of seconds between processing ticks.
+
     """
     def __init__(self,
                  seconds: int,
                  target: Callable,
                  *args,
                  name: str = None,
-                 log: object = None,
+                 logger: Logger = None,
                  sleep_chunk: float = 0.25,
                  max_drift: int = None,
                  auto_start: bool = False,
                  defer: bool = True,
-                 debug: bool = False,
+                 verbose_debug: bool = False,
                  **kwargs):
         """Sets up a RepeatingTimer thread.
 
@@ -61,12 +50,12 @@ class RepeatingTimer(Thread):
             target: The function to execute each timer expiry.
             args: Positional arguments required by the target.
             name: Optional thread name.
-            log: Optional external logger to use.
+            logger: Optional external logger to use.
             sleep_chunk: Tick seconds between expiry checks.
             max_drift: Number of seconds clock drift to tolerate.
             auto_start: Starts the thread and timer when created.
             defer: Set if first target waits for timer expiry.
-            debug: verbose logging of tick count
+            verbose_debug: verbose logging of tick count
             kwargs: Optional keyword arguments to pass into the target.
 
         Raises:
@@ -76,18 +65,13 @@ class RepeatingTimer(Thread):
             err_str = 'RepeatingTimer seconds must be integer >= 0'
             raise ValueError(err_str)
         super(RepeatingTimer, self).__init__()
-        if name is not None:
-            self.name = name
-        else:
-            self.name = '{}_timer_thread'.format(str(target))
-        if is_logger(log):
-            self.log = log
-        else:
-            self.log = get_wrapping_logger(name=self.name, debug=debug)
+        self.name = name or '{}_timer_thread'.format(str(target))
+        self._log = logger or get_wrapping_logger(name=self.name,
+                                                  debug=verbose_debug)
         self.interval = seconds
         if target is None:
-            self.log.warning('No target specified for RepeatingTimer {}'
-                             .format(self.name))
+            self._log.warning('No target specified for RepeatingTimer {}'
+                              .format(self.name))
         self._target = target
         self._exception = None
         self._args = args
@@ -96,7 +80,7 @@ class RepeatingTimer(Thread):
         self._timesync = time()
         self.max_drift = max_drift
         self._defer = defer
-        self._debug = debug
+        self._debug = verbose_debug
         self._terminate_event = Event()
         self._start_event = Event()
         self._reset_event = Event()
@@ -105,17 +89,34 @@ class RepeatingTimer(Thread):
             self.start()
             self.start_timer()
 
+    @property
+    def sleep_chunk(self):
+        return self._sleep_chunk
+
+    @sleep_chunk.setter
+    def sleep_chunk(self, value: float):
+        if 1 % value != 0:
+            raise ValueError('1 must be a multiple of sleep_chunk')
+        self._sleep_chunk = value
+
     def _resync(self, max_drift: int = None) -> int:
+        """Used to adjust the next countdown to account for drift.
+        
+        Untested.
+        """
         if max_drift is not None:
             drift = time() - self._timesync % self.interval
             max_drift = 0 if max_drift < 1 else max_drift
             if drift > max_drift:
-                self.log.warning('Detected drift of {}s'.format(drift))
+                self._log.warning('Detected drift of {}s'.format(drift))
                 return drift
         return 0
 
     def run(self):
-        """Counts down the interval, checking every sleep_chunk for expiry."""
+        """*Note: runs automatically, not meant to be called explicitly.*
+        
+        Counts down the interval, checking every ``sleep_chunk`` for expiry.
+        """
         while not self._terminate_event.is_set():
             while (self._count > 0
                    and self._start_event.is_set()
@@ -125,11 +126,11 @@ class RepeatingTimer(Thread):
                         - int(self._count * self.sleep_chunk)
                         == 0.0):
                         #: log debug message at reasonable interval
-                        self.log.debug('{} countdown: {} ({}s @ step {})'
-                                    .format(self.name,
-                                    self._count,
-                                    self.interval,
-                                    self.sleep_chunk))
+                        self._log.debug('{} countdown: {} ({}s @ step {})'
+                                        .format(self.name,
+                                        self._count,
+                                        self.interval,
+                                        self.sleep_chunk))
                 if self._reset_event.wait(self.sleep_chunk):
                     self._reset_event.clear()
                     self._count = self.interval / self.sleep_chunk
@@ -150,17 +151,17 @@ class RepeatingTimer(Thread):
             self._target(*self._args, **self._kwargs)
         self._start_event.set()
         if self.interval > 0:
-            self.log.info('{} timer started ({} seconds)'.format(
-                          self.name, self.interval))
+            self._log.info('{} timer started ({} seconds)'.format(
+                           self.name, self.interval))
         else:
-            self.log.warning('{} timer will not trigger (interval 0)'.format(
-                             self.name))
+            self._log.warning('{} timer will not trigger (interval 0)'.format(
+                              self.name))
 
     def stop_timer(self):
         """Stop the repeating timer."""
         self._start_event.clear()
-        self.log.info('{} timer stopped ({} seconds)'
-                      .format(self.name, self.interval))
+        self._log.info('{} timer stopped ({} seconds)'
+                       .format(self.name, self.interval))
         self._count = self.interval / self.sleep_chunk
 
     def restart_timer(self):
@@ -172,13 +173,13 @@ class RepeatingTimer(Thread):
         else:
             self._start_event.set()
         if self.interval > 0:
-            self.log.info('{} timer restarted ({} seconds)'.format(
-                          self.name, self.interval))
+            self._log.info('{} timer restarted ({} seconds)'.format(
+                           self.name, self.interval))
         else:
-            self.log.warning('{} timer will not trigger (interval 0)'.format(
-                             self.name))
+            self._log.warning('{} timer will not trigger (interval 0)'.format(
+                              self.name))
 
-    def change_interval(self, seconds):
+    def change_interval(self, seconds: int):
         """Change the timer interval and restart it.
         
         Args:
@@ -189,21 +190,21 @@ class RepeatingTimer(Thread):
 
         """
         if (isinstance(seconds, int) and seconds >= 0):
-            self.log.info('{} timer interval changed (old:{} s new:{} s)'
-                          .format(self.name, self.interval, seconds))
+            self._log.info('{} timer interval changed (old:{} s new:{} s)'
+                           .format(self.name, self.interval, seconds))
             self.interval = seconds
             self._count = self.interval / self.sleep_chunk
             self.restart_timer()
         else:
             err_str = 'RepeatingTimer seconds must be integer >= 0'
-            self.log.error(err_str)
+            self._log.error(err_str)
             raise ValueError(err_str)
 
     def terminate(self):
         """Terminate the timer. (Cannot be restarted)"""
         self.stop_timer()
         self._terminate_event.set()
-        self.log.info('{} timer terminated'.format(self.name))
+        self._log.info('{} timer terminated'.format(self.name))
     
     def join(self):
         super(RepeatingTimer, self).join()
@@ -286,15 +287,15 @@ def is_logger(log: object) -> bool:
     
     Intended to be used by importing module without directly importing logging.
     """
-    return isinstance(log, logging.Logger)
+    return isinstance(log, Logger)
 
 
-def is_log_handler(logger: logging.Logger, handler: object) -> bool:
+def is_log_handler(logger: Logger, handler: object) -> bool:
     """Returns true if the handler is found in the logger.
     
     Args:
-        logger (logging.Logger)
-        handler (logging handler)
+        logger: the logger parent of the handler
+        handler: the handler to validate
     
     Returns:
         True if the handler is in the logger.
@@ -316,6 +317,9 @@ def get_caller_name(depth: int = 2,
                     mth: bool = False):
     """Returns the name of the calling function.
 
+    For debugging/logging it is often helpful to have a sense of the parentage/flow 
+    indicated by *caller_name*.
+    
     Args:
         depth: Starting depth of stack inspection.
         mod: Include module name.
@@ -368,25 +372,35 @@ def get_key_by_value(dictionary: dict, value: any) -> str:
 def get_wrapping_logger(name: str = None,
                         filename: str = None,
                         file_size: int = 5,
+                        max_files: int = 2,
                         debug: bool = False,
                         log_level: int = logging.INFO,
-                        **kwargs):
+                        **kwargs) -> Logger:
     """Sets up a wrapping logger that writes to console and optionally a file.
 
-    Initializes logging to console, and optionally a CSV formatted file.
-    CSV format: timestamp,[level],(thread),module.function:line,message
-    Default logging level is INFO.
-    Timestamps are UTC/GMT/Zulu.
+    Logging is crucial for debugging embedded systems.  However you don't want
+    to fill up an embedded drive with log files, so a *wrapping_logger* is
+    useful that:
+
+        * Initializes logging to console, and optionally a CSV formatted file
+        * Log file wraps at a given maximum size (default 5 MB)
+        * Is easy to configure a logging level (default INFO)
+        * Uses UTC/GMT/Zulu timestamps
+        * Provides a standardized CSV format
+            * ``timestamp,[level],(thread),module.function:line,message``
 
     Args:
         name: Name of the logger (if None, uses name of calling module).
-        filename: Name of the file/path if writing to a file.
+        filename: (optional) Name of the file/path if writing to a file.
         file_size: Max size of the file in megabytes, before wrapping.
-        debug: enable DEBUG logging (default INFO)
+        max_files: The maximum number of files in rotation.
+        debug: *backward compatible* enable DEBUG logging
+        log_level: A logging level (default INFO)
         kwargs: Optional overrides for RotatingFileHandler
     
     Returns:
         A logger with console stream handler and (optional) file handler.
+
     """
     FORMAT = ('%(asctime)s.%(msecs)03dZ,[%(levelname)s],(%(threadName)-10s),'
               '%(module)s.%(funcName)s:%(lineno)d,%(message)s')
@@ -408,7 +422,7 @@ def get_wrapping_logger(name: str = None,
         # TODO: validate that logfile is a valid path/filename
         mode = 'a'
         max_bytes = int(file_size * 1024 * 1024)
-        backup_count = 2
+        backup_count = max_files
         encoding = None
         delay = 0
         for kw in kwargs:
@@ -448,11 +462,14 @@ def get_wrapping_logger(name: str = None,
 def validate_serial_port(target: str, verbose: bool = False) -> Union[bool, tuple]:
     """Validates a given serial port as available on the host.
 
+    When working with different OS and platforms, using a serial port to connect
+    to a modem can be simplified by *validate_serial_port*.
+
     If target port is not found, a list of available ports is returned.
     Labels known FTDI and Prolific serial/USB drivers.
 
     Args:
-        target: Target port name e.g. '/dev/ttyUSB0'
+        target: Target port name e.g. ``/dev/ttyUSB0``
     
     Returns:
         True or False if detail is False

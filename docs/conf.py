@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = u'idpmodem'
-copyright = u'2020, G.Bruce-Payne'
+copyright = u'2020, Inmarsat'
 author = u'G.Bruce-Payne'
 
 # The full version, including alpha/beta/rc tags

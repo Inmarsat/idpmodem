@@ -18,7 +18,7 @@ sys.path.append(MODULE_DIR)
 '''
 from idpmodem.atcommand_thread import get_modem_thread, IdpModemBusy, AtException, AtCrcConfigError, AtCrcError, AtTimeout
 from idpmodem.message import MobileOriginatedMessage, MobileTerminatedMessage
-from idpmodem.codecs import common as idpcodec
+from idpmodem.codecs.common import CommonMessageFormat, Field
 from idpmodem.constants import FORMAT_B64, FORMAT_HEX
 from idpmodem.utils import get_wrapping_logger, RepeatingTimer
 
@@ -213,26 +213,24 @@ def send_idp_location():
         #: pdop = int(loc.pdop)
         data_format = FORMAT_B64
         # Build message bit-optimized
-        payload = idpcodec.CommonMessageFormat(msg_sin=msg_sin, 
-                                            msg_min=msg_min, 
-                                            name='location')
-        payload.add_field('timestamp', 'uint_32', loc.timestamp, bits=32)
-        payload.add_field('latitude', 'int_32', lat_milliminutes, bits=24)
-        payload.add_field('longitude', 'int_32', lng_milliminutes, bits=25)
-        payload.add_field('altitude', 'int_16', alt_m, bits=16)
-        payload.add_field('speed', 'uint_16', spd_kph, bits=8)
-        payload.add_field('heading', 'uint_16', hdg, bits=9)
-        payload.add_field('satellites', 'uint_8', loc.satellites, bits=4)
-        payload.add_field('fixtype', 'uint_8', loc.fix_type, bits=2)
-        payload.add_field('snr', 'uint_16', int(snr * 10), bits=9)
+        payload = CommonMessageFormat(name='location', sin=msg_sin, min=msg_min)
+        payload.fields.add(Field('timestamp', 'uint_32', loc.timestamp, bits=32))
+        payload.fields.add(Field('latitude', 'int_32', lat_milliminutes, bits=24))
+        payload.fields.add(Field('longitude', 'int_32', lng_milliminutes, bits=25))
+        payload.fields.add(Field('altitude', 'int_16', alt_m, bits=16))
+        payload.fields.add(Field('speed', 'uint_16', spd_kph, bits=8))
+        payload.fields.add(Field('heading', 'uint_16', hdg, bits=9))
+        payload.fields.add(Field('satellites', 'uint_8', loc.satellites, bits=4))
+        payload.fields.add(Field('fixtype', 'uint_8', loc.fix_type, bits=2))
+        payload.fields.add(Field('snr', 'uint_16', int(snr * 10), bits=9))
         # Get binary string payload to send
-        data_str = payload.encode_idp(data_format=data_format)
+        metadata = payload.encode(data_format=data_format)
         # Create message wrapper with SIN/MIN
         log.debug('Submitting mobile-originated location message')
-        message_id = modem.message_mo_send(data=data_str,
-                                        data_format=data_format,
-                                        sin=msg_sin,
-                                        min=msg_min)
+        message_id = modem.message_mo_send(data=metadata['data'],
+                                           data_format=data_format,
+                                           sin=msg_sin,
+                                           min=msg_min)
         if message_id.startswith('ERR'):
             log.error('Failed to submit location message: {}'.format(message_id))
         else:

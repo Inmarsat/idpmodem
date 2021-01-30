@@ -1,5 +1,10 @@
-Welcome to idpmodem's documentation!
-====================================
+==================================
+``idpmodem`` Library Documentation
+==================================
+
+This Python (3.7+) library is a reference design for interfacing an edge device
+to an `Inmarsat <https://inmarsat.com>_` Type Approved modem designed to operate
+on the *IsatData Pro* satellite IoT messaging service.
 
 .. toctree::
    :maxdepth: 2
@@ -13,6 +18,13 @@ atcommand_async
    :members:
 
 
+aterror
+=======
+
+.. automodule:: idpmodem.aterror
+   :members:
+
+
 nmea
 ====
 
@@ -20,20 +32,27 @@ nmea
    :members:
 
 
-atcommand_thread
-================
+message
+=======
 
-.. automodule:: idpmodem.atcommand_thread
+.. automodule:: idpmodem.message
    :members:
 
 
-ST2100 demo
-===========
+codecs
+======
 
-.. automodule:: examples.st2100_demo
+.. automodule:: idpmodem.codecs.common
    :members:
 
-   
+
+utils
+=====
+
+.. automodule:: idpmodem.utils
+   :members: RepeatingTimer, get_wrapping_logger
+
+
 Indices and tables
 ==================
 

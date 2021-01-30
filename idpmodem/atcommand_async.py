@@ -5,6 +5,14 @@ This module provides an async serial interface that sends and receives
 AT commands, decoding/abstracting typically used operations.
 Based on the AioSerial package.
 
+Example usage::
+
+    import asyncio
+    import idpmodem
+
+    mymodem = idpmodem.IdpModemAsyncioClient()
+    initialized = asyncio.run(mymodem.initialize(crc=True))
+
 """
 
 from aioserial import AioSerial
@@ -101,7 +109,7 @@ class IdpModemAsyncioClient:
 
     Attributes:
         port: The serial port name e.g. `/dev/ttyUSB0`
-        baudrate: The baudrate of the serial port
+        baudrate: The baudrate of the serial port e.g. `9600`
         crc: A boolean used if CRC-16 is enabled for long serial cables
         loop: The asyncio event loop (uses default if not provided)
 
@@ -110,7 +118,6 @@ class IdpModemAsyncioClient:
     def __init__(self,
                  port: str = '/dev/ttyUSB0',
                  baudrate: int = 9600,
-                 crc: bool = False,
                  loop: AbstractEventLoop = None,
                  logger: logging.Logger = None,
                  log_level: int = logging.INFO):
@@ -128,13 +135,13 @@ class IdpModemAsyncioClient:
         self._log = logger or get_wrapping_logger(log_level=log_level)
         self.port = port
         self.baudrate = baudrate
-        self.loop = loop # or get_event_loop()
+        self.crc = None
+        self.loop = loop
         self._thread = current_thread()
         self._event = Event()
-        self.serialport = None
-        self.pending_command = None
-        self.pending_command_time = None
-        self.crc = None
+        self._serial = None
+        self._pending_command = None
+        self._pending_command_time = None
         self._retry_count = 0
         self._serial_async_error_count = 0
 
@@ -165,6 +172,17 @@ class IdpModemAsyncioClient:
                          at_command: str,
                          err_code: Union[str, int],
                          return_value: any = None) -> any:
+        """Manages log and/or raising errors.
+        
+        Args:
+            at_command: The command that experienced an error
+            err_code: The error code received
+            return_value: The value to return after logging
+        
+        Raises:
+            Re-raises the exceptions
+
+        """
         error_str = AT_ERROR_CODES[int(err_code)]
         self._log.error("{} Exception: {}".format(at_command, error_str))
         if return_value is None:
@@ -183,11 +201,11 @@ class IdpModemAsyncioClient:
         """
         if self.crc:
             data = get_crc(data)
-        self.pending_command = data
-        to_send = self.pending_command + '\r'
+        self._pending_command = data
+        to_send = self._pending_command + '\r'
         self._log.verbose('Sending {}'.format(_printable(to_send)))
-        self.pending_command_time = time()
-        await self.serialport.write_async(to_send.encode())
+        self._pending_command_time = time()
+        await self._serial.write_async(to_send.encode())
         return data
 
     async def _recv(self, timeout: int = 5) -> list:
@@ -212,28 +230,28 @@ class IdpModemAsyncioClient:
         try:
             while True:
                 chars = (await wait_for(
-                    self.serialport.read_until_async(b'\r\n'),
+                    self._serial.read_until_async(b'\r\n'),
                     timeout=timeout)).decode()
                 msg += chars
                 verbose_response += chars
                 if msg.endswith('\r\n'):
                     self._log.verbose('Processing {}'.format(_printable(msg)))
                     msg = msg.strip()
-                    if msg != self.pending_command:
+                    if msg != self._pending_command:
                         if msg != '':
                             # empty lines are not included in response list
                             # but are preserved in verbose_response for CRC
                             response.append(msg)
                     else:
                         # remove echo for possible CRC calculation
-                        echo = self.pending_command + '\r'
+                        echo = self._pending_command + '\r'
                         self._log.verbose('Removing echo {}'.format(
                             _printable(echo)))
                         verbose_response = verbose_response.replace(echo, '')
                     if msg in ['OK', 'ERROR']:
                         try:
                             response_crc = (await wait_for(
-                                self.serialport.read_until_async(b'\r\n'),
+                                self._serial.read_until_async(b'\r\n'),
                                 timeout=CRC_DELAY)).decode()
                             if response_crc:
                                 response_crc = response_crc.strip()
@@ -260,9 +278,9 @@ class IdpModemAsyncioClient:
                         break
                     msg = ''
         except TimeoutError:
-            timeout_time = time() - self.pending_command_time
+            timeout_time = time() - self._pending_command_time
             err = ('AT timeout {} after {} seconds ({}s after command)'.format(
-                self.pending_command, timeout, timeout_time))
+                self._pending_command, timeout, timeout_time))
             raise AtTimeout(err)
         return response
 
@@ -326,7 +344,7 @@ class IdpModemAsyncioClient:
             self._event.set()
             try:
                 self._log.verbose('Opening serial port {}'.format(self.port))
-                self.serialport = AioSerial(port=self.port,
+                self._serial = AioSerial(port=self.port,
                                             baudrate=self.baudrate,
                                             loop=self.loop)
             except Exception as e:
@@ -334,7 +352,7 @@ class IdpModemAsyncioClient:
             try:
                 self._log.verbose('Checking unsolicited data prior to {}'.format(
                     at_command))
-                self.pending_command_time = time()
+                self._pending_command_time = time()
                 unsolicited = await self._recv(timeout=0.25)
                 if unsolicited:
                     self._log.warning('Unsolicited data: {}'.format(unsolicited))
@@ -368,10 +386,10 @@ class IdpModemAsyncioClient:
                 self._retry_count = 0
                 raise AtException(error_message)
         finally:
-            if self.serialport:
+            if self._serial:
                 self._log.verbose('Closing serial port {}'.format(self.port))
-                self.serialport.close()
-                self.serialport = None
+                self._serial.close()
+                self._serial = None
             self._event.clear()
     
     async def initialize(self, crc: bool = False) -> bool:
@@ -588,7 +606,7 @@ class IdpModemAsyncioClient:
     async def location(self,
                        stale_secs: int = 1,
                        wait_secs: int = 35) -> Location:
-        """Returns a location object
+        """Returns a location object.
         
         Args:
             stale_secs: the maximum fix age to accept
