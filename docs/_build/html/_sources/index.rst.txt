@@ -3,7 +3,7 @@
 ==================================
 
 This Python (3.7+) library is a reference design for interfacing an edge device
-to an `Inmarsat <https://inmarsat.com>_` Type Approved modem designed to operate
+to an `Inmarsat <https://inmarsat.com>`_ Type Approved modem designed to operate
 on the *IsatData Pro* satellite IoT messaging service.
 
 .. toctree::
