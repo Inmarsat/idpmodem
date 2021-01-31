@@ -63,12 +63,12 @@ logging.VERBOSE = LOGGING_VERBOSE_LEVEL
 
 BAUDRATES = [2400, 4800, 9600, 19200, 38400, 57600, 115200]
 
-def __printable(string: str) -> str:
+def _printable(string: str) -> str:
     """Used for visualizing non-printable AT characters."""
     return string.replace('\r', '<cr>').replace('\n', '<lf>')
 
 
-def __serial_asyncio_lost_bytes(response: str) -> bool:
+def _serial_asyncio_lost_bytes(response: str) -> bool:
     """Used to capture errors in serial_asyncio.
     
     Deprecated.
@@ -78,13 +78,13 @@ def __serial_asyncio_lost_bytes(response: str) -> bool:
     return False
 
 
-def __to_signed32(n):
+def _to_signed32(n):
     """Converts an integer to signed 32-bit format."""
     n = n & 0xffffffff
     return (n ^ 0x80000000) - 0x80000000
 
 
-def __notifications_dict(sreg_value: int = None) -> OrderedDict:
+def _notifications_dict(sreg_value: int = None) -> OrderedDict:
     """Returns an OrderedDictionary as an abstracted bitmask of notifications.
     
     Args:
@@ -207,7 +207,7 @@ class IdpModemAsyncioClient:
             data = get_crc(data)
         self._pending_command = data
         to_send = self._pending_command + '\r'
-        self._log.verbose('Sending {}'.format(__printable(to_send)))
+        self._log.verbose('Sending {}'.format(_printable(to_send)))
         self._pending_command_time = time()
         await self._serial.write_async(to_send.encode())
         return data
@@ -239,7 +239,7 @@ class IdpModemAsyncioClient:
                 msg += chars
                 verbose_response += chars
                 if msg.endswith('\r\n'):
-                    self._log.verbose('Processing {}'.format(__printable(msg)))
+                    self._log.verbose('Processing {}'.format(_printable(msg)))
                     msg = msg.strip()
                     if msg != self._pending_command:
                         if msg != '':
@@ -250,7 +250,7 @@ class IdpModemAsyncioClient:
                         # remove echo for possible CRC calculation
                         echo = self._pending_command + '\r'
                         self._log.verbose('Removing echo {}'.format(
-                            __printable(echo)))
+                            _printable(echo)))
                         verbose_response = verbose_response.replace(echo, '')
                     if msg in ['OK', 'ERROR']:
                         try:
@@ -259,19 +259,19 @@ class IdpModemAsyncioClient:
                                 timeout=CRC_DELAY)).decode()
                             if response_crc:
                                 response_crc = response_crc.strip()
-                                if __serial_asyncio_lost_bytes(verbose_response):
+                                if _serial_asyncio_lost_bytes(verbose_response):
                                     self._serial_async_error_count += 1
                                 if not validate_crc(response=verbose_response,
                                                     candidate=response_crc):
                                     err_msg = '{} CRC error for {}'.format(
                                         response_crc,
-                                        __printable(verbose_response))
+                                        _printable(verbose_response))
                                     self._log.error(err_msg)
                                     raise AtCrcError(err_msg)
                                 else:
                                     self._log.verbose('CRC {} ok for {}'.format(
                                         response_crc,
-                                        __printable(verbose_response)))
+                                        _printable(verbose_response)))
                                 if not self.crc:
                                     # raise AtCrcConfigError('CRC found but unexpected') #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                                     self.crc = True
@@ -1130,7 +1130,7 @@ class IdpModemAsyncioClient:
         for bit in reversed(bitmask):
             #: 32-bit signed conversion redundant since response is string
             if bit == '1':
-                event['data'][i] = __to_signed32(int(event['data'][i]))
+                event['data'][i] = _to_signed32(int(event['data'][i]))
             else:
                 event['data'][i] = int(event['data'][i])
             i += 1
@@ -1191,7 +1191,7 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        return __notifications_dict(int(response[0]))
+        return _notifications_dict(int(response[0]))
 
     async def notification_check(self) -> OrderedDict:
         """Returns the current active event notification bitmask (S89).
@@ -1210,7 +1210,7 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        return __notifications_dict(int(response[0]))
+        return _notifications_dict(int(response[0]))
 
     async def satellite_status(self) -> dict:
         """Returns the control state and C/No.

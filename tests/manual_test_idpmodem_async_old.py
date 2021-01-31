@@ -13,7 +13,7 @@ from idpmodem.atcommand_async import IdpModemAsyncioClient, AtGnssTimeout
 from idpmodem.nmea import Location
 
 
-DEFAULT_PORT = '/dev/ttyUSB1'
+DEFAULT_PORT = '/dev/ttyUSB0'
 
 
 def repeat_to_length(string_to_expand: str, length: int) -> str:
@@ -391,6 +391,7 @@ def suite():
     suite = unittest.TestSuite()
     available_tests = unittest.defaultTestLoader.getTestCaseNames(IdpModemTestCase)
     tests = [
+        'test_01_initialize'
         # Add test cases above as strings or leave empty to test all cases
     ]
     if len(tests) > 0:
