@@ -22,7 +22,7 @@ copyright = u'2020, Inmarsat'
 author = u'G.Bruce-Payne'
 
 # The full version, including alpha/beta/rc tags
-release = u'1.1.7'
+release = u'1.1.8'
 
 
 # -- General configuration ---------------------------------------------------

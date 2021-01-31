@@ -36,6 +36,6 @@ $(window).resize(function(){
         $("li.nav-item-0 a").text("Top");
     }
     else {
-        $("li.nav-item-0 a").text("idpmodem 1.1.7 documentation");
+        $("li.nav-item-0 a").text("idpmodem 1.1.8 documentation");
     }
 });

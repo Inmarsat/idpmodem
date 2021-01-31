@@ -19,14 +19,13 @@ from aioserial import AioSerial
 from asyncio import AbstractEventLoop, gather, TimeoutError, wait_for, sleep
 from asyncio import get_running_loop, set_event_loop
 from asyncio import run_coroutine_threadsafe, wrap_future
-from atexit import register as on_exit
 from base64 import b64decode, b64encode
 from collections import OrderedDict
 from glob import glob
 import logging
 from threading import current_thread, Event
 from time import time
-from typing import Callable, Tuple, Union
+from typing import Tuple, Union
 
 from .aterror import (
     AtCrcConfigError,
@@ -34,7 +33,7 @@ from .aterror import (
     AtException,
     AtGnssTimeout,
     AtTimeout,
-    AtUnsolicited
+    AtUnsolicited,
 )
 from .constants import (
     AT_ERROR_CODES,
@@ -51,8 +50,8 @@ from .constants import (
 )
 from .crcxmodem import get_crc, validate_crc
 from .message import MobileOriginatedMessage, MobileTerminatedMessage
-from .nmea import location_get, Location, NmeaException
-from .utils import get_wrapping_logger, validate_serial_port
+from .nmea import location_get, Location
+from .utils import get_wrapping_logger
 
 LOGGING_VERBOSE_LEVEL = 9
 logging.addLevelName(LOGGING_VERBOSE_LEVEL, 'VERBOSE')
@@ -62,25 +61,30 @@ def verbose(self, message, *args, **kwargs):
 logging.Logger.verbose = verbose
 logging.VERBOSE = LOGGING_VERBOSE_LEVEL
 
-BAUDRATES = [2400, 9600, 19200, 115200]
+BAUDRATES = [2400, 4800, 9600, 19200, 38400, 57600, 115200]
 
-def _printable(string: str) -> str:
+def __printable(string: str) -> str:
+    """Used for visualizing non-printable AT characters."""
     return string.replace('\r', '<cr>').replace('\n', '<lf>')
 
 
-def _serial_asyncio_lost_bytes(response: str) -> bool:
+def __serial_asyncio_lost_bytes(response: str) -> bool:
+    """Used to capture errors in serial_asyncio.
+    
+    Deprecated.
+    """
     if ('AT' in response or '\r\r' in response):
         return True
     return False
 
 
-def _to_signed32(n):
+def __to_signed32(n):
     """Converts an integer to signed 32-bit format."""
     n = n & 0xffffffff
     return (n ^ 0x80000000) - 0x80000000
 
 
-def _notifications_dict(sreg_value: int = None) -> OrderedDict:
+def __notifications_dict(sreg_value: int = None) -> OrderedDict:
     """Returns an OrderedDictionary as an abstracted bitmask of notifications.
     
     Args:
@@ -203,7 +207,7 @@ class IdpModemAsyncioClient:
             data = get_crc(data)
         self._pending_command = data
         to_send = self._pending_command + '\r'
-        self._log.verbose('Sending {}'.format(_printable(to_send)))
+        self._log.verbose('Sending {}'.format(__printable(to_send)))
         self._pending_command_time = time()
         await self._serial.write_async(to_send.encode())
         return data
@@ -235,7 +239,7 @@ class IdpModemAsyncioClient:
                 msg += chars
                 verbose_response += chars
                 if msg.endswith('\r\n'):
-                    self._log.verbose('Processing {}'.format(_printable(msg)))
+                    self._log.verbose('Processing {}'.format(__printable(msg)))
                     msg = msg.strip()
                     if msg != self._pending_command:
                         if msg != '':
@@ -246,7 +250,7 @@ class IdpModemAsyncioClient:
                         # remove echo for possible CRC calculation
                         echo = self._pending_command + '\r'
                         self._log.verbose('Removing echo {}'.format(
-                            _printable(echo)))
+                            __printable(echo)))
                         verbose_response = verbose_response.replace(echo, '')
                     if msg in ['OK', 'ERROR']:
                         try:
@@ -255,25 +259,25 @@ class IdpModemAsyncioClient:
                                 timeout=CRC_DELAY)).decode()
                             if response_crc:
                                 response_crc = response_crc.strip()
-                                if _serial_asyncio_lost_bytes(verbose_response):
+                                if __serial_asyncio_lost_bytes(verbose_response):
                                     self._serial_async_error_count += 1
                                 if not validate_crc(response=verbose_response,
                                                     candidate=response_crc):
                                     err_msg = '{} CRC error for {}'.format(
                                         response_crc,
-                                        _printable(verbose_response))
+                                        __printable(verbose_response))
                                     self._log.error(err_msg)
                                     raise AtCrcError(err_msg)
                                 else:
                                     self._log.verbose('CRC {} ok for {}'.format(
                                         response_crc,
-                                        _printable(verbose_response)))
+                                        __printable(verbose_response)))
                                 if not self.crc:
-                                    # raise AtCrcConfigError #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                    # raise AtCrcConfigError('CRC found but unexpected') #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                                     self.crc = True
                         except TimeoutError:
                             if self.crc:
-                                raise AtCrcConfigError   #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                                raise AtCrcConfigError('CRC expected but not found')   #: new <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                             self.crc = False
                         break
                     msg = ''
@@ -356,6 +360,7 @@ class IdpModemAsyncioClient:
                 unsolicited = await self._recv(timeout=0.25)
                 if unsolicited:
                     self._log.warning('Unsolicited data: {}'.format(unsolicited))
+                    # raise AtUnsolicited('Unsolicited data: {}'.format(unsolicited))
             except AtTimeout:
                 self._log.verbose('No unsolicited data found')
             tasks = [self._send(at_command),
@@ -405,7 +410,8 @@ class IdpModemAsyncioClient:
             AtException on errors other than CRC enabled
 
         """
-        self._log.debug('Initializing modem{}'.format(' (CRC)' if crc else ''))
+        self._log.debug('Initializing modem{}'.format(
+            ' (CRC enabled)' if crc else ''))
         cmd = 'ATZ;E1;V1'
         cmd += ';%CRC=1' if crc else ''
         success = await self.command(cmd)
@@ -796,7 +802,7 @@ class IdpModemAsyncioClient:
             Name of the message if successful, or the error string
         """
         self._log.debug('Submitting MobileOriginatedMessage')
-        raise NotImplementedError
+        raise NotImplementedError('Formatted message send future feature')
 
     async def message_mo_state(self, name: str = None) -> list:
         """Returns the message state(s) requested.
@@ -1006,7 +1012,7 @@ class IdpModemAsyncioClient:
 
         """
         self._log.debug('Retrieving forward message {}'.format(name))
-        raise NotImplementedError
+        raise NotImplementedError('Formatted receive message future feature')
 
     async def message_mt_delete(self, name: str) -> bool:
         """Marks a Return message for deletion by the modem.
@@ -1124,7 +1130,7 @@ class IdpModemAsyncioClient:
         for bit in reversed(bitmask):
             #: 32-bit signed conversion redundant since response is string
             if bit == '1':
-                event['data'][i] = _to_signed32(int(event['data'][i]))
+                event['data'][i] = __to_signed32(int(event['data'][i]))
             else:
                 event['data'][i] = int(event['data'][i])
             i += 1
@@ -1185,7 +1191,7 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        return _notifications_dict(int(response[0]))
+        return __notifications_dict(int(response[0]))
 
     async def notification_check(self) -> OrderedDict:
         """Returns the current active event notification bitmask (S89).
@@ -1204,7 +1210,7 @@ class IdpModemAsyncioClient:
         response = await self.command(cmd)
         if response[0] == 'ERROR':
             return self._handle_at_error(cmd, response[1])
-        return _notifications_dict(int(response[0]))
+        return __notifications_dict(int(response[0]))
 
     async def satellite_status(self) -> dict:
         """Returns the control state and C/No.
