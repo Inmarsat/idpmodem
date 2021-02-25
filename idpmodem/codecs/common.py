@@ -168,7 +168,6 @@ class Field:
         xsi_type = DATA_TYPES[self.data_type]
         field = ET.Element('Field', attrib={
                 '{http://www.w3.org/2001/XMLSchema-instance}type': xsi_type})
-        # field.set('xsi:type', xsi_type)
         name = ET.SubElement(field, 'Name')
         name.text = self.name
         if self.description:
@@ -211,7 +210,7 @@ class Message:
         name (str): The message name
         sin (int): The Service Identification Number
         min (int): The Message Identification Number
-        fields (list): An array of Fields
+        fields (list): A list of Fields
         description (str): Optional description
         is_forward (bool): Indicates if the message is mobile-terminated
 
@@ -375,7 +374,7 @@ class Message:
             'data': data
         }
 
-    def get_xml(self):
+    def get_xml(self) -> ET.Element:
         """Returns the XML definition for a Message Definition File."""
         xmessage = ET.Element('Message')
         name = ET.SubElement(xmessage, 'Name')
@@ -389,11 +388,21 @@ class Message:
 
 
 class CommonMessageFormat(Message):
-    """Included for backward compatibility, replaced by Message."""
+    """Deprecated, replaced by Message."""
     pass
 
 
 class Service:
+    """A data structure holding a set of related Forward and Return Messages.
+    
+    Attributes:
+        name (str): The service name
+        sin (int): Service Identification Number or codec service id (16..255)
+        description (str): A description of the service (unsupported)
+        messages_forward (list): A list of mobile-terminated Message definitions
+        messages_return (list): A list of mobile-originated Message definitions
+
+    """
     def __init__(self, name: str, sin: int, description: str = None) -> None:
         if not isinstance(name, str) or name == '':
             raise ValueError('Invalid service name {}'.format(name))
@@ -407,7 +416,8 @@ class Service:
         self.messages_forward = Messages(self.sin, is_forward=True)
         self.messages_return = Messages(self.sin, is_forward=False)
     
-    def get_xml(self):
+    def get_xml(self) -> ET.Element:
+        """Returns the XML structure of the Service for a MDF."""
         if len(self.messages_forward) == 0 and len(self.messages_return) == 0:
             raise ValueError('No messages defined for service {}'.format(
                              self.sin))
@@ -505,53 +515,23 @@ class ObjectList(list):
         return False
 
 
-class Fields(list):
+class Fields(ObjectList):
+    """The list of Fields defining a Message."""
     def __init__(self):
-        super().__init__()
-    
-    def add(self, field: Field) -> bool:
-        """Add a field to the list.
-
-        Args:
-            field (object): A valid Field
-        
-        Raises:
-            ValueError if there is a duplicate or invalid name,
-                invalid value_range or unsupported data_type
-
-        """
-        if not isinstance(field, Field):
-            raise ValueError('Invalid field definition')
-        for f in self:
-            if f.name == field.name:
-                raise ValueError('Duplicate name found in message')
-        self.append(field)
-        return True
-
-    def __getitem__(self, n: Union[str, int]) -> Field:
-        if isinstance(n, str):
-            for field in self:
-                if field.name == n:
-                    return field
-            raise ValueError('Field name {} not found'.format(n))
-        return super(Fields, self).__getitem__(n)
-
-    def delete(self, name: str):
-        for f in self:
-            if f.name == name:
-                self.remove(f)
-                return True
-        return False
+        super().__init__(list_type=Field)
 
 
 class Messages(ObjectList):
+    """The list of Messages (Forward or Return) within a Service."""
     def __init__(self, sin: int, is_forward: bool):
         super().__init__(list_type=Message)
         self.sin = sin
         self.is_forward = is_forward
-    '''
+    
     def add(self, message: Message) -> bool:
-        """Add a message to the list.
+        """Add a message to the list if it matches the parent SIN.
+
+        Overrides the base class add method.
 
         Args:
             message (object): A valid Message
@@ -576,65 +556,11 @@ class Messages(ObjectList):
         self.append(message)
         return True
 
-    def __getitem__(self, n: Union[str, int]) -> Message:
-        if isinstance(n, str):
-            for message in self:
-                if message.name == n:
-                    return message
-            raise ValueError('Message name {} not found'.format(n))
-        return super().__getitem__(n)
-
-    def delete(self, name: str):
-        for m in self:
-            if m.name == name:
-                self.remove(m)
-                return True
-        return False
-    '''
-
 
 class Services(ObjectList):
+    """The list of Service(s) within a MessageDefinitions."""
     def __init__(self):
         super().__init__(list_type=Service)
-    '''
-    def add(self, service: Service) -> bool:
-        """Add a service to the list.
-
-        Args:
-            service (object): A valid Service
-        
-        Raises:
-            ValueError if there is a duplicate or invalid name,
-                invalid value_range or unsupported data_type
-
-        """
-        if not isinstance(service, Service):
-            raise ValueError('Invalid service definition')
-        for s in self:
-            if s.name == service.name:
-                raise ValueError('Duplicate service name {} found'.format(
-                                 service.name))
-            if s.sin == service.sin:
-                raise ValueError('Duplicate SIN {} found'.format(
-                                 service.sin))
-        self.append(service)
-        return True
-
-    def __getitem__(self, n: Union[str, int]) -> Message:
-        if isinstance(n, str):
-            for service in self:
-                if service.name == n:
-                    return service
-            raise ValueError('Service name {} not found'.format(n))
-        return super().__getitem__(n)
-
-    def delete(self, name: str):
-        for s in self:
-            if s.name == name:
-                self.remove(s)
-                return True
-        return False
-    '''
 
 
 class MessageDefinitions:
