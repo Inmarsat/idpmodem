@@ -145,3 +145,4 @@ make.bat
 .idea
 idpmodem-asyncio
 tempdoc
+*.idpmsg

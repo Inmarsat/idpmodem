@@ -1,5 +1,4 @@
-"""Message classes for structured data exchange.
-
+"""Message classes for abstracting messages presented by/to the AT commands.
 """
 
 from base64 import b64decode, b64encode
@@ -8,8 +7,8 @@ from logging import Logger
 from string import printable
 from time import time
 
-from .utils import get_wrapping_logger
-from .constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
+from idpmodem.utils import get_wrapping_logger
+from idpmodem.constants import FORMAT_B64, FORMAT_HEX, FORMAT_TEXT, PRIORITY_LOW, PRIORITY_MT, RX_RETRIEVED
 
 
 def _is_hex_string(s: str) -> bool:
@@ -60,7 +59,6 @@ class Message(object):
     """
 
     MAX_NAME_LENGTH = 8
-    MAX_HEX_SIZE = 100
 
     def __init__(self,
                  payload,

@@ -4,11 +4,11 @@
 
 import inspect
 import logging
-from logging import Logger
+from logging import Logger, INFO
 from logging.handlers import RotatingFileHandler
 from threading import Thread, Event
 from time import gmtime, time
-from typing import Callable, Union
+from typing import Callable, Tuple, Union
 
 import serial.tools.list_ports as list_ports
 import queue
@@ -34,15 +34,17 @@ class RepeatingTimer(Thread):
     def __init__(self,
                  seconds: int,
                  target: Callable,
-                 *args,
+                 args: Tuple = (),
+                 kwargs: dict = {},
                  name: str = None,
                  logger: Logger = None,
+                 log_level: int = INFO,
                  sleep_chunk: float = 0.25,
                  max_drift: int = None,
                  auto_start: bool = False,
                  defer: bool = True,
-                 verbose_debug: bool = False,
-                 **kwargs):
+                 debug: bool = False,
+                 daemon = True):
         """Sets up a RepeatingTimer thread.
 
         Args:
@@ -64,27 +66,27 @@ class RepeatingTimer(Thread):
         if not (isinstance(seconds, int) and seconds >= 0):
             err_str = 'RepeatingTimer seconds must be integer >= 0'
             raise ValueError(err_str)
-        super(RepeatingTimer, self).__init__()
+        super().__init__(daemon=daemon)
         self.name = name or '{}_timer_thread'.format(str(target))
         self._log = logger or get_wrapping_logger(name=self.name,
-                                                  debug=verbose_debug)
+                                                  log_level=log_level)
         self.interval = seconds
         if target is None:
             self._log.warning('No target specified for RepeatingTimer {}'
                               .format(self.name))
-        self._target = target
+        self.target = target
         self._exception = None
-        self._args = args
-        self._kwargs = kwargs
+        self.args = args
+        self.kwargs = kwargs
         self.sleep_chunk = sleep_chunk
-        self._timesync = time()
-        self.max_drift = max_drift
         self._defer = defer
-        self._debug = verbose_debug
+        self._debug = debug
         self._terminate_event = Event()
         self._start_event = Event()
         self._reset_event = Event()
         self._count = self.interval / self.sleep_chunk
+        self._timesync = time()
+        self.max_drift = max_drift
         if auto_start:
             self.start()
             self.start_timer()
@@ -137,7 +139,7 @@ class RepeatingTimer(Thread):
                 self._count -= 1
                 if self._count <= 0:
                     try:
-                        self._target(*self._args, **self._kwargs)
+                        self.target(*self.args, **self.kwargs)
                         drift_adjust = (self.interval
                                         - self._resync(self.max_drift))
                         self._count = drift_adjust / self.sleep_chunk
@@ -148,7 +150,7 @@ class RepeatingTimer(Thread):
         """Initially start the repeating timer."""
         self._timesync = time()
         if not self._defer and self.interval > 0:
-            self._target(*self._args, **self._kwargs)
+            self.target(*self.args, **self.kwargs)
         self._start_event.set()
         if self.interval > 0:
             self._log.info('{} timer started ({} seconds)'.format(
@@ -167,7 +169,7 @@ class RepeatingTimer(Thread):
     def restart_timer(self):
         """Restart the repeating timer (after an interval change)."""
         if not self._defer and self.interval > 0:
-            self._target(*self._args, **self._kwargs)
+            self.target(*self.args, **self.kwargs)
         if self._start_event.is_set():
             self._reset_event.set()
         else:
@@ -210,7 +212,7 @@ class RepeatingTimer(Thread):
         super(RepeatingTimer, self).join()
         if self._exception:
             raise self._exception
-        return self._target
+        return self.target
 
 
 class SearchableQueue(object):

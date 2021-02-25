@@ -70,21 +70,19 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.codecs.common.Fields.add">add() (idpmodem.codecs.common.Fields method)</a>
+
+      <ul>
+        <li><a href="index.html#idpmodem.codecs.common.ObjectList.add">(idpmodem.codecs.common.ObjectList method)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service.add_forward_message">add_forward_message() (idpmodem.codecs.common.MessageDefinitions.Service method)</a>
-</li>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service.add_return_message">add_return_message() (idpmodem.codecs.common.MessageDefinitions.Service method)</a>
-</li>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.add_service">add_service() (idpmodem.codecs.common.MessageDefinitions method)</a>
-</li>
+      </ul></li>
       <li><a href="index.html#idpmodem.nmea.Location.altitude">altitude (idpmodem.nmea.Location attribute)</a>
 </li>
       <li><a href="index.html#idpmodem.aterror.AtBusy">AtBusy</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.aterror.AtCrcConfigError">AtCrcConfigError</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.aterror.AtCrcError">AtCrcError</a>
 </li>
       <li><a href="index.html#idpmodem.aterror.AtException">AtException</a>
@@ -145,14 +143,18 @@
 </li>
       <li><a href="index.html#idpmodem.codecs.common.Field.data_type">data_type (idpmodem.codecs.common.Field attribute)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.decode_at">decode_at() (in module idpmodem.codecs.common)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.decode">decode() (idpmodem.codecs.common.Message method)</a>
+</li>
+      <li><a href="index.html#idpmodem.codecs.common.ObjectList.delete">delete() (idpmodem.codecs.common.ObjectList method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.description">description (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.derive">derive() (idpmodem.codecs.common.Message method)</a>
+</li>
+      <li><a href="index.html#idpmodem.codecs.common.Field.description">description (idpmodem.codecs.common.Field attribute)</a>
 
       <ul>
-        <li><a href="index.html#idpmodem.codecs.common.Field.description">(idpmodem.codecs.common.Field attribute)</a>
+        <li><a href="index.html#idpmodem.codecs.common.Message.description">(idpmodem.codecs.common.Message attribute)</a>
 </li>
       </ul></li>
       <li><a href="index.html#idpmodem.atcommand_async.IdpModemAsyncioClient.device_mobile_id">device_mobile_id() (idpmodem.atcommand_async.IdpModemAsyncioClient method)</a>
@@ -167,9 +169,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.nmea.Location.GnssSatelliteInfo.elevation">elevation (idpmodem.nmea.Location.GnssSatelliteInfo attribute)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.encode">encode() (idpmodem.codecs.common.CommonMessageFormat method)</a>
-</li>
-      <li><a href="index.html#idpmodem.codecs.common.encode_at">encode_at() (in module idpmodem.codecs.common)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.encode">encode() (idpmodem.codecs.common.Message method)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -191,7 +191,7 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.fields">fields (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.fields">fields (idpmodem.codecs.common.Message attribute)</a>
 </li>
       <li><a href="index.html#idpmodem.nmea.Location.fix_type">fix_type (idpmodem.nmea.Location attribute)</a>
 </li>
@@ -205,10 +205,10 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.utils.get_wrapping_logger">get_wrapping_logger() (in module idpmodem.utils)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.get_xml">get_xml() (idpmodem.codecs.common.CommonMessageFormat method)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Field.get_xml">get_xml() (idpmodem.codecs.common.Field method)</a>
 
       <ul>
-        <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service.get_xml">(idpmodem.codecs.common.MessageDefinitions.Service method)</a>
+        <li><a href="index.html#idpmodem.codecs.common.Message.get_xml">(idpmodem.codecs.common.Message method)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -285,7 +285,7 @@
 </li>
       <li><a href="index.html#idpmodem.utils.RepeatingTimer.interval">interval (idpmodem.utils.RepeatingTimer attribute)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.is_forward">is_forward (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.is_forward">is_forward (idpmodem.codecs.common.Message attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -302,6 +302,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.nmea.Location.latitude">latitude (idpmodem.nmea.Location attribute)</a>
+</li>
+      <li><a href="index.html#idpmodem.codecs.common.ObjectList.list_type">list_type (idpmodem.codecs.common.ObjectList attribute)</a>
 </li>
       <li><a href="index.html#idpmodem.nmea.Location">Location (class in idpmodem.nmea)</a>
 </li>
@@ -335,8 +337,12 @@
 <h2 id="M">M</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.message.Message">Message (class in idpmodem.message)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message">Message (class in idpmodem.codecs.common)</a>
+
+      <ul>
+        <li><a href="index.html#idpmodem.message.Message">(class in idpmodem.message)</a>
 </li>
+      </ul></li>
       <li><a href="index.html#idpmodem.atcommand_async.IdpModemAsyncioClient.message_mo_cancel">message_mo_cancel() (idpmodem.atcommand_async.IdpModemAsyncioClient method)</a>
 </li>
       <li><a href="index.html#idpmodem.atcommand_async.IdpModemAsyncioClient.message_mo_clear">message_mo_clear() (idpmodem.atcommand_async.IdpModemAsyncioClient method)</a>
@@ -355,13 +361,13 @@
 </li>
       <li><a href="index.html#idpmodem.atcommand_async.IdpModemAsyncioClient.message_mt_waiting">message_mt_waiting() (idpmodem.atcommand_async.IdpModemAsyncioClient method)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions">MessageDefinitions (class in idpmodem.codecs.common)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service">MessageDefinitions.Service (class in idpmodem.codecs.common)</a>
+      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions">MessageDefinitions (class in idpmodem.codecs.common)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.min">min (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Messages">Messages (class in idpmodem.codecs.common)</a>
+</li>
+      <li><a href="index.html#idpmodem.codecs.common.Message.min">min (idpmodem.codecs.common.Message attribute)</a>
 </li>
       <li><a href="index.html#idpmodem.message.MobileOriginatedMessage">MobileOriginatedMessage (class in idpmodem.message)</a>
 </li>
@@ -390,10 +396,10 @@
 <h2 id="N">N</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.name">name (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Field.name">name (idpmodem.codecs.common.Field attribute)</a>
 
       <ul>
-        <li><a href="index.html#idpmodem.codecs.common.Field.name">(idpmodem.codecs.common.Field attribute)</a>
+        <li><a href="index.html#idpmodem.codecs.common.Message.name">(idpmodem.codecs.common.Message attribute)</a>
 </li>
         <li><a href="index.html#idpmodem.utils.RepeatingTimer.name">(idpmodem.utils.RepeatingTimer attribute)</a>
 </li>
@@ -418,6 +424,10 @@
 <h2 id="O">O</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="index.html#idpmodem.codecs.common.ObjectList">ObjectList (class in idpmodem.codecs.common)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="index.html#idpmodem.codecs.common.Field.optional">optional (idpmodem.codecs.common.Field attribute)</a>
 </li>
   </ul></td>
@@ -440,14 +450,10 @@
 <h2 id="R">R</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service.remove_forward_message">remove_forward_message() (idpmodem.codecs.common.MessageDefinitions.Service method)</a>
-</li>
-      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.Service.remove_return_message">remove_return_message() (idpmodem.codecs.common.MessageDefinitions.Service method)</a>
+      <li><a href="index.html#idpmodem.utils.RepeatingTimer">RepeatingTimer (class in idpmodem.utils)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="index.html#idpmodem.utils.RepeatingTimer">RepeatingTimer (class in idpmodem.utils)</a>
-</li>
       <li><a href="index.html#idpmodem.utils.RepeatingTimer.restart_timer">restart_timer() (idpmodem.utils.RepeatingTimer method)</a>
 </li>
       <li><a href="index.html#idpmodem.utils.RepeatingTimer.run">run() (idpmodem.utils.RepeatingTimer method)</a>
@@ -470,11 +476,15 @@
 </li>
       <li><a href="index.html#idpmodem.nmea.Location.satellites_info">satellites_info (idpmodem.nmea.Location attribute)</a>
 </li>
+      <li><a href="index.html#idpmodem.codecs.common.Services">Services (class in idpmodem.codecs.common)</a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="index.html#idpmodem.codecs.common.MessageDefinitions.services">services (idpmodem.codecs.common.MessageDefinitions attribute)</a>
+</li>
       <li><a href="index.html#idpmodem.atcommand_async.IdpModemAsyncioClient.shutdown">shutdown() (idpmodem.atcommand_async.IdpModemAsyncioClient method)</a>
 </li>
-      <li><a href="index.html#idpmodem.codecs.common.CommonMessageFormat.sin">sin (idpmodem.codecs.common.CommonMessageFormat attribute)</a>
+      <li><a href="index.html#idpmodem.codecs.common.Message.sin">sin (idpmodem.codecs.common.Message attribute)</a>
 </li>
       <li><a href="index.html#idpmodem.utils.RepeatingTimer.sleep_chunk">sleep_chunk (idpmodem.utils.RepeatingTimer attribute)</a>
 </li>

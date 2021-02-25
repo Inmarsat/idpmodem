@@ -1,15 +1,16 @@
-from asyncio import run, run_coroutine_threadsafe, AbstractEventLoop, wrap_future, get_event_loop, new_event_loop
+from asyncio import run
 from asynctest import CoroutineMock
-from logging import DEBUG, INFO
 import pytest
 from pytest_mock import MockerFixture
 from threading import Thread
 from time import sleep
 
 import idpmodem
-from idpmodem.utils import get_wrapping_logger, validate_serial_port
+from idpmodem.utils import validate_serial_port
 from idpmodem.constants import AT_ERROR_CODES
-from idpmodem.atcommand_async import IdpModemAsyncioClient, AtException, AtGnssTimeout
+from idpmodem.atcommand_async import (IdpModemAsyncioClient,
+                                      AtException,
+                                      AtGnssTimeout)
 from idpmodem.atcommand_async import LOGGING_VERBOSE_LEVEL as VERBOSE
 from idpmodem.nmea import Location
 

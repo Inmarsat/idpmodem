@@ -903,7 +903,7 @@ raw NMEA data string, with prefix $Gx and checksum suffix removed</p>
 </div>
 <div class="section" id="module-idpmodem.message">
 <span id="message"></span><h2>message<a class="headerlink" href="#module-idpmodem.message" title="Permalink to this headline">¶</a></h2>
-<p>Message classes for structured data exchange.</p>
+<p>Message classes for abstracting messages presented by/to the AT commands.</p>
 <dl class="py class">
 <dt id="idpmodem.message.Message">
 <em class="property">class </em><code class="sig-prename descclassname">idpmodem.message.</code><code class="sig-name descname">Message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">payload</span></em>, <em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">msg_sin</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">msg_min</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">priority</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">4</span></em>, <em class="sig-param"><span class="n">data_format</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">2</span></em>, <em class="sig-param"><span class="n">size</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">logger</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>logging.Logger<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">debug</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.message.Message" title="Permalink to this definition">¶</a></dt>
@@ -1011,98 +1011,12 @@ MT message state represented as an attribute:</p>
 <dl class="py class">
 <dt id="idpmodem.codecs.common.CommonMessageFormat">
 <em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">CommonMessageFormat</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">sin</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">min</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">is_forward</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat" title="Permalink to this definition">¶</a></dt>
-<dd><p>The structure for Message Definition Files uploaded to a Mailbox.</p>
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.name">
-<code class="sig-name descname">name</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.name" title="Permalink to this definition">¶</a></dt>
-<dd><p>The message name</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>str</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.sin">
-<code class="sig-name descname">sin</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.sin" title="Permalink to this definition">¶</a></dt>
-<dd><p>The Service Identification Number</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.min">
-<code class="sig-name descname">min</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.min" title="Permalink to this definition">¶</a></dt>
-<dd><p>The Message Identification Number</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.fields">
-<code class="sig-name descname">fields</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.fields" title="Permalink to this definition">¶</a></dt>
-<dd><p>An array of Fields</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>list</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.description">
-<code class="sig-name descname">description</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.description" title="Permalink to this definition">¶</a></dt>
-<dd><p>Optional description</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>str</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.is_forward">
-<code class="sig-name descname">is_forward</code><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.is_forward" title="Permalink to this definition">¶</a></dt>
-<dd><p>Indicates if the message is mobile-terminated</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type</dt>
-<dd class="field-odd"><p>bool</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.encode">
-<code class="sig-name descname">encode</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data_format</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">3</span></em>, <em class="sig-param"><span class="n">exclude</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>list<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em><span class="sig-paren">)</span> &#x2192; dict<a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.encode" title="Permalink to this definition">¶</a></dt>
-<dd><p>Encodes using the specified data format (base64 or hex).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><p><strong>data_format</strong> (<em>int</em>) – 2=ASCII-Hex, 3=base64</p>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>Dictionary with sin, min, data_format and data to pass into AT%MGRT</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt id="idpmodem.codecs.common.CommonMessageFormat.get_xml">
-<code class="sig-name descname">get_xml</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.CommonMessageFormat.get_xml" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the XML definition for a Message Definition File.</p>
-</dd></dl>
-
+<dd><p>Included for backward compatibility, replaced by Message.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt id="idpmodem.codecs.common.Field">
-<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">Field</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">data_type</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">value</span><span class="p">:</span> <span class="n">any</span></em>, <em class="sig-param"><span class="n">value_range</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>tuple<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">bits</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">optional</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="n">fixed</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.Field" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">Field</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">data_type</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">value</span><span class="p">:</span> <span class="n">any</span></em>, <em class="sig-param"><span class="n">value_range</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>tuple<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">bits</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">optional</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="n">fixed</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>bool<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">default</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>any<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">size</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">fields</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>list<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.Field" title="Permalink to this definition">¶</a></dt>
 <dd><p>A data field within a Common Message Format message.</p>
 <dl class="py attribute">
 <dt id="idpmodem.codecs.common.Field.name">
@@ -1140,7 +1054,7 @@ MT message state represented as an attribute:</p>
 <dl class="py attribute">
 <dt id="idpmodem.codecs.common.Field.value_range">
 <code class="sig-name descname">value_range</code><a class="headerlink" href="#idpmodem.codecs.common.Field.value_range" title="Permalink to this definition">¶</a></dt>
-<dd><p>The min, max of allowed values</p>
+<dd><p>The min, max of allowed values or enum strings</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type</dt>
 <dd class="field-odd"><p>tuple</p>
@@ -1192,6 +1106,12 @@ MT message state represented as an attribute:</p>
 </dl>
 </dd></dl>
 
+<dl class="py method">
+<dt id="idpmodem.codecs.common.Field.get_xml">
+<code class="sig-name descname">get_xml</code><span class="sig-paren">(</span><span class="sig-paren">)</span> &#x2192; xml.etree.ElementTree.Element<a class="headerlink" href="#idpmodem.codecs.common.Field.get_xml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the XML definition of the field.</p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1214,85 +1134,185 @@ MT message state represented as an attribute:</p>
 </dd></dl>
 
 <dl class="py class">
+<dt id="idpmodem.codecs.common.Message">
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">Message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">sin</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">min</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">is_forward</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.Message" title="Permalink to this definition">¶</a></dt>
+<dd><p>The Payload structure for Message Definition Files uploaded to a Mailbox.</p>
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.name">
+<code class="sig-name descname">name</code><a class="headerlink" href="#idpmodem.codecs.common.Message.name" title="Permalink to this definition">¶</a></dt>
+<dd><p>The message name</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.sin">
+<code class="sig-name descname">sin</code><a class="headerlink" href="#idpmodem.codecs.common.Message.sin" title="Permalink to this definition">¶</a></dt>
+<dd><p>The Service Identification Number</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.min">
+<code class="sig-name descname">min</code><a class="headerlink" href="#idpmodem.codecs.common.Message.min" title="Permalink to this definition">¶</a></dt>
+<dd><p>The Message Identification Number</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.fields">
+<code class="sig-name descname">fields</code><a class="headerlink" href="#idpmodem.codecs.common.Message.fields" title="Permalink to this definition">¶</a></dt>
+<dd><p>An array of Fields</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.description">
+<code class="sig-name descname">description</code><a class="headerlink" href="#idpmodem.codecs.common.Message.description" title="Permalink to this definition">¶</a></dt>
+<dd><p>Optional description</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.Message.is_forward">
+<code class="sig-name descname">is_forward</code><a class="headerlink" href="#idpmodem.codecs.common.Message.is_forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Indicates if the message is mobile-terminated</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="idpmodem.codecs.common.Message.decode">
+<code class="sig-name descname">decode</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">databytes</span><span class="p">:</span> <span class="n">bytes</span></em><span class="sig-paren">)</span> &#x2192; None<a class="headerlink" href="#idpmodem.codecs.common.Message.decode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Decodes field values from raw data bytes (received over-the-air).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>databytes</strong> – A bytes array (typically from the forward message)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="idpmodem.codecs.common.Message.derive">
+<code class="sig-name descname">derive</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">databytes</span><span class="p">:</span> <span class="n">bytes</span></em><span class="sig-paren">)</span> &#x2192; None<a class="headerlink" href="#idpmodem.codecs.common.Message.derive" title="Permalink to this definition">¶</a></dt>
+<dd><p>Derives field values from raw data bytes (received over-the-air).</p>
+<p>Deprecated/replaced by <cite>decode</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>databytes</strong> – A bytes array (typically from the forward message)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="idpmodem.codecs.common.Message.encode">
+<code class="sig-name descname">encode</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">data_format</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">3</span></em>, <em class="sig-param"><span class="n">exclude</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>list<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em><span class="sig-paren">)</span> &#x2192; dict<a class="headerlink" href="#idpmodem.codecs.common.Message.encode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Encodes using the specified data format (base64 or hex).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>data_format</strong> (<em>int</em>) – 2=ASCII-Hex, 3=base64</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Dictionary with sin, min, data_format and data to pass into AT%MGRT</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="idpmodem.codecs.common.Message.get_xml">
+<code class="sig-name descname">get_xml</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.Message.get_xml" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the XML definition for a Message Definition File.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt id="idpmodem.codecs.common.MessageDefinitions">
 <em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">MessageDefinitions</code><a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions" title="Permalink to this definition">¶</a></dt>
-<dd><p>TODO: Not Implemented</p>
+<dd><p>A set of Message Definitions grouped into Services.</p>
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.MessageDefinitions.services">
+<code class="sig-name descname">services</code><a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.services" title="Permalink to this definition">¶</a></dt>
+<dd><p>The list of Services with Messages defined.</p>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service">
-<em class="property">class </em><code class="sig-name descname">Service</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sin</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">str</span> <span class="o">=</span> <span class="default_value">''</span></em>, <em class="sig-param"><span class="n">return_messages</span><span class="p">:</span> <span class="n">list</span> <span class="o">=</span> <span class="default_value">[]</span></em>, <em class="sig-param"><span class="n">forward_messages</span><span class="p">:</span> <span class="n">list</span> <span class="o">=</span> <span class="default_value">[]</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service" title="Permalink to this definition">¶</a></dt>
-<dd><p>TODO: docstring</p>
-<dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service.add_forward_message">
-<code class="sig-name descname">add_forward_message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">message</span><span class="p">:</span> <span class="n"><a class="reference internal" href="#idpmodem.codecs.common.CommonMessageFormat" title="idpmodem.codecs.common.CommonMessageFormat">idpmodem.codecs.common.CommonMessageFormat</a></span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service.add_forward_message" title="Permalink to this definition">¶</a></dt>
+<dt id="idpmodem.codecs.common.Messages">
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">Messages</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sin</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">is_forward</span><span class="p">:</span> <span class="n">bool</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.Messages" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
-<dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service.add_return_message">
-<code class="sig-name descname">add_return_message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">message</span><span class="p">:</span> <span class="n"><a class="reference internal" href="#idpmodem.codecs.common.CommonMessageFormat" title="idpmodem.codecs.common.CommonMessageFormat">idpmodem.codecs.common.CommonMessageFormat</a></span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service.add_return_message" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service.get_xml">
-<code class="sig-name descname">get_xml</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service.get_xml" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service.remove_forward_message">
-<code class="sig-name descname">remove_forward_message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">min</span><span class="p">:</span> <span class="n">int</span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service.remove_forward_message" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.Service.remove_return_message">
-<code class="sig-name descname">remove_return_message</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">min</span><span class="p">:</span> <span class="n">int</span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.Service.remove_return_message" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
-
+<dl class="py class">
+<dt id="idpmodem.codecs.common.ObjectList">
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">ObjectList</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">list_type</span><span class="p">:</span> <span class="n">object</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.codecs.common.ObjectList" title="Permalink to this definition">¶</a></dt>
+<dd><p>Base class for a specific object type list.</p>
+<p>Used for Fields, Messages, Services.</p>
+<dl class="py attribute">
+<dt id="idpmodem.codecs.common.ObjectList.list_type">
+<code class="sig-name descname">list_type</code><a class="headerlink" href="#idpmodem.codecs.common.ObjectList.list_type" title="Permalink to this definition">¶</a></dt>
+<dd><p>The object type the list is comprised of.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt id="idpmodem.codecs.common.MessageDefinitions.add_service">
-<code class="sig-name descname">add_service</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">sin</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">description</span><span class="p">:</span> <span class="n">str</span> <span class="o">=</span> <span class="default_value">''</span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.MessageDefinitions.add_service" title="Permalink to this definition">¶</a></dt>
-<dd><p>Adds a service if the sin is not already defined.</p>
+<dt id="idpmodem.codecs.common.ObjectList.add">
+<code class="sig-name descname">add</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obj</span><span class="p">:</span> <span class="n">object</span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.ObjectList.add" title="Permalink to this definition">¶</a></dt>
+<dd><p>Add an object to the list.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>sin</strong> (<em>int</em>) – Service Identification Number</p></li>
-<li><p><strong>name</strong> (<em>str</em>) – Unique name of the service</p></li>
-<li><p><strong>description</strong> (<em>str</em>) – Optional description</p></li>
-</ul>
+<dd class="field-odd"><p><strong>obj</strong> (<em>object</em>) – A valid object according to the list_type</p>
+</dd>
+<dt class="field-even">Raises</dt>
+<dd class="field-even"><p><strong>ValueError if there is a duplicate</strong><strong> or </strong><strong>invalid name</strong><strong>,</strong> – invalid value_range or unsupported data_type</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="idpmodem.codecs.common.ObjectList.delete">
+<code class="sig-name descname">delete</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">str</span></em><span class="sig-paren">)</span> &#x2192; bool<a class="headerlink" href="#idpmodem.codecs.common.ObjectList.delete" title="Permalink to this definition">¶</a></dt>
+<dd><p>Delete an object from the list by name.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>name</strong> – The name of the object.</p>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>True if successful</p>
+<dd class="field-even"><p>success</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>boolean</p>
 </dd>
 </dl>
 </dd></dl>
 
 </dd></dl>
 
-<dl class="py function">
-<dt id="idpmodem.codecs.common.decode_at">
-<code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">decode_at</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">at_response</span><span class="p">:</span> <span class="n">str</span></em>, <em class="sig-param"><span class="n">definitions</span><span class="p">:</span> <span class="n"><a class="reference internal" href="#idpmodem.codecs.common.MessageDefinitions" title="idpmodem.codecs.common.MessageDefinitions">idpmodem.codecs.common.MessageDefinitions</a></span></em><span class="sig-paren">)</span> &#x2192; <a class="reference internal" href="#idpmodem.codecs.common.CommonMessageFormat" title="idpmodem.codecs.common.CommonMessageFormat">idpmodem.codecs.common.CommonMessageFormat</a><a class="headerlink" href="#idpmodem.codecs.common.decode_at" title="Permalink to this definition">¶</a></dt>
-<dd><p>Decodes a common message format Forward message based on a given MDF.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>at_response</strong> (<em>str</em>) – the AT command reponse from %MGFG</p></li>
-<li><p><strong>xml_file</strong> (<em>object</em>) – the Message Definition File</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns</dt>
-<dd class="field-even"><p>A CommonMessageFormat message structure</p>
-</dd>
-<dt class="field-odd">Raises</dt>
-<dd class="field-odd"><p><strong>NotImplementedError</strong> – </p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt id="idpmodem.codecs.common.encode_at">
-<code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">encode_at</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">return_message</span><span class="p">:</span> <span class="n"><a class="reference internal" href="#idpmodem.codecs.common.CommonMessageFormat" title="idpmodem.codecs.common.CommonMessageFormat">idpmodem.codecs.common.CommonMessageFormat</a></span></em>, <em class="sig-param"><span class="n">data_format</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">3</span></em><span class="sig-paren">)</span> &#x2192; str<a class="headerlink" href="#idpmodem.codecs.common.encode_at" title="Permalink to this definition">¶</a></dt>
-<dd><p>Returns the partial AT%MGRS command string from &lt;sin&gt;.</p>
-</dd></dl>
+<dl class="py class">
+<dt id="idpmodem.codecs.common.Services">
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.codecs.common.</code><code class="sig-name descname">Services</code><a class="headerlink" href="#idpmodem.codecs.common.Services" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </div>
 <div class="section" id="module-idpmodem.utils">
@@ -1300,7 +1320,7 @@ MT message state represented as an attribute:</p>
 <p>Helpers for operating a headless device for example Raspberry Pi.</p>
 <dl class="py class">
 <dt id="idpmodem.utils.RepeatingTimer">
-<em class="property">class </em><code class="sig-prename descclassname">idpmodem.utils.</code><code class="sig-name descname">RepeatingTimer</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">seconds</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">target</span><span class="p">:</span> <span class="n">Callable</span></em>, <em class="sig-param"><span class="o">*</span><span class="n">args</span></em>, <em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">logger</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>logging.Logger<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sleep_chunk</span><span class="p">:</span> <span class="n">float</span> <span class="o">=</span> <span class="default_value">0.25</span></em>, <em class="sig-param"><span class="n">max_drift</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">auto_start</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="n">defer</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">True</span></em>, <em class="sig-param"><span class="n">verbose_debug</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.utils.RepeatingTimer" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">idpmodem.utils.</code><code class="sig-name descname">RepeatingTimer</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">seconds</span><span class="p">:</span> <span class="n">int</span></em>, <em class="sig-param"><span class="n">target</span><span class="p">:</span> <span class="n">Callable</span></em>, <em class="sig-param"><span class="n">args</span><span class="p">:</span> <span class="n">Tuple</span> <span class="o">=</span> <span class="default_value">()</span></em>, <em class="sig-param"><span class="n">kwargs</span><span class="p">:</span> <span class="n">dict</span> <span class="o">=</span> <span class="default_value">{}</span></em>, <em class="sig-param"><span class="n">name</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>str<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">logger</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>logging.Logger<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">log_level</span><span class="p">:</span> <span class="n">int</span> <span class="o">=</span> <span class="default_value">20</span></em>, <em class="sig-param"><span class="n">sleep_chunk</span><span class="p">:</span> <span class="n">float</span> <span class="o">=</span> <span class="default_value">0.25</span></em>, <em class="sig-param"><span class="n">max_drift</span><span class="p">:</span> <span class="n">Optional<span class="p">[</span>int<span class="p">]</span></span> <span class="o">=</span> <span class="default_value">None</span></em>, <em class="sig-param"><span class="n">auto_start</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="n">defer</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">True</span></em>, <em class="sig-param"><span class="n">debug</span><span class="p">:</span> <span class="n">bool</span> <span class="o">=</span> <span class="default_value">False</span></em>, <em class="sig-param"><span class="n">daemon</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#idpmodem.utils.RepeatingTimer" title="Permalink to this definition">¶</a></dt>
 <dd><p>A repeating thread to call a function, can be stopped/restarted/changed.</p>
 <p>Embedded tasks can use threading for continuous repeated operations.  A
 <em>RepeatingTimer</em> can be started, stopped, restarted and reconfigured.</p>

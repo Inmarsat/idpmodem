@@ -75,7 +75,7 @@ def test_log(arg, kwarg=None):
     caller_name = get_caller_name(cls=True, mth=True)
     log.info('{} testing utilities with {}'.format(caller_name, arg))
     if kwarg is not None:
-        log.warning('received kwarg {}'.format(kwarg))
+        log.warning('received kwarg: {}'.format(kwarg))
 
 
 def main():
@@ -83,21 +83,21 @@ def main():
     dir_path = os.path.dirname(os.path.realpath(__file__))
     filename = dir_path + '/test_utils.log'
     arg = 'test_arg'
+    kwargs = {'kwarg': True}
     test_autostart = True
-    log = get_wrapping_logger(
-                              filename=filename,
+    daemon = True
+    log = get_wrapping_logger(filename=filename,
                               file_size=0.001,
                               # debug=True,
                               )
-    loop = RepeatingTimer(
-                        2,   #: If not using positional arg, seconds=
-                        test_log,  #: If not using positional arg, callback=
-                        arg,   #: Test positional args in callback
-                        name='test_utils',
-                        auto_start=test_autostart,
-                        defer=False,
-                        kwarg='test_kwarg',   #: Test kwargs in callback
-                        )
+    loop = RepeatingTimer(seconds=2,
+                          target=test_log,
+                          args=(arg,),
+                          kwargs=kwargs,
+                          name='test',
+                          auto_start=test_autostart,
+                          defer=False,
+                          daemon=daemon)
     if not test_autostart:
         loop.start()
         loop.start_timer()
@@ -105,11 +105,12 @@ def main():
     del valid   #: unused
     log.info(desc)
     cycles = 0
-    while cycles < 25:
+    while cycles < 5:
         #: TODO loop until 2 files are full
         cycles += 1
         sleep(1)
-    loop.terminate()
+    if not daemon:
+        loop.terminate()
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import xml.etree.ElementTree as ET
 import inspect
 from pprint import pprint, pformat
 from random import randrange, random, choice
@@ -13,7 +14,8 @@ data_types = [
         'description': 'boolean',
         'data_type': 'bool',
         'value': choice([True, False]),
-        'value_range': None
+        'value_range': None,
+        'default': True
     },
     {
         'name': 'uint_8',
@@ -58,13 +60,6 @@ data_types = [
         'value_range': (int(-(2**32)/2), int(2**32/2)-1)
     },
     {
-        'name': 'uint_31',
-        'description': 'unsigned 31-bit integer',
-        'data_type': 'uint_31',
-        'value': randrange(0, 2**31),
-        'value_range': (0, 2**31-1)
-    },
-    {
         'name': 'uint_64',
         'description': 'unsigned 64-bit integer',
         'data_type': 'uint_64',
@@ -83,14 +78,16 @@ data_types = [
         'description': '32-bit floating point',
         'data_type': 'float',
         'value': random(),
-        'value_range': None
+        'value_range': None,
+        'size': 4
     },
     {
         'name': 'double',
         'description': '64-bit floating point',
         'data_type': 'double',
         'value': random(),
-        'value_range': None
+        'value_range': None,
+        'size': 8
     },
     {
         'name': 'string',
@@ -105,6 +102,14 @@ data_types = [
         'data_type': 'data',
         'value': bytearray('this is a test', 'utf-8'),
         'bits': 8 * len('this is a test')
+    },
+    {
+        'name': 'enum',
+        'description': 'An enumerated list of strings',
+        'data_type': 'enum',
+        'value': 0,
+        'value_range': ('item1', 'item2', 'item3'),
+        'bits': 4
     },
 ]
 
@@ -130,9 +135,11 @@ class CodecTestCase(TestCase):
             name = detail['name']
             description = detail['description']
             data_type = detail['data_type']
-            value = detail['value']
+            value = detail['value'] if 'value' in detail else None
             value_range = detail['value_range'] if 'value_range' in detail else None
             bits = detail['bits'] if 'bits' in detail else None
+            default = detail['default'] if 'default' in detail else None
+            size = detail['size'] if 'size' in detail else None
         else:
             name = 'testField'
             description = 'some description'
@@ -140,16 +147,20 @@ class CodecTestCase(TestCase):
             value = 0
             value_range = (0, 15)
             bits = 4
+            default = None
+            size = None
         field = common.Field(name=name, description=description,
             data_type=data_type, value=value, bits=bits,
-            value_range=value_range)
+            value_range=value_range, default=default, size=size)
         self.assertTrue(field.name == name and
                         field.description == description and
                         field.data_type == data_type and
                         field.value == value and
                         field.value_range == value_range and
                         isinstance(field.bits, int) and field.bits > 0 and
-                        field._format == '0{}b'.format(field.bits))
+                        field._format == '0{}b'.format(field.bits) and
+                        field.default == default and
+                        field.size == size)
         if inspect.stack()[1][3] != '_callTestMethod':
             return field
     
@@ -190,13 +201,13 @@ class CodecTestCase(TestCase):
             field = self.test_02_create_field(data_type)
             message.fields.add(field)
         self.assertTrue(isinstance(message.encode(), dict))
-        print('Test 07 OTA size: {}'.format(message.ota_size()))
+        print('Test 07 OTA size: {}'.format(message.ota_size))
     
     def test_08_derive(self):
         name = 'fowardMessageTest'
         SIN = 255
         MIN = 1
-        message = common.CommonMessageFormat(name=name, sin=SIN, min=MIN, is_forward=True)
+        message = common.Message(name=name, sin=SIN, min=MIN, is_forward=True)
         message.fields.add(common.Field(name='interval', data_type='uint_32', value=86400, value_range=(0, 86400), bits=17))
         message.fields.add(common.Field(name='signed', data_type='int_8', value=-1, bits=3))
         message.fields.add(common.Field(name='string', data_type='string', value='A', bits=8))
@@ -218,6 +229,18 @@ class CodecTestCase(TestCase):
             else:
                 print('Testing message {}'.format(attr))
                 self.assertTrue(message.__dict__[attr] == m_copy.__dict__[attr])
+    
+    def test_09_xml1(self):
+        message = self.test_01_create_message()
+        for data_type in data_types:
+            # if data_type['name'] != 'data': continue
+            field = self.test_02_create_field(data_type)
+            message.fields.add(field)
+        md = common.MessageDefinitions()
+        service = common.Service(name='test', sin=255)
+        service.messages_return.add(message)
+        md.services.add(service)
+        md.mdf_export('./tests/test_xml.idpmsg')
 
 
 def suite():
