@@ -754,12 +754,16 @@ class IdpModemAsyncioClient:
         """Submits a mobile-originated message to send.
         
         Args:
-            data: 
-            data_format: 
-            name: 
-            priority: 
-            sin: 
-            min: 
+            data: The data to be sent formatted as base64, hex or text according
+                to `data_format`.
+            data_format: 1: Text, 2: ASCII-Hex, 3: Base64 (MIME)
+            name: (Optional) A unique name for the message, if none is provided
+                a name based on unix timestamp will be assigned
+            priority: 1: High .. 4: Low (default)
+            sin: Service Identification Number (15..255) becomes the first byte
+                of message payload
+            min: (Optional) Message Identification Number (0..255) becomes the
+                second byte of message payload if specified
 
         Returns:
             Name of the message if successful, or the error string
@@ -772,10 +776,7 @@ class IdpModemAsyncioClient:
         elif len(name) > 8:
             name = name[0:8]   # risk duplicates create an ERROR resposne
             self._log.warning('Truncated name to {}'.format(name))
-        if min is not None:
-            _min = '.{}'.format(min)
-        else:
-            _min = ''
+        _min = '.{}'.format(min) if min is not None else ''
         if data_format == 1:
             data = '"{}"'.format(data)
         cmd = ('AT%MGRT="{}",{},{}{},{},{}'.format(name,

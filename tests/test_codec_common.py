@@ -1,265 +1,178 @@
+import pytest
 from copy import deepcopy
 import xml.etree.ElementTree as ET
-import inspect
-from pprint import pprint, pformat
-from random import randrange, random, choice
-from unittest import TestCase, TestSuite, TextTestRunner, defaultTestLoader
 
 from idpmodem.codecs import common
 from idpmodem.constants import FORMAT_TEXT, FORMAT_HEX, FORMAT_B64
 
-data_types = [
-    {
-        'name': 'bool',
-        'description': 'boolean',
-        'data_type': 'bool',
-        'value': choice([True, False]),
-        'value_range': None,
-        'default': True
-    },
-    {
-        'name': 'uint_8',
-        'description': 'unsigned 8-bit integer',
-        'data_type': 'uint_8',
-        'value': randrange(0, 2**8),
-        'value_range': (0, 2**8-1)
-    },
-    {
-        'name': 'int_8',
-        'description': 'signed 8-bit integer',
-        'data_type': 'int_8',
-        'value': randrange(int(-(2**8)/2), int(2**8/2)-1),
-        'value_range': (int(-(2**8)/2), int(2**8/2)-1)
-    },
-    {
-        'name': 'uint_16',
-        'description': 'unsigned 16-bit integer',
-        'data_type': 'uint_16',
-        'value': randrange(0, 2**16),
-        'value_range': (0, 2**16-1)
-    },
-    {
-        'name': 'int_16',
-        'description': 'signed 16-bit integer',
-        'data_type': 'int_16',
-        'value': randrange(int(-(2**16)/2), int(2**16/2)-1),
-        'value_range': (int(-(2**16)/2), int(2**16/2)-1)
-    },
-    {
-        'name': 'uint_32',
-        'description': 'unsigned 32-bit integer',
-        'data_type': 'uint_32',
-        'value': randrange(0, 2**32),
-        'value_range': (0, 2**32-1)
-    },
-    {
-        'name': 'int_32',
-        'description': 'signed 32-bit integer',
-        'data_type': 'int_32',
-        'value': randrange(int(-(2**32)/2), int(2**32/2)-1),
-        'value_range': (int(-(2**32)/2), int(2**32/2)-1)
-    },
-    {
-        'name': 'uint_64',
-        'description': 'unsigned 64-bit integer',
-        'data_type': 'uint_64',
-        'value': randrange(0, 2**64),
-        'value_range': (0, 2**64-1)
-    },
-    {
-        'name': 'int_64',
-        'description': 'signed 64-bit integer',
-        'data_type': 'int_64',
-        'value': randrange(int(-(2**64)/2), int(2**64/2)-1),
-        'value_range': (int(-(2**64)/2), int(2**64/2)-1)
-    },
-    {
-        'name': 'float',
-        'description': '32-bit floating point',
-        'data_type': 'float',
-        'value': random(),
-        'value_range': None,
-        'size': 4
-    },
-    {
-        'name': 'double',
-        'description': '64-bit floating point',
-        'data_type': 'double',
-        'value': random(),
-        'value_range': None,
-        'size': 8
-    },
-    {
-        'name': 'string',
-        'description': 'ASCII text',
-        'data_type': 'string',
-        'value': choice(['a fast brown fox', 'holy cow']),
-        'bits': 8 * 100
-    },
-    {
-        'name': 'data',
-        'description': 'A byte array',
-        'data_type': 'data',
-        'value': bytearray('this is a test', 'utf-8'),
-        'bits': 8 * len('this is a test')
-    },
-    {
-        'name': 'enum',
-        'description': 'An enumerated list of strings',
-        'data_type': 'enum',
-        'value': 0,
-        'value_range': ('item1', 'item2', 'item3'),
-        'bits': 4
-    },
-]
 
-class CodecTestCase(TestCase):
-    
-    @classmethod
-    def setUpClass(cls):
-        cls.message = None
+@pytest.fixture
+def bool_field():
+    """Returns a BooleanField with no value."""
+    return common.BooleanField(name='boolFixture',
+                               description='A boolean test field.')
 
-    def test_01_create_message(self):
-        name = 'testMessage'
-        SIN = 255
-        MIN = 255
-        message = common.CommonMessageFormat(name=name, sin=SIN, min=MIN)
-        self.assertTrue(message.name == name and
-                        message.sin == SIN and
-                        message.min == MIN)
-        if inspect.stack()[1][3] != '_callTestMethod':
-            return message
-    
-    def test_02_create_field(self, detail: dict = None):
-        if isinstance(detail, dict):
-            name = detail['name']
-            description = detail['description']
-            data_type = detail['data_type']
-            value = detail['value'] if 'value' in detail else None
-            value_range = detail['value_range'] if 'value_range' in detail else None
-            bits = detail['bits'] if 'bits' in detail else None
-            default = detail['default'] if 'default' in detail else None
-            size = detail['size'] if 'size' in detail else None
+@pytest.fixture
+def enum_field():
+    """Returns a EnumField with no value."""
+    test_items = ['item1', 'item2', 'item3']
+    return common.EnumField(name='enumFixture',
+                            items=test_items,
+                            size=2,
+                            description='An enum test field.')
+
+@pytest.fixture
+def array_field():
+    """Returns a ArrayField with no values."""
+    fields = common.Fields()
+    fields.add(common.StringField(name='propertyName', size=50))
+    fields.add(common.UnsignedIntField(name='propertyValue',
+                                       size=32,
+                                       data_type='uint_32'))
+    return common.ArrayField(name='arrayFixture',
+                             description='An example array of 2 fields.',
+                             size=10,
+                             fields=fields)
+
+@pytest.fixture
+def return_message(array_field):
+    """Returns a ArrayField with no values."""
+    fields = common.Fields()
+    fields.add(common.BooleanField(name='testBool', value=True))
+    fields.add(common.UnsignedIntField(name='testUint',
+                                       size=16,
+                                       data_type='uint_16',
+                                       value=42))
+    fields.add(common.SignedIntField(name='latitude',
+                                     size=24,
+                                     data_type='int_32',
+                                     value=int(-45.123 * 60000)))
+    fields.add(common.StringField(name='optionalString',
+                                  size=100,
+                                  optional=True))
+    fields.add(array_field)
+    elementOne = fields['arrayFixture'].new_element()
+    elementOne['propertyName'].value = 'aPropertyName'
+    elementOne['propertyValue'].value = 1
+    fields.add(common.DataField(name='testData',
+                                size=4,
+                                data_type='float',
+                                value=4.2))
+    message = common.Message(name='returnMessageFixture',
+                             sin=255,
+                             min=1,
+                             fields=fields)
+    return message
+
+@pytest.fixture
+def return_messages(return_message):
+    return_messages = common.Messages(sin=255, is_forward=False)
+    return_messages.add(return_message)
+    return return_messages
+
+@pytest.fixture
+def service(return_messages):
+    service = common.Service(name='testService', sin=255)
+    service.messages_return = return_messages
+    return service
+
+@pytest.fixture
+def services(service):
+    services = common.Services()
+    services.add(service)
+    return services
+
+@pytest.fixture
+def message_definitions(services):
+    message_definitions = common.MessageDefinitions()
+    message_definitions.services = services
+    return message_definitions
+
+def test_bool_field(bool_field):
+    assert(bool_field.value is None)
+    bool_field.value = True
+    assert(bool_field.value)
+    bool_field.value = False
+    assert(not bool_field.value)
+    with pytest.raises(ValueError):
+        bool_field.value = 1
+
+def test_enum_valid():
+    test_items = ['item1', 'item2', 'item3']
+    size = 2
+    defaults = [None, 'item1', 1]
+    for default in defaults:
+        enum = common.EnumField(name='validEnum',
+                                items=test_items,
+                                size=size,
+                                default=default)
+        assert(enum.items == test_items)
+        if default is None:
+            assert(enum.value is None)
+        elif isinstance(default, str):
+            assert(enum.value == default)
         else:
-            name = 'testField'
-            description = 'some description'
-            data_type = 'uint_8'
-            value = 0
-            value_range = (0, 15)
-            bits = 4
-            default = None
-            size = None
-        field = common.Field(name=name, description=description,
-            data_type=data_type, value=value, bits=bits,
-            value_range=value_range, default=default, size=size)
-        self.assertTrue(field.name == name and
-                        field.description == description and
-                        field.data_type == data_type and
-                        field.value == value and
-                        field.value_range == value_range and
-                        isinstance(field.bits, int) and field.bits > 0 and
-                        field._format == '0{}b'.format(field.bits) and
-                        field.default == default and
-                        field.size == size)
-        if inspect.stack()[1][3] != '_callTestMethod':
-            return field
-    
-    def test_03_add_field(self):
-        message = self.test_01_create_message()
-        field = self.test_02_create_field()
-        message.fields.add(field)
-        self.assertTrue(len(message.fields) == 1)
-        if inspect.stack()[1][3] != '_callTestMethod':
-            return message
-    
-    def test_04_del_field(self):
-        message = self.test_03_add_field()
-        field_name = message.fields[0].name
-        message.fields.delete(field_name)
-        self.assertTrue(len(message.fields) == 0)
-    
-    def test_05_encode(self):
-        message = self.test_03_add_field()
-        encoded_b64 = message.encode()
-        self.assertTrue(encoded_b64['sin'] == 255 and
-                        encoded_b64['min'] == 255 and
-                        encoded_b64['data_format'] == 3 and
-                        encoded_b64['data'] == 'AA==')
-    
-    def test_06_encode_hex(self):
-        message = self.test_03_add_field()
-        encoded_hex = message.encode(data_format=2)
-        self.assertTrue(encoded_hex['sin'] == 255 and
-                        encoded_hex['min'] == 255 and
-                        encoded_hex['data_format'] == 2 and
-                        encoded_hex['data'] == '00')
-    
-    def test_07_all_field_types(self):
-        message = self.test_01_create_message()
-        for data_type in data_types:
-            # if data_type['name'] != 'data': continue
-            field = self.test_02_create_field(data_type)
-            message.fields.add(field)
-        self.assertTrue(isinstance(message.encode(), dict))
-        print('Test 07 OTA size: {}'.format(message.ota_size))
-    
-    def test_08_derive(self):
-        name = 'fowardMessageTest'
-        SIN = 255
-        MIN = 1
-        message = common.Message(name=name, sin=SIN, min=MIN, is_forward=True)
-        message.fields.add(common.Field(name='interval', data_type='uint_32', value=86400, value_range=(0, 86400), bits=17))
-        message.fields.add(common.Field(name='signed', data_type='int_8', value=-1, bits=3))
-        message.fields.add(common.Field(name='string', data_type='string', value='A', bits=8))
-        message.fields.add(common.Field(name='data', data_type='data', value=bytes([1, 2]), bits=16))
-        message.fields.add(common.Field(name='float', data_type='float', value=5.6, bits=32))
-        m_copy = deepcopy(message)
-        encoded = message.encode(data_format=2)
-        databytes = bytes([SIN, MIN]) + bytearray.fromhex(encoded['data'])
-        message.derive(databytes)
-        if round(message.fields['float'].value, 1) == m_copy.fields['float'].value:
-            message.fields['float'].value = m_copy.fields['float'].value
-        for attr in m_copy.__dict__:
-            if attr == 'fields':
-                for f in m_copy.fields:
-                    print('Testing field {}'.format(f.name))
-                    f_derived = message.fields[f.name]
-                    for f_attr in f.__dict__:
-                        self.assertTrue(f_derived.__dict__[f_attr] == f.__dict__[f_attr])
-            else:
-                print('Testing message {}'.format(attr))
-                self.assertTrue(message.__dict__[attr] == m_copy.__dict__[attr])
-    
-    def test_09_xml1(self):
-        message = self.test_01_create_message()
-        for data_type in data_types:
-            # if data_type['name'] != 'data': continue
-            field = self.test_02_create_field(data_type)
-            message.fields.add(field)
-        md = common.MessageDefinitions()
-        service = common.Service(name='test', sin=255)
-        service.messages_return.add(message)
-        md.services.add(service)
-        md.mdf_export('./tests/test_xml.idpmsg')
+            assert(enum.value == test_items[default])
+    assert(enum.encode() == '01')  #:assumes last default is 1
+    with pytest.raises(ValueError):
+        enum = common.EnumField(name='testEnum', items=None, size=None)
+    with pytest.raises(ValueError):
+        enum = common.EnumField(name='testEnum', items=[1, 3], size=2)
+    with pytest.raises(ValueError):
+        enum = common.EnumField(name='testEnum', items=test_items, size=1)
 
+def test_bool_xml(bool_field):
+    xml = bool_field.xml()
+    assert(xml.attrib['{http://www.w3.org/2001/XMLSchema-instance}type'] == 'BooleanField')
+    assert(xml.find('Name').text == bool_field.name)
+    assert(xml.find('Description').text == bool_field.description)
 
-def suite():
-    suite = TestSuite()
-    available_tests = defaultTestLoader.getTestCaseNames(CodecTestCase)
-    tests = [
-        # Add test cases above as strings or leave empty to test all cases
-    ]
-    if len(tests) > 0:
-        for test in tests:
-            for available_test in available_tests:
-                if test in available_test:
-                    suite.addTest(CodecTestCase(available_test))
-    else:
-        for available_test in available_tests:
-            suite.addTest(CodecTestCase(available_test))
-    return suite
+def test_enum_xml(enum_field):
+    xml = enum_field.xml()
+    assert(xml.attrib['{http://www.w3.org/2001/XMLSchema-instance}type'] == 'EnumField')
+    assert(xml.find('Name').text == enum_field.name)
+    assert(xml.find('Size').text == str(enum_field.size))
+    assert(xml.find('Description').text == enum_field.description)
+    items = xml.find('Items')
+    i = 0
+    for item in items.findall('string'):
+        string = item.text
+        assert(string == enum_field.items[i])
+        i += 1
 
+def test_array_xml(array_field):
+    xml = array_field.xml()
+    ET.dump(xml)
+    assert(xml.attrib['{http://www.w3.org/2001/XMLSchema-instance}type'] == 'ArrayField')
+    assert(xml.find('Name').text == array_field.name)
+    assert(xml.find('Size').text == str(array_field.size))
+    assert(xml.find('Description').text == array_field.description)
+    i = 0
+    fields = xml.find('Fields')
+    for field in fields.findall('Field'):
+        assert(field.find('Name').text == array_field.fields[i].name)
+        i += 1
 
-if __name__ == '__main__':
-    runner = TextTestRunner()
-    runner.run(suite())
+def test_return_message_xml(return_message):
+    xml = return_message.xml(indent=True)
+    print(xml)
+    # ET.dump(xml)
+    assert(False)
+
+def test_mdf_xml(message_definitions):
+    xml = message_definitions.xml(indent=True)
+    ET.dump(xml)
+    assert(False)
+
+def test_rm_encode(return_message):
+    msg = return_message
+    msg_copy = deepcopy(return_message)
+    encoded = msg.encode(data_format=FORMAT_HEX)
+    print(encoded)
+    hex_message = (format(encoded['sin'], '02X') +
+                   format(encoded['min'], '02X') +
+                   encoded['data'])
+    msg.decode(bytes.fromhex(hex_message))
+    print(vars(msg))
+    print(vars(msg_copy))
+    assert(msg_copy == msg)

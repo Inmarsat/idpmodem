@@ -146,3 +146,4 @@ make.bat
 idpmodem-asyncio
 tempdoc
 *.idpmsg
+txmetrics.json
