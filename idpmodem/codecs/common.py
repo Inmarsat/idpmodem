@@ -1,4 +1,7 @@
-"""Codec functions for IDP Common Message Format supported by Inmarsat MGS."""
+"""Codec functions for IDP Common Message Format supported by Inmarsat MGS.
+
+Also supported on ORBCOMM IGWS1.
+"""
 
 from binascii import b2a_base64
 from math import log2, ceil
@@ -49,18 +52,6 @@ def _get_optimal_bits(value_range: tuple) -> int:
     total_range += 1 if value_range[0] == 0 else 0
     optimal_bits = max(1, ceil(log2(value_range[1] - value_range[0])))
     return optimal_bits
-
-
-def _twos_comp(val: int, bits: int) -> int:
-    """compute the 2's complement of int value val"""
-    if (val & (1 << (bits - 1))) != 0: # if sign bit is set e.g., 8bit: 128-255
-        val = val - (1 << bits)        # compute negative value
-    return val                         # return positive value as is
-
-
-def _bits_to_string(bits: str) -> str:
-    stringbytes = int(bits, 2).to_bytes(int(len(bits) / 8), 'big')
-    return stringbytes.decode() or '\0'
 
 
 def _encode_field_length(length) -> str:
@@ -1375,155 +1366,6 @@ class ArrayField(BaseField):
         for field in self.fields:
             fields.append(field.xml())
         return xmlfield
-
-
-#TODO: DEPRECATE Field
-class Field:
-    """A data field within a Common Message Format message.
-    
-    Attributes:
-        name (str): The field name
-        data_type (str): A supported data type for encoding/decoding
-        value (any): The value which is type dependent
-        value_range (tuple): The min, max of allowed values or enum strings
-        bits (int): size in bits
-        description (str): An optional description
-        optional (bool): Indicates if the field is optional
-        fixed (bool): Indicates if the field size is fixed (or variable)
-    """
-    def __init__(self,
-                 name: str,
-                 data_type: str,
-                 value: any,
-                 value_range: tuple = None,
-                 bits: int = None,
-                 description: str = None,
-                 optional: bool = False,
-                 fixed: bool = None,
-                 default: any = None,
-                 size: int = None,
-                 fields: list = None):
-        """Initialize the field.
-        
-        Raises:
-            ValueError for invalid data type
-        """
-        if not (isinstance(name, str) or name == ''):
-            raise ValueError("Field name must be non-empty string")
-        self.name = name
-        self.description = description
-        self.optional = optional
-        self.fixed = fixed
-        self.default = default
-        self.size = None
-        self.value = value
-        self.fields = None
-        if fixed is not None or optional:
-            raise NotImplementedError('optional and fixed currently unsupported')
-        if not data_type in DATA_TYPES:
-            raise ValueError("Unsupported data_type {}".format(data_type))
-        self.data_type = data_type
-        if (data_type == 'bool'): # and isinstance(value, bool)
-            if not isinstance(default, bool):
-                self.default = False
-            if bits is not None and bits != 1:
-                warn('bits must be 1 for boolean', WarningMessage)
-            self.bits = 1
-            self.value = bool(value)
-        elif 'int' in data_type:
-            default_bits = int(data_type.split('_')[1])
-            self.bits = bits or default_bits
-            if 'uint' in data_type and int(value >= 0):
-                self.value = min(int(value), 2**self.bits - 1)
-            else:
-                if int(value) < -int(2**self.bits / 2):
-                    self.value = -int(2**self.bits / 2)
-                elif int(value) > int(2**self.bits / 2 - 1):
-                    self.value = int(2**self.bits - 1)
-                else:
-                    self.value = int(value)
-            self.size = size or self.bits
-        elif (data_type == 'string' and isinstance(value, str) or
-              (data_type == 'data' and
-              (isinstance(value, bytearray) or isinstance(value, bytes)))):
-            if size is None or size < 1:
-                raise ValueError('{} must have size > 0'.format(data_type))
-            self.size = size
-            self.bits = len(value) * 8 if not fixed else size * 8
-            self.value = str(value) if data_type == 'string' else value
-        elif ((data_type == 'float' or data_type == 'double') and
-              isinstance(value, float)):
-            self.bits = 32 if data_type == 'float' else 64
-            self.value = float(value)
-            self.size = int(self.bits / 8)
-            self.fixed = True
-        elif (data_type == 'enum'):
-            if (not isinstance(value_range, tuple) or
-                not all(isinstance(i, str) for i in value_range)):
-                raise ValueError('value_range must be tuple of strings')
-            self.bits = _get_optimal_bits((0, len(value_range) - 1))
-            if isinstance(bits, int):
-                self.bits = max(bits, self.bits)
-            self.size = self.bits
-        else:
-            raise ValueError("Unsupported data_type {} or type mismatch"
-                .format(data_type))
-        # optimize bits
-        self.value_range = value_range
-        if not self.bits:
-            if bits:
-                self.bits = bits
-            elif value_range is not None:
-                self.bits = _get_optimal_bits(value_range)
-        self._format = '0{}b'.format(self.bits)
-    
-    def __repr__(self):
-        from pprint import pformat
-        return pformat(vars(self), indent=4)
-    
-    def get_xml(self) -> ET.Element:
-        """Returns the XML definition of the field."""
-        xsi_type = DATA_TYPES[self.data_type]
-        field = ET.Element('Field', attrib={
-                '{http://www.w3.org/2001/XMLSchema-instance}type': xsi_type})
-        name = ET.SubElement(field, 'Name')
-        name.text = self.name
-        if self.description:
-            description = ET.SubElement(field, 'Description')
-            description.text = str(self.description)
-        if self.optional:
-            optional = ET.SubElement(field, 'Optional')
-            optional.text = str(self.optional)
-        if self.default:
-            default = ET.SubElement(field, 'Default')
-            default.text = str(self.default)
-            if self.data_type == 'bool':
-                default.text = default.text.lower()
-        if self.fixed:
-            fixed = ET.SubElement(field, 'Fixed')
-            fixed.text = str(self.fixed)
-        if xsi_type == 'EnumField':
-            size_bits = ET.SubElement(field, 'Size')
-            size_bits.text = str(self.bits)
-            items = ET.SubElement(field, 'Items')
-            for string in self.value_range:
-                item = ET.SubElement(items, 'string')
-                item.text = str(string)
-        elif 'IntField' in xsi_type:
-            size_bits = ET.SubElement(field, 'Size')
-            size_bits.text = str(self.bits)
-        elif xsi_type in ['StringField', 'DataField']:
-            size_bytes = ET.SubElement(field, 'Size')
-            size_bytes.text = str(int(self.bits / 8))
-        elif xsi_type == 'ArrayField':
-            size = ET.SubElement(field, 'Size')
-            size.text = str(self.size)
-        return field
-
-
-class CommonMessageFormat(Message):
-    """Deprecated, replaced by Message."""
-    pass
 
 
 class MessageDefinitions:
