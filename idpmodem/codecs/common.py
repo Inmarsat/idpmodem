@@ -503,8 +503,13 @@ class Messages(ObjectList):
 
 class Services(ObjectList):
     """The list of Service(s) within a MessageDefinitions."""
-    def __init__(self):
+    def __init__(self, services: "list[Service]" = None):
         super().__init__(list_type=Service)
+        if services is not None:
+            for service in services:
+                if not isinstance(service, Service):
+                    raise ValueError('Invalid Service {}'.format(service))
+                self.add(service)
     
     def add(self, service: Service) -> None:
         """Adds a Service to the list of Services."""
@@ -1376,8 +1381,11 @@ class MessageDefinitions:
         services: The list of Services with Messages defined.
     
     """
-    def __init__(self):
-        self.services = Services()
+    def __init__(self, services: Services = None):
+        if services is not None:
+            if not isinstance(services, Services):
+                raise ValueError('Invalid Services')
+        self.services = services or Services()
     
     def xml(self, indent: bool = False) -> ET.Element:
         xmsgdef = ET.Element('MessageDefinition',
