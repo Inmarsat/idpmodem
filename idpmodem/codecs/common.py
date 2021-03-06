@@ -43,7 +43,7 @@ for ns in XML_NAMESPACE:
     ET.register_namespace(ns, XML_NAMESPACE[ns])
 
 
-def _get_optimal_bits(value_range: tuple) -> int:
+def optimal_bits(value_range: tuple) -> int:
     if not (isinstance(value_range, tuple) and len(value_range) == 2 and
         value_range[0] <= value_range[1]):
         #: non-compliant
@@ -282,7 +282,8 @@ class Message:
             bin_str += field.encode()
         for _ in range(0, 8 - len(bin_str) % 8):   #:pad to next byte
             bin_str += '0'
-        hex_str = format(int(bin_str, 2), '02X')
+        _format = '0{}X'.format(int(len(bin_str) / 8 * 2))   #:hex bytes 2 chars
+        hex_str = format(int(bin_str, 2), _format)
         if data_format == FORMAT_HEX:
             data = hex_str
         else:
@@ -625,7 +626,7 @@ class EnumField(BaseField):
         if items is None or not all(isinstance(item, str) for item in items):
             raise ValueError('Items must all be strings')
         if not isinstance(size, int) or size < 1:
-            raise ValueError('Size must be greater than 0 bits')
+            raise ValueError('Size must be integer greater than 0 bits')
         self.items = items
         self.size = size
         self.default = default
@@ -683,8 +684,8 @@ class EnumField(BaseField):
     @size.setter
     def size(self, v: int):
         if not isinstance(v, int) or v < 1:
-            raise ValueError('Size must be greater than zero')
-        minimum_bits = _get_optimal_bits((0, len(self.items)))
+            raise ValueError('Size must be integer greater than zero')
+        minimum_bits = optimal_bits((0, len(self.items)))
         if v < minimum_bits:
             raise ValueError('Size must be at least {} to support item count'
                              .format(minimum_bits))
@@ -765,7 +766,7 @@ class UnsignedIntField(BaseField):
     @size.setter
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
-            raise ValueError('Size must be greater than 0 bits')
+            raise ValueError('Size must be integer greater than 0 bits')
         self._size = value
 
     @property
@@ -777,7 +778,7 @@ class UnsignedIntField(BaseField):
         clip = False
         if v is not None:
             if not isinstance(v, int) or v < 0:
-                raise ValueError('Unsignedint must be non-negative')
+                raise ValueError('Unsignedint must be non-negative integer')
             if v > 2**self.size - 1:
                 self._value = 2**self.size - 1
                 warn('Clipping unsignedint at max value {}'.format(self._value))
@@ -866,7 +867,7 @@ class SignedIntField(BaseField):
     @size.setter
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
-            raise ValueError('Size must be greater than 0 bits')
+            raise ValueError('Size must be integer greater than 0 bits')
         self._size = value
 
     @property
@@ -878,7 +879,7 @@ class SignedIntField(BaseField):
         clip = False
         if v is not None:
             if not isinstance(v, int):
-                raise ValueError('Unsignedint must be non-negative')
+                raise ValueError('Unsignedint must be non-negative integer')
             if v > (2**self.size / 2) - 1:
                 self._value = int(2**self.size / 2) - 1
                 warn('Clipping signedint at max value {}'.format(self._value))
@@ -993,7 +994,7 @@ class StringField(BaseField):
     @size.setter
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
-            raise ValueError('Size must be greater than 0 characters')
+            raise ValueError('Size must be integer greater than 0 characters')
         self._size = value
     
     @property
@@ -1116,7 +1117,7 @@ class DataField(BaseField):
     @size.setter
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
-            raise ValueError('Size must be greater than 0 bytes')
+            raise ValueError('Size must be integer greater than 0 bytes')
         if self.data_type == 'float':
             if value != 4:
                 warn('Adjusting float size to 4 bytes fixed')
@@ -1253,7 +1254,7 @@ class ArrayField(BaseField):
     @size.setter
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
-            raise ValueError('Size must be greater than 0 fields')
+            raise ValueError('Size must be integer greater than 0 fields')
         self._size = value
     
     @property
