@@ -44,6 +44,7 @@ for ns in XML_NAMESPACE:
 
 
 def optimal_bits(value_range: tuple) -> int:
+    """Returns the optimal number of bits for encoding a specified range."""
     if not (isinstance(value_range, tuple) and len(value_range) == 2 and
         value_range[0] <= value_range[1]):
         #: non-compliant
@@ -57,7 +58,7 @@ def optimal_bits(value_range: tuple) -> int:
 def _encode_field_length(length) -> str:
     if length < 128:
         return '0{:07b}'.format(length)
-    return '1{:15b}'.format(length)
+    return '1{:015b}'.format(length)
 
 
 def _decode_field_length(binstr: str) -> Tuple[int, int]:
@@ -133,7 +134,7 @@ class BaseField:
         self.description = description
         self.optional = optional
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         from pprint import pformat
         return pformat(vars(self), indent=4)
     
@@ -172,7 +173,7 @@ class Message:
                  min: int,
                  description: str = None,
                  is_forward: bool = False,
-                 fields: "list[Field]" = None):
+                 fields: "list[BaseField]" = None):
         """Instantiates a Message.
         
         Args:
@@ -199,17 +200,17 @@ class Message:
         self.fields = fields or Fields()
 
     @property
-    def fields(self):
+    def fields(self) -> list:
         return self._fields
     
     @fields.setter
-    def fields(self, fields: "list[Field]"):
+    def fields(self, fields: "list[BaseField]"):
         if not all(isinstance(field, BaseField) for field in fields):
             raise ValueError('Invalid field found in list')
         self._fields = fields
 
     @property
-    def ota_size(self):
+    def ota_size(self) -> int:
         ota_bits = 2 * 8
         for field in self.fields:
             ota_bits += field.bits + (1 if field.optional else 0)
@@ -221,11 +222,10 @@ class Message:
         return _attribute_equivalence(self, other)
 
     def decode(self, databytes: bytes) -> None:
-        """Decodes field values from raw data bytes (received over-the-air).
+        """Parses and stores field values from raw data (received over-the-air).
         
         Args:
             databytes: A bytes array (typically from the forward message)
-
         """
         binary_str = ''.join(format(int(b), '08b') for b in databytes)
         bit_offset = 16   #: Begin after SIN/MIN bytes
@@ -260,7 +260,6 @@ class Message:
         Returns:
             Dictionary with sin, min, data_format and data to pass into AT%MGRT
                 or atcommand function `message_mo_send`
-
         """
         if data_format not in [FORMAT_B64, FORMAT_HEX]:
             raise ValueError('data_format {} unsupported'.format(data_format))
@@ -284,6 +283,10 @@ class Message:
             bin_str += '0'
         _format = '0{}X'.format(int(len(bin_str) / 8 * 2))   #:hex bytes 2 chars
         hex_str = format(int(bin_str, 2), _format)
+        if (self.is_forward and len(hex_str) / 2 > 9998 or
+            not self.is_forward and len(hex_str) / 2 > 6398):
+            raise ValueError('{} bytes exceeds maximum size for Payload'.format(
+                             len(hex_str) / 2))
         if data_format == FORMAT_HEX:
             data = hex_str
         else:
@@ -393,7 +396,7 @@ class ObjectList(list):
         self.list_type = list_type
 
     def add(self, obj: object) -> bool:
-        """Add an object to the list.
+        """Add an object to the end of the list.
 
         Args:
             obj (object): A valid object according to the list_type
@@ -401,7 +404,6 @@ class ObjectList(list):
         Raises:
             ValueError if there is a duplicate or invalid name,
                 invalid value_range or unsupported data_type
-
         """
         if not isinstance(obj, self.list_type):
             raise ValueError('Invalid {} definition'.format(self.list_type))
@@ -429,6 +431,15 @@ class ObjectList(list):
             raise ValueError('{} name {} not found'.format(self.list_type, n))
         return super().__getitem__(n)
 
+    def __setitem__(self, n: Union[str, int], value):
+        if isinstance(n, str):
+            for o in self:
+                if o.name == n:
+                    o.value = value
+                    break
+        else:
+            super().__setitem__(n, value)
+
     def delete(self, name: str) -> bool:
         """Delete an object from the list by name.
         
@@ -437,7 +448,6 @@ class ObjectList(list):
 
         Returns:
             boolean: success
-
         """
         for o in self:
             if o.name == name:
@@ -578,18 +588,19 @@ class BooleanField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
-        """Returns the binary string of the field value.
-        """
+        """Returns the binary string of the field value."""
         if self.value is None and not self.optional:
             raise ValueError('No value assigned to field')
         return '1' if self.value else '0'
 
     def decode(self, binary_str: str) -> int:
-        """Decodes the field value from the first bit of a binary string.
+        """Populates the field value from binary and returns the next offset.
+        
+        Args:
+            binary_str (str): The binary string to decode
         
         Returns:
-            index increment of next binary_str position for continued parsing.
-
+            The bit offset after parsing
         """
         self.value = True if binary_str[0] == '1' else False
         return 1
@@ -706,6 +717,7 @@ class EnumField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
+        """Returns the binary string of the field value."""
         if self.value is None:
             raise ValueError('No value configured in EnumField {}'.format(
                              self.name))
@@ -714,6 +726,14 @@ class EnumField(BaseField):
         return binstr
 
     def decode(self, binary_str: str) -> int:
+        """Populates the field value from binary and returns the next offset.
+        
+        Args:
+            binary_str (str): The binary string to decode
+        
+        Returns:
+            The bit offset after parsing
+        """
         self.value = binary_str[:self.bits]
         return self.bits
 
@@ -772,6 +792,10 @@ class UnsignedIntField(BaseField):
     def size(self, value: int):
         if not isinstance(value, int) or value < 1:
             raise ValueError('Size must be integer greater than 0 bits')
+        data_type_size = int(self.data_type.split('_')[1])
+        if value > data_type_size:
+            warn('Size {} larger than required by {}'.format(
+                value, self.data_type))
         self._size = value
 
     @property
@@ -812,6 +836,7 @@ class UnsignedIntField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
+        """Returns the binary string of the field value."""
         if self.value is None:
             raise ValueError('No value defined in UnsignedIntField {}'.format(
                              self.name))
@@ -819,6 +844,14 @@ class UnsignedIntField(BaseField):
         return format(self.value, _format)
 
     def decode(self, binary_str: str) -> int:
+        """Populates the field value from binary and returns the next offset.
+        
+        Args:
+            binary_str (str): The binary string to decode
+        
+        Returns:
+            The bit offset after parsing
+        """
         self.value = int(binary_str[:self.bits], 2)
         return self.bits
 
@@ -919,6 +952,7 @@ class SignedIntField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
+        """Returns the binary string of the field value."""
         if self.value is None:
             raise ValueError('No value defined in UnsignedIntField {}'.format(
                              self.name))
@@ -936,6 +970,14 @@ class SignedIntField(BaseField):
         return binstr
 
     def decode(self, binary_str: str) -> int:
+        """Populates the field value from binary and returns the next offset.
+        
+        Args:
+            binary_str (str): The binary string to decode
+        
+        Returns:
+            The bit offset after parsing
+        """
         value = int(binary_str[:self.bits], 2)
         if (value & (1 << (self.bits - 1))) != 0:   #:sign bit set e.g. 8bit: 128-255
             value = value - (1 << self.bits)        #:compute negative value
@@ -1030,12 +1072,10 @@ class StringField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
-        """Returns a binary string for processing as part of a Message.
-        
-        Typically this would be for use in a Return Message to submit
-        to the modem.
-
-        """
+        """Returns the binary string of the field value."""
+        if self.value is None and not self.optional:
+            raise ValueError('No value defined for StringField {}'.format(
+                             self.name))
         binstr = ''.join(format(ord(c), '08b') for c in self.value)
         if self.fixed:
             binstr += ''.join('0' for bit in range(len(binstr), self.bits))
@@ -1043,12 +1083,14 @@ class StringField(BaseField):
             binstr = _encode_field_length(len(self.value)) + binstr
         return binstr
 
-    def decode(self, binary_str: str) -> str:
-        """Returns a string from a binary string derived from a Message.
+    def decode(self, binary_str: str) -> int:
+        """Populates the field value from binary and returns the next offset.
         
-        Typically this would be to parse from a Forward Message retrieved from
-        the modem.
-
+        Args:
+            binary_str (str): The binary string to decode
+        
+        Returns:
+            The bit offset after parsing
         """
         if self.fixed:
             length = self.size
@@ -1057,12 +1099,16 @@ class StringField(BaseField):
             (length, bit_index) = _decode_field_length(binary_str)
         n = int(binary_str[bit_index:bit_index + length * 8], 2)
         char_bytes = n.to_bytes((n.bit_length() + 7) // 8, 'big')
+        for i, byte in enumerate(char_bytes):
+            if byte == 0:
+                warn('Truncating after 0 byte in string')
+                char_bytes = char_bytes[:i]
+                break
         self.value = char_bytes.decode('utf-8', 'surrogatepass') or '\0'
         return bit_index + length * 8
 
     def xml(self) -> ET.Element:
-        """Returns the message definition XML representation of the StringField.
-        """
+        """Returns the message definition XML representation of the field."""
         xmlfield = self._base_xml()
         size = ET.SubElement(xmlfield, 'Size')
         size.text = str(self.size)
@@ -1084,12 +1130,12 @@ class DataField(BaseField):
     supported_data_types = ['data', 'float', 'double']
     def __init__(self,
                  name: str,
-                 size: int = None,
+                 size: int,
                  data_type: str = 'data',
                  description: str = None,
                  optional: bool = False,
                  fixed: bool = False,
-                 default: str = None,
+                 default: bytes = None,
                  value: bytes = None) -> None:
         """Instantiates a EnumField.
         
@@ -1159,8 +1205,10 @@ class DataField(BaseField):
 
     @property
     def bits(self):
-        if self.fixed or self.value is None:
+        if self.fixed:
             return self.size * 8
+        elif self.value is None:
+            return 0
         return len(self.value) * 8
     
     def __eq__(self, other: object) -> bool:
@@ -1169,7 +1217,7 @@ class DataField(BaseField):
         return _attribute_equivalence(self, other)
 
     def encode(self) -> str:
-        """Returns the DataField as a binary string."""
+        """Returns the binary string of the field value."""
         if self.value is None and not self.optional:
             raise ValueError('No value defined for DataField {}'.format(
                              self.name))
@@ -1182,22 +1230,22 @@ class DataField(BaseField):
         return binstr
 
     def decode(self, binary_str: str) -> int:
-        """Decodes the DataField from the remaining unparsed payload bits.
+        """Populates the field value from binary and returns the next offset.
         
         Args:
-            binary_str (str): The remaining bitstring from the payload, from
-                the start of the DataField offset.
-
+            binary_str (str): The binary string to decode
+        
         Returns:
-            bit_index (int): The bit_index of the binary_str after the end
-                of the DataField.
+            The bit offset after parsing
         """
         if self.fixed:
             binary = binary_str[:self.bits]
+            bits = self.bits
         else:
             (length, bit_index) = _decode_field_length(binary_str)
             binary = binary_str[bit_index:length * 8 + bit_index]
-        self._value = int(binary, 2).to_bytes(int(self.bits / 8), 'big')
+            bits = len(binary)
+        self._value = int(binary, 2).to_bytes(int(bits / 8), 'big')
         return self.bits
 
     def xml(self) -> ET.Element:
@@ -1314,13 +1362,49 @@ class ArrayField(BaseField):
             return NotImplemented
         return _attribute_equivalence(self, other)
 
-    def new_element(self):
+    def _valid_element(self, element: Fields) -> bool:
+        for i, field in enumerate(self.fields):
+            e = element[i]
+            if e.name != field.name:
+                raise ValueError('element field name {} does not match {}'
+                    .format(e.name, field.name))
+            if e.data_type != field.data_type:
+                raise ValueError('element field data_type {} does not match {}'
+                    .format(e.data_type, field.data_type))
+            if e.optional != field.optional:
+                raise ValueError('element optional {} does not match {}'
+                    .format(e.optional, field.optional))
+            if hasattr(field, 'fixed') and e.fixed != field.fixed:
+                raise ValueError('element fixed {} does not match {}'
+                    .format(e.fixed, field.fixed))
+            if hasattr(field, 'size') and e.size != field.size:
+                raise ValueError('element size {} does not match {}'
+                    .format(e.size, field.size))
+        return True
+
+    def append(self, element: Fields):
+        """Adds the array element to the list of elements."""
+        if not isinstance(element, Fields):
+            raise ValueError('Invalid element definition must be Fields')
+        if self._valid_element(element):
+            for i, field in enumerate(element):
+                if (hasattr(field, 'description') and
+                    field.description != self.fields[i].description):
+                    field.description = self.fields[i].description
+                if hasattr(field, 'value') and field.value is None:
+                    field.value = self.fields[i].default
+            self._elements.append(element)
+
+    def new_element(self) -> Fields:
+        """Returns an empty element at the end of the elements list."""
         new_index = len(self._elements)
         self._elements.append(Fields(self.fields))
         return self.elements[new_index]
 
     def encode(self) -> str:
-        """Returns the ArrayField as a binary string."""
+        """Returns the binary string of the field value."""
+        if len(self.elements) == 0:
+            raise ValueError('No elements to encode')
         binstr = ''
         for element in self.elements:
             for field in element:
@@ -1330,16 +1414,13 @@ class ArrayField(BaseField):
         return binstr
 
     def decode(self, binary_str: str) -> int:
-        """Decodes the ArrayField from the remaining unparsed binary string.
+        """Populates the field value from binary and returns the next offset.
         
         Args:
-            binary_str (str): The binary string beginning from the ArrayField
-                bit offset.
-
+            binary_str (str): The binary string to decode
+        
         Returns:
-            bit_index (int): The bit index of the binary_str after the
-                ArrayField.
-
+            The bit offset after parsing
         """
         if self.fixed:
             length = self.size
